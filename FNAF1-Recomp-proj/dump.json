@@ -1,0 +1,396 @@
+{
+  "source_file": "/home/user/FNAF1-Recomp/FiveNightsatFreddys.exe",
+  "overlay_offset": 1053696,
+  "overlay_size": 230389267,
+  "chunk_start": 2341717,
+  "chunk_count": 43,
+  "chunks":   [
+    {
+      "id_hex": "2223",
+      "name": "Title",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 65,
+      "decoded_size": 65,
+      "file_offset": 2341717
+    },
+    {
+      "id_hex": "2246",
+      "name": "Copyright",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 4,
+      "decoded_size": 4,
+      "file_offset": 2341790
+    },
+    {
+      "id_hex": "2224",
+      "name": "AppName",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 56,
+      "decoded_size": 56,
+      "file_offset": 2341802
+    },
+    {
+      "id_hex": "2225",
+      "name": "Author",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 40,
+      "decoded_size": 40,
+      "file_offset": 2341866
+    },
+    {
+      "id_hex": "222f",
+      "name": "BorderStyle",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 126,
+      "decoded_size": 126,
+      "file_offset": 2341914
+    },
+    {
+      "id_hex": "222e",
+      "name": "AdditionalExt",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 88,
+      "decoded_size": 88,
+      "file_offset": 2342048
+    },
+    {
+      "id_hex": "2235",
+      "name": "Vitalize",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 754,
+      "decoded_size": 754,
+      "file_offset": 2342144
+    },
+    {
+      "id_hex": "2245",
+      "name": "ExtensionData",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 26,
+      "decoded_size": 26,
+      "file_offset": 2342906
+    },
+    {
+      "id_hex": "224f",
+      "name": "AboutText",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 23,
+      "decoded_size": 23,
+      "file_offset": 2342940
+    },
+    {
+      "id_hex": "2226",
+      "name": "MenuName",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 309,
+      "decoded_size": 309,
+      "file_offset": 2342971
+    },
+    {
+      "id_hex": "222c",
+      "name": "GlobalEvents",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 4,
+      "decoded_size": 4,
+      "file_offset": 2343288
+    },
+    {
+      "id_hex": "2234",
+      "name": "ShareData",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 88,
+      "decoded_size": 88,
+      "file_offset": 2343300
+    },
+    {
+      "id_hex": "2231",
+      "name": "OutputPath",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 39,
+      "decoded_size": 39,
+      "file_offset": 2343396
+    },
+    {
+      "id_hex": "2229",
+      "name": "ExtPath",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 34938,
+      "decoded_size": 34938,
+      "file_offset": 2343443
+    },
+    {
+      "id_hex": "2237",
+      "name": "Extensions",
+      "flags": 3,
+      "compressed": true,
+      "raw_size": 24,
+      "decoded_size": 24,
+      "file_offset": 2378389
+    },
+    {
+      "id_hex": "222b",
+      "name": "OtherExt",
+      "flags": 3,
+      "compressed": true,
+      "raw_size": 42,
+      "decoded_size": 42,
+      "file_offset": 2378421
+    },
+    {
+      "id_hex": "2240",
+      "name": "BuildFlags",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1,
+      "decoded_size": 1,
+      "file_offset": 2378471
+    },
+    {
+      "id_hex": "224d",
+      "name": "Timer",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 8,
+      "decoded_size": 8,
+      "file_offset": 2378480
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1359,
+      "decoded_size": 1359,
+      "file_offset": 2378496
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 3146,
+      "decoded_size": 3146,
+      "file_offset": 2379863
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1559,
+      "decoded_size": 1559,
+      "file_offset": 2383017
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 14077,
+      "decoded_size": 14077,
+      "file_offset": 2384584
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1320,
+      "decoded_size": 1320,
+      "file_offset": 2398669
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1405,
+      "decoded_size": 1405,
+      "file_offset": 2399997
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1903,
+      "decoded_size": 1903,
+      "file_offset": 2401410
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1197,
+      "decoded_size": 1197,
+      "file_offset": 2403321
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1403,
+      "decoded_size": 1403,
+      "file_offset": 2404526
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1484,
+      "decoded_size": 1484,
+      "file_offset": 2405937
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1325,
+      "decoded_size": 1325,
+      "file_offset": 2407429
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1487,
+      "decoded_size": 1487,
+      "file_offset": 2408762
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1825,
+      "decoded_size": 1825,
+      "file_offset": 2410257
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1487,
+      "decoded_size": 1487,
+      "file_offset": 2412090
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1242,
+      "decoded_size": 1242,
+      "file_offset": 2413585
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1233,
+      "decoded_size": 1233,
+      "file_offset": 2414835
+    },
+    {
+      "id_hex": "3333",
+      "name": "Header",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 1434,
+      "decoded_size": 1434,
+      "file_offset": 2416076
+    },
+    {
+      "id_hex": "2242",
+      "name": "Unknown",
+      "flags": 2,
+      "compressed": false,
+      "raw_size": 4,
+      "decoded_size": 4,
+      "file_offset": 2417518
+    },
+    {
+      "id_hex": "6666",
+      "name": "ImageBank",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 149171692,
+      "decoded_size": 149171692,
+      "file_offset": 2417530
+    },
+    {
+      "id_hex": "5555",
+      "name": "FontBankIdx",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 2077,
+      "decoded_size": 2077,
+      "file_offset": 151589230
+    },
+    {
+      "id_hex": "6667",
+      "name": "ImageBankExt",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 427,
+      "decoded_size": 427,
+      "file_offset": 151591315
+    },
+    {
+      "id_hex": "5556",
+      "name": "PreSoundIdx",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 37,
+      "decoded_size": 37,
+      "file_offset": 151591750
+    },
+    {
+      "id_hex": "6668",
+      "name": "SoundBank",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 79850909,
+      "decoded_size": 79850909,
+      "file_offset": 151591795
+    },
+    {
+      "id_hex": "5557",
+      "name": "PostSoundIdx",
+      "flags": 1,
+      "compressed": true,
+      "raw_size": 235,
+      "decoded_size": 235,
+      "file_offset": 231442712
+    },
+    {
+      "id_hex": "7f7f",
+      "name": "Terminator",
+      "flags": 0,
+      "compressed": false,
+      "raw_size": 0,
+      "decoded_size": 0,
+      "file_offset": 231442955
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<achievements version="1">
+  <!-- Ночи (основной прогресс) -->
+  <achievement id="1"  gamerscore="20"  name="One Night at Freddy's"  
+               description="Survive your first night on the job." 
+               image="ach_night1.png" hidden="false"/>
+               
+  <achievement id="2"  gamerscore="20"  name="Two Nights at Freddy's"  
+               description="Survive a second night." 
+               image="ach_night2.png" hidden="false"/>
+               
+  <achievement id="3"  gamerscore="30"  name="Three Nights at Freddy's"  
+               description="Survive a third night." 
+               image="ach_night3.png" hidden="false"/>
+               
+  <achievement id="4"  gamerscore="30"  name="Four Nights at Freddy's"  
+               description="Survive a fourth night." 
+               image="ach_night4.png" hidden="false"/>
+               
+  <achievement id="5"  gamerscore="50"  name="Five Nights at Freddy's"  
+               description="Survive all five nights." 
+               image="ach_night5.png" hidden="false"/>
+
+  <!-- Секретные ночи -->
+  <achievement id="6"  gamerscore="50"  name="Overtime"  
+               description="Survive the sixth night." 
+               image="ach_night6.png" hidden="true"/>
+               
+  <achievement id="7"  gamerscore="100" name="No Tampering"  
+               description="Complete Custom Night with AI set to 20/20/20/20." 
+               image="ach_420.png" hidden="true"/>
+
+  <!-- Игровые челленджи (привязаны к конкретным механикам) -->
+  <achievement id="8"  gamerscore="30"  name="No Running"  
+               description="Prevent Foxy from leaving Pirate Cove on Night 4." 
+               image="ach_foxy.png" hidden="false"/>
+               
+  <achievement id="9"  gamerscore="30"  name="No Laughing"  
+               description="Keep Freddy from reaching the East Hall on Night 5." 
+               image="ach_freddy.png" hidden="false"/>
+               
+  <achievement id="10" gamerscore="20"  name="No Hiding"  
+               description="Get caught by an animatronic." 
+               image="ach_jumpscare.png" hidden="true"/>
+</achievements>

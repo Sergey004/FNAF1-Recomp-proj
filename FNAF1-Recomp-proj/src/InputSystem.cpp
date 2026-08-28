@@ -1,0 +1,98 @@
+/**
+ * InputSystem.cpp: Xbox 360 XInput mapping (§7)
+ * VS2010 compatible, no lambdas
+ */
+
+#include "InputSystem.h"
+#include <xtl.h>
+#include <cmath>
+
+namespace fnaf {
+
+void UpdateInput(GameInput& out)
+{
+    // Clear toggles
+    out.leftLightToggle = false;
+    out.rightLightToggle = false;
+    out.leftDoorToggle = false;
+    out.rightDoorToggle = false;
+    out.cameraToggle = false;
+    out.cameraUp = false;
+    out.cameraDown = false;
+    out.cameraLeft = false;
+    out.cameraRight = false;
+    out.pause = false;
+    out.back = false;
+
+    XINPUT_STATE state;
+    ZeroMemory(&state, sizeof(state));
+    if (XInputGetState(0, &state) != ERROR_SUCCESS) {
+        out.lookDir = 0.0f;
+        return;
+    }
+
+    // Left Stick X -> lookDir with deadzone
+    float lx = (float)state.Gamepad.sThumbLX / 32767.0f;
+    if (fabs(lx) < INPUT_DEADZONE) lx = 0.0f;
+    if (lx > 1.0f) lx = 1.0f;
+    if (lx < -1.0f) lx = -1.0f;
+    out.lookDir = lx;
+
+    // Persistent prev states for toggle detection
+    static bool lbPrev = false, rbPrev = false;
+    static bool ltPrev = false, rtPrev = false;
+    static bool aPrev = false, bPrev = false, startPrev = false;
+    static bool dpadUpPrev = false, dpadDownPrev = false, dpadLeftPrev = false, dpadRightPrev = false;
+
+    bool lbNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0;
+    bool rbNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
+    out.leftLightToggle = lbNow && !lbPrev;
+    out.rightLightToggle = rbNow && !rbPrev;
+    lbPrev = lbNow; rbPrev = rbNow;
+
+    bool ltNow = state.Gamepad.bLeftTrigger > 128;
+    bool rtNow = state.Gamepad.bRightTrigger > 128;
+    out.leftDoorToggle = ltNow && !ltPrev;
+    out.rightDoorToggle = rtNow && !rtPrev;
+    ltPrev = ltNow; rtPrev = rtNow;
+
+    bool aNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0;
+    out.cameraToggle = aNow && !aPrev;
+    aPrev = aNow;
+
+    // D-Pad edge for camera nav (hold repeat not needed, edge only)
+    bool upNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0;
+    bool downNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0;
+    bool leftNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0;
+    bool rightNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0;
+    out.cameraUp = upNow && !dpadUpPrev;
+    out.cameraDown = downNow && !dpadDownPrev;
+    out.cameraLeft = leftNow && !dpadLeftPrev;
+    out.cameraRight = rightNow && !dpadRightPrev;
+    dpadUpPrev = upNow; dpadDownPrev = downNow; dpadLeftPrev = leftNow; dpadRightPrev = rightNow;
+
+    bool startNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_START) != 0;
+    out.pause = startNow && !startPrev;
+    startPrev = startNow;
+
+    bool bNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0;
+    out.back = bNow && !bPrev;
+    bPrev = bNow;
+}
+
+MenuInput PollMenuInputFromGameInput(const GameInput& gi)
+{
+    MenuInput m;
+    // Map GameInput to MenuInput for menu navigation reuse
+    // Left Stick / D-Pad Up/Down for menu up/down
+    if (gi.cameraUp || gi.lookDir < -0.5f) m.up = true;
+    if (gi.cameraDown || gi.lookDir > 0.5f) m.down = true;
+    if (gi.cameraLeft) m.left = true;
+    if (gi.cameraRight) m.right = true;
+    if (gi.cameraToggle) m.confirm = true;
+    if (gi.back) m.back = true;
+    if (gi.pause) m.confirm = true; // Start also confirm in menu
+    return m;
+}
+
+} // namespace fnaf
