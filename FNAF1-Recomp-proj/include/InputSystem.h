@@ -26,11 +26,14 @@ struct GameInput {
     bool cameraRight;
     bool pause;             // Start
     bool back;              // B
+    bool leftShoulderHeld;  // LB level (debug combos / sprite browser)
+    bool rightShoulderHeld; // RB level
 
     GameInput() : lookDir(0), leftLightToggle(false), rightLightToggle(false),
                   leftDoorToggle(false), rightDoorToggle(false),
                   cameraToggle(false), cameraUp(false), cameraDown(false),
-                  cameraLeft(false), cameraRight(false), pause(false), back(false) {}
+                  cameraLeft(false), cameraRight(false), pause(false), back(false),
+                  leftShoulderHeld(false), rightShoulderHeld(false) {}
 };
 
 // Poll XInput and fill GameInput with toggle detection (edge)

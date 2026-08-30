@@ -46,6 +46,8 @@ void UpdateInput(GameInput& out)
 
     bool lbNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0;
     bool rbNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
+    out.leftShoulderHeld = lbNow;
+    out.rightShoulderHeld = rbNow;
     out.leftLightToggle = lbNow && !lbPrev;
     out.rightLightToggle = rbNow && !rbPrev;
     lbPrev = lbNow; rbPrev = rbNow;

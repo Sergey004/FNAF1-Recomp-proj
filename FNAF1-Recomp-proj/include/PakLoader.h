@@ -31,11 +31,15 @@ struct PakLoadedTexture {
 
 struct PakLoadedSound {
     char name[64];
-    u8* data;
-    u32 dataSize;
-    u32 format; // 0 PCM, 1 XMA2
-    u32 sampleRate;
-    u32 channels;
+    u8*  data;       // v2.6: start of PLAYABLE PCM (data-chunk payload when the
+                     //       blob is a complete RIFF/WAVE file, blob otherwise)
+    u32  dataSize;
+    u32  format;     // 0 = PCM16 ready to play, 1 = unsupported codec
+    u32  sampleRate;
+    u32  channels;
+    u32  bits;       // v2.6: source bit depth (8/16); 8-bit payloads are
+                     //       expanded to 16-bit at load, so Play() always
+                     //       receives 16-bit little-endian data
 };
 
 class PakLoader {
@@ -54,6 +58,14 @@ public:
     PakLoadedSound* GetSound(int idx);
     PakLoadedSound* FindSound(const char* name);
 
+    // v2.6: sound-normalization statistics (for the debug overlay / log):
+    // how many blobs carried a RIFF header, how many 16-bit payloads were
+    // byte-swapped (pak written with big-endian PCM), how many 8-bit
+    // payloads were expanded.
+    int GetSndRiffCount() const   { return m_sndRiff; }
+    int GetSndSwappedCount() const { return m_sndSwapped; }
+    int GetSnd8bitCount() const   { return m_snd8bit; }
+
 private:
     void* m_device;
     PakLoadedTexture* m_textures;
@@ -63,7 +75,18 @@ private:
     u8* m_pakData; // keep file in memory for audio
     u32 m_pakSize;
 
+    // v2.6: owned 16-bit expansion buffers for 8-bit sounds (freed in Unload)
+    struct OwnedBuf { u8* data; struct OwnedBuf* next; };
+    OwnedBuf* m_owned;
+
+    // v2.6: normalization stats
+    int m_sndRiff;
+    int m_sndSwapped;
+    int m_snd8bit;
+
     u32 LoadBE32(const u8* p);
+    void NormalizeSounds();
+    void FreeOwned();
 };
 
 } // namespace fnaf

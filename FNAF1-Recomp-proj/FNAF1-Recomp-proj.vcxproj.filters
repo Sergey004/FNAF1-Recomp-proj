@@ -1,6 +1,21 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <ClInclude Include="include\AudioSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\GameRender.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\PakAssets.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClCompile Include="src\AudioSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GameRender.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <Filter Include="Source Files">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
@@ -11,9 +26,6 @@
     </Filter>
     <Filter Include="achievements_pics">
       <UniqueIdentifier>{3bbf909d-ff11-4b3d-9cd0-81b491ee9898}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Shaders">
-      <UniqueIdentifier>{7d8399cd-9918-49fb-9463-4b9ac009bebe}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -48,16 +60,6 @@
     <None Include="achievements_pics\аch_jumpscare.png">
       <Filter>achievements_pics</Filter>
     </None>
-    <None Include="Shaders\sprite_vs.vsh" />
-    <None Include="Shaders\sprite_ps.psh" />
-  </ItemGroup>
-  <ItemGroup>
-    <CustomBuild Include="Shaders\sprite_ps.hlsl">
-      <Filter>Shaders</Filter>
-    </CustomBuild>
-    <CustomBuild Include="Shaders\sprite_vs.hlsl">
-      <Filter>Shaders</Filter>
-    </CustomBuild>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Animatronic.h">
@@ -115,6 +117,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\Types.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\XdkCompat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

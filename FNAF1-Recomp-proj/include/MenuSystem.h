@@ -79,6 +79,8 @@ public:
     // For save emulation (placeholder)
     void SetUnlockedNight(i32 night) { m_unlockedNight = night; if(m_unlockedNight<1) m_unlockedNight=1; if(m_unlockedNight>7) m_unlockedNight=7; }
     void SetHasSave(bool has) { m_hasSave = has; }
+    i32  GetUnlockedNight() const { return m_unlockedNight; }
+    bool HasSave() const { return m_hasSave; }
 
 private:
     MenuScreen m_screen;

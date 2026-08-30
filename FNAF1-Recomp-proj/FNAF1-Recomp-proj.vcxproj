@@ -278,37 +278,20 @@
     <None Include="achievements_pics\ach_night5.png" />
     <None Include="achievements_pics\ach_night6.png" />
     <None Include="achievements_pics\аch_jumpscare.png" />
-    <CustomBuild Include="Shaders\sprite_ps.hlsl">
-      <FileType>Document</FileType>
-      <Command>"$(XEDK)\bin\win32\fxc.exe" /T ps_2_0 /E main /Fo "$(ProjectDir)Shaders\sprite_ps.psh" "%(FullPath)"</Command>
-      <Outputs>$(ProjectDir)Shaders\sprite_ps.psh</Outputs>
-      <Message>Compiling pixel shader sprite_ps.hlsl</Message>
-    </CustomBuild>
-    <CustomBuild Include="Shaders\sprite_vs.hlsl">
-      <FileType>Document</FileType>
-      <Command>"$(XEDK)\bin\win32\fxc.exe" /T vs_2_0 /E main /Fo "$(ProjectDir)Shaders\sprite_vs.vsh" "%(FullPath)"</Command>
-      <Outputs>$(ProjectDir)Shaders\sprite_vs.vsh</Outputs>
-      <Message>Compiling vertex shader sprite_vs.hlsl</Message>
-    </CustomBuild>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Shaders\sprite_vs.vsh">
-      <DeploymentContent>true</DeploymentContent>
-    </None>
-    <None Include="Shaders\sprite_ps.psh">
-      <DeploymentContent>true</DeploymentContent>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Animatronic.h" />
     <ClInclude Include="include\AnimatronicAI.h" />
     <ClInclude Include="include\asset_mapping.h" />
     <ClInclude Include="include\asset_mapping.hpp" />
+    <ClInclude Include="include\AudioSystem.h" />
     <ClInclude Include="include\CameraSystem.h" />
     <ClInclude Include="include\DebugConsole.h" />
     <ClInclude Include="include\DoorSystem.h" />
     <ClInclude Include="include\fnaf.h" />
     <ClInclude Include="include\Game.h" />
+    <ClInclude Include="include\GameRender.h" />
+    <ClInclude Include="include\PakAssets.h" />
     <ClInclude Include="include\GameTimer.h" />
     <ClInclude Include="include\InputSystem.h" />
     <ClInclude Include="include\MenuSystem.h" />
@@ -319,13 +302,16 @@
     <ClInclude Include="include\SpriteBatch.h" />
     <ClInclude Include="include\TextRenderer.h" />
     <ClInclude Include="include\Types.h" />
+    <ClInclude Include="include\XdkCompat.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AnimatronicAI.cpp" />
+    <ClCompile Include="src\AudioSystem.cpp" />
     <ClCompile Include="src\CameraSystem.cpp" />
     <ClCompile Include="src\DebugConsole.cpp" />
     <ClCompile Include="src\DoorSystem.cpp" />
     <ClCompile Include="src\Game.cpp" />
+    <ClCompile Include="src\GameRender.cpp" />
     <ClCompile Include="src\GameTimer.cpp" />
     <ClCompile Include="src\InputSystem.cpp" />
     <ClCompile Include="src\main.cpp" />

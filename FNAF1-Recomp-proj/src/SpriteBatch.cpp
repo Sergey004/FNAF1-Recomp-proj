@@ -1,36 +1,46 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
- * SpriteBatch.cpp: Xbox 360 D3D9 sprite batch using a minimal
- * pass-through vertex/pixel shader pair.
+ * SpriteBatch.cpp: Xbox 360 D3D9 sprite batch, self-contained.
  *
- * IMPORTANT: Xbox 360's GPU (Xenos) has NO fixed-function T&L path,
- * unlike desktop D3D9. SetVertexShader(NULL) does not fall back to
- * FFP the way it does on PC -- it just leaves the device with no
- * shader bound at all, which is why the previous version of this
- * file produced "Vertex fetch constant ... completely invalid" /
- * "A vertex shader must be set" errors in Xenia and would behave the
- * same on real hardware. Every draw call on this platform needs an
- * actual vertex + pixel shader, even for the simplest 2D quad.
+ * Why this file exists the way it does
+ * ------------------------------------
+ * The Xenos GPU has no fixed-function T&L path, unlike desktop D3D9.
+ * SetVertexShader(NULL) does not fall back to FFP the way it does on PC.
+ * Every draw call on this platform needs an actual vertex + pixel shader,
+ * even for the simplest 2D quad.
  *
- * We use the D3DDECLUSAGE_POSITIONT ("pre-transformed position")
- * vertex declaration + a vertex shader that just passes the position
- * straight through, which is the standard way to do 2D/screen-space
- * sprite rendering on a fully-programmable pipeline without doing a
- * real projection transform.
+ * v2.2b: the shader pair is compiled AT RUNTIME from the HLSL strings below
+ * with D3DXCompileShader (present in every XDK: d3dx9shader.h; on 360 the
+ * only profiles are vs_3_0/ps_3_0 -- any vs/ps profile is promoted there). The
+ * previous scheme -- offline .vsh/.psh bytecode produced by the PC fxc.exe
+ * and loaded from game:\Shaders\ -- could never work: Xenos does not execute
+ * PC D3D9 shader tokens (see hedge-dev/XenosRecomp: 360 shader binaries are
+ * a completely separate microcode), and if the files were not deployed the
+ * init failed silently -> black screen. Now there is nothing external to
+ * deploy, and if compilation ever fails, GetInitError() returns a readable
+ * reason that main.cpp shows as a full-screen message instead of black.
+ *
+ * Vertex pipeline: POSITION float4 (screen space) -> vertex shader maps to
+ * clip space with two scalar constant registers (c0 = scales, c1 = offsets).
+ * Deliberately NOT a float4x4: HLSL matrices have a column_major/row_major
+ * packing default that silently transposes your constants if you get the
+ * convention wrong (on the 360 compiler the default packing is not obvious),
+ * and a transposed ortho puts the translation into .w -- every pixel clips
+ * away and you get an all-black frame. Scalar registers are convention-free.
+ * POSITIONT was NOT used: it is a fixed-function concept and is unreliable
+ * with custom shaders on Xenos.
  */
 
 #include "SpriteBatch.h"
 #include <cstdio>
 #include <cstddef>
-#include <vector>
+#include <cstring>
+#include <stdio.h>      // _snprintf on the XDK CRT
 
 #if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
 #include <xtl.h>
 #include <d3d9.h>
 #include <d3dx9.h>
-#ifndef D3DDECLUSAGE_POSITIONT
-#define D3DDECLUSAGE_POSITIONT 9
-#endif
 #else
 #error "Only Xbox 360 target supported"
 #endif
@@ -38,49 +48,152 @@
 namespace fnaf {
 
 // ------------------------------------------------------------------
-//  Shader bytecode is compiled OFFLINE at build time from the .hlsl
-//  sources in Shaders/ (see Shaders/README.md) -- NOT compiled at
-//  runtime. Runtime HLSL compilation (D3DXCompileShader) works, but it
-//  drags the whole shader compiler onto the console's PPC cores at
-//  startup and isn't guaranteed present outside a devkit. Precompiled
-//  .vsh/.psh bytecode just gets handed straight to CreateVertexShader/
-//  CreatePixelShader -- no compiler needed at runtime at all.
+//  Embedded shaders (compiled at runtime, see file header)
 // ------------------------------------------------------------------
 
-static bool LoadShaderBytecode(const char* path, std::vector<u8>& outBytes)
-{
-    FILE* f = fopen(path, "rb");
-    if (!f) {
-        printf("[SpriteBatch] Could not open shader file: %s\n", path);
-        return false;
-    }
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (size <= 0) { fclose(f); return false; }
-    outBytes.resize((size_t)size);
-    size_t read = fread(outBytes.data(), 1, (size_t)size, f);
-    fclose(f);
-    return read == (size_t)size;
-}
+static const char* kSpriteVS_HLSL =
+    // c0 = (1/2W, -1/2H, 1, 0) scale, c1 = (-1, +1, 0, 0) offset.
+    // Explicit scalar math: immune to matrix packing (column/row-major).
+    "float4 kScale  : register(c0);\n"
+    "float4 kOffset : register(c1);\n"
+    "struct VS_IN  { float4 pos : POSITION; float4 color : COLOR0; float2 uv : TEXCOORD0; };\n"
+    "struct VS_OUT { float4 pos : POSITION; float4 color : COLOR0; float2 uv : TEXCOORD0; };\n"
+    "VS_OUT main(VS_IN i)\n"
+    "{\n"
+    "    VS_OUT o;\n"
+    "    o.pos   = float4(i.pos.x * kScale.x + kOffset.x,\n"
+    "                     i.pos.y * kScale.y + kOffset.y,\n"
+    "                     i.pos.z * kScale.z + kOffset.z,\n"
+    "                     1.0);\n"
+    "    o.color = i.color;\n"
+    "    o.uv    = i.uv;\n"
+    "    return o;\n"
+    "}\n";
+
+static const char* kSpritePS_HLSL =
+    "sampler2D tex0 : register(s0);\n"
+    "struct PS_IN { float4 color : COLOR0; float2 uv : TEXCOORD0; };\n"
+    "float4 main(PS_IN i) : COLOR0\n"
+    "{\n"
+    "    return tex2D(tex0, i.uv) * i.color;\n"
+    "}\n";
+
+// v2.8.0: CRT post-effect (scanlines + vignette + fine grain), darken-only.
+// c0: x = time (pre-wrapped on the CPU), y = backbuffer width,
+//     z = backbuffer height, w = scanline strength
+// c1: x = vignette strength, y = grain strength
+// No texture fetch at all: the overlay composes on top of the pak-frame
+// static via the standard SRCALPHA/INVSRCALPHA blend (black * alpha).
+static const char* kCRTPS_HLSL =
+    "float4 kCRT0 : register(c0);\n"
+    "float4 kCRT1 : register(c1);\n"
+    "struct PS_IN { float4 color : COLOR0; float2 uv : TEXCOORD0; };\n"
+    "float Hash12(float2 p)\n"
+    "{\n"
+    "    float3 p3 = frac(float3(p.x, p.y, p.x) * 0.1031);\n"
+    "    p3 += dot(p3, float3(p3.y, p3.z, p3.x) + 33.33);\n"
+    "    return frac((p3.x + p3.y) * p3.z);\n"
+    "}\n"
+    "float4 main(PS_IN i) : COLOR0\n"
+    "{\n"
+    "    float2 px = float2(floor(i.uv.x * kCRT0.y), floor(i.uv.y * kCRT0.z));\n"
+    "    float t = kCRT0.x;\n"
+    "    float g = Hash12(px + float2(t * 37.0, t * 17.0)) * kCRT1.y;\n"
+    "    float line = 0.5 + 0.5 * sin(i.uv.y * kCRT0.z * 2.0943951);\n"
+    "    float scan = (1.0 - line) * kCRT0.w;\n"
+    "    float2 d = (i.uv - 0.5) * float2(1.15, 1.0);\n"
+    "    float vig = smoothstep(0.55, 1.1, length(d)) * kCRT1.x;\n"
+    "    float a = saturate(scan + vig + g);\n"
+    "    return float4(0.0, 0.0, 0.0, a);\n"
+    "}\n";
+
+// Screen-space -> clip space for a 1280x720 back buffer, y down:
+//   clip.x = x/640 - 1,  clip.y = 1 - y/360,  clip.z = z,  clip.w = 1
+// Uploaded as two scalar float4 registers -- no matrix packing ambiguity.
+static const float kVSScaleConst[4]  = { 1.0f/640.0f, -1.0f/360.0f, 1.0f, 0.0f };
+static const float kVSOffsetConst[4] = { -1.0f, 1.0f, 0.0f, 0.0f };
 
 static const D3DVERTEXELEMENT9 kSpriteVertexDecl[] = {
-    { 0, offsetof(SpriteVertex, x),     D3DDECLTYPE_FLOAT4,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITIONT, 0 },
+    { 0, offsetof(SpriteVertex, x),     D3DDECLTYPE_FLOAT4,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION,  0 },
     { 0, offsetof(SpriteVertex, color), D3DDECLTYPE_D3DCOLOR, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_COLOR,     0 },
     { 0, offsetof(SpriteVertex, u),     D3DDECLTYPE_FLOAT2,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD,  0 },
     D3DDECL_END()
 };
 
+// ------------------------------------------------------------------
+//  Runtime shader compilation helper
+// ------------------------------------------------------------------
+
+static bool CompileShaderFromMemory(D3DDeviceX* dev,
+                                    const char* src,
+                                    const char* profile,
+                                    bool vertexStage,
+                                    void** outShader,
+                                    char* errOut, size_t errOutSize)
+{
+    *outShader = 0;
+    if (errOutSize) errOut[0] = '\0';
+
+    LPD3DXBUFFER codeBuf = 0;
+    LPD3DXBUFFER errBuf  = 0;
+    HRESULT hr = D3DXCompileShader(
+        src, (UINT)strlen(src),
+        NULL,           // defines
+        NULL,           // include
+        "main",
+        profile,
+        0,              // flags
+        &codeBuf,
+        &errBuf,
+        NULL);          // constant table (registers are explicit in the HLSL)
+
+    if (FAILED(hr) || !codeBuf) {
+        const char* msg = errBuf ? (const char*)errBuf->GetBufferPointer() : "";
+        _snprintf(errOut, errOutSize - 1,
+                  "D3DXCompileShader(%s) failed hr=0x%08X: %.80s",
+                  profile, (unsigned)hr, msg);
+        errOut[errOutSize - 1] = '\0';
+        if (errBuf) errBuf->Release();
+        return false;
+    }
+    if (errBuf) errBuf->Release();
+
+    HRESULT chr;
+    if (vertexStage) {
+        IDirect3DVertexShader9* vs = 0;
+        chr = dev->CreateVertexShader((const DWORD*)codeBuf->GetBufferPointer(), &vs);
+        if (SUCCEEDED(chr)) *outShader = vs;
+    } else {
+        IDirect3DPixelShader9* ps = 0;
+        chr = dev->CreatePixelShader((const DWORD*)codeBuf->GetBufferPointer(), &ps);
+        if (SUCCEEDED(chr)) *outShader = ps;
+    }
+    codeBuf->Release();
+
+    if (FAILED(chr)) {
+        _snprintf(errOut, errOutSize - 1,
+                  "Create%sShader failed hr=0x%08X",
+                  vertexStage ? "Vertex" : "Pixel", (unsigned)chr);
+        errOut[errOutSize - 1] = '\0';
+        return false;
+    }
+    return true;
+}
+
+// ------------------------------------------------------------------
+
 SpriteBatch::SpriteBatch()
     : m_device(0)
+    , m_vertices(0)
     , m_vertexCount(0)
     , m_currentTexture(0)
     , m_vertexShader(0)
     , m_pixelShader(0)
-    , m_vsCodeBuffer(0)
-    , m_psCodeBuffer(0)
+    , m_crtPixelShader(0)
     , m_vertexDecl(0)
+    , m_ready(false)
 {
+    m_initError[0] = '\0';
 }
 
 SpriteBatch::~SpriteBatch()
@@ -90,65 +203,65 @@ SpriteBatch::~SpriteBatch()
 
 bool SpriteBatch::Init(void* device)
 {
+    m_ready = false;
+    m_initError[0] = '\0';
     if (!device) return false;
     m_device = device;
     D3DDeviceX* dev = (D3DDeviceX*)device;
 
-    // --- Load precompiled vertex shader bytecode ---
-    std::vector<u8> vsBytes;
-    if (!LoadShaderBytecode("game:\\Shaders\\sprite_vs.vsh", vsBytes)) {
-        printf("[SpriteBatch] Failed to load sprite_vs.vsh -- did you run the offline\n"
-               "shader build step? See Shaders/README.md.\n");
-        return false;
+    if (!m_vertices) {
+        m_vertices = new SpriteVertex[MAX_SPRITES_PER_BATCH * 4];
     }
-    IDirect3DVertexShader9* vs = NULL;
-    HRESULT hr = dev->CreateVertexShader((const DWORD*)vsBytes.data(), &vs);
-    if (FAILED(hr)) {
-        printf("[SpriteBatch] CreateVertexShader failed (hr=0x%08X)\n", (unsigned)hr);
-        return false;
-    }
-    m_vertexShader = vs;
+    m_vertexCount = 0;
+    m_currentTexture = 0;
 
-    // --- Load precompiled pixel shader bytecode ---
-    std::vector<u8> psBytes;
-    if (!LoadShaderBytecode("game:\\Shaders\\sprite_ps.psh", psBytes)) {
-        printf("[SpriteBatch] Failed to load sprite_ps.psh -- did you run the offline\n"
-               "shader build step? See Shaders/README.md.\n");
+    // --- Vertex + pixel shaders (runtime compile, see file header) ---
+    char err[160];
+    if (!CompileShaderFromMemory(dev, kSpriteVS_HLSL, "vs_3_0", true,
+                                 &m_vertexShader, err, sizeof(err))) {
+        _snprintf(m_initError, sizeof(m_initError) - 1, "VS: %s", err);
+        m_initError[sizeof(m_initError) - 1] = '\0';
         return false;
     }
-    IDirect3DPixelShader9* ps = NULL;
-    hr = dev->CreatePixelShader((const DWORD*)psBytes.data(), &ps);
-    if (FAILED(hr)) {
-        printf("[SpriteBatch] CreatePixelShader failed (hr=0x%08X)\n", (unsigned)hr);
+    if (!CompileShaderFromMemory(dev, kSpritePS_HLSL, "ps_3_0", false,
+                                 &m_pixelShader, err, sizeof(err))) {
+        _snprintf(m_initError, sizeof(m_initError) - 1, "PS: %s", err);
+        m_initError[sizeof(m_initError) - 1] = '\0';
         return false;
     }
-    m_pixelShader = ps;
+    // v2.8.0: CRT post-effect PS. Non-fatal: if it fails we just lose the
+    // scanline/vignette/grain look and keep the pak-frame static.
+    if (!CompileShaderFromMemory(dev, kCRTPS_HLSL, "ps_3_0", false,
+                                 &m_crtPixelShader, err, sizeof(err))) {
+        m_crtPixelShader = 0;
+    }
 
     // --- Vertex declaration ---
     IDirect3DVertexDeclaration9* decl = NULL;
-    hr = dev->CreateVertexDeclaration(kSpriteVertexDecl, &decl);
+    HRESULT hr = dev->CreateVertexDeclaration(kSpriteVertexDecl, &decl);
     if (FAILED(hr)) {
-        printf("[SpriteBatch] CreateVertexDeclaration failed (hr=0x%08X)\n", (unsigned)hr);
+        _snprintf(m_initError, sizeof(m_initError) - 1,
+                  "CreateVertexDeclaration failed hr=0x%08X", (unsigned)hr);
+        m_initError[sizeof(m_initError) - 1] = '\0';
         return false;
     }
     m_vertexDecl = decl;
 
-    m_vertexCount = 0;
-    m_currentTexture = 0;
+    m_ready = true;
     return true;
 }
 
 void SpriteBatch::Shutdown()
 {
-    if (m_vertexShader) { ((IDirect3DVertexShader9*)m_vertexShader)->Release(); m_vertexShader = 0; }
-    if (m_pixelShader)  { ((IDirect3DPixelShader9*)m_pixelShader)->Release();   m_pixelShader = 0; }
+    if (m_vertexShader)    { ((IDirect3DVertexShader9*)m_vertexShader)->Release(); m_vertexShader = 0; }
+    if (m_pixelShader)     { ((IDirect3DPixelShader9*)m_pixelShader)->Release();    m_pixelShader = 0; }
+    if (m_crtPixelShader)  { ((IDirect3DPixelShader9*)m_crtPixelShader)->Release(); m_crtPixelShader = 0; }
     if (m_vertexDecl)   { ((IDirect3DVertexDeclaration9*)m_vertexDecl)->Release(); m_vertexDecl = 0; }
-    // m_vsCodeBuffer/m_psCodeBuffer are unused now -- shader bytecode is loaded
-    // from disk into a local std::vector<u8> in Init() and doesn't need to be
-    // kept alive after CreateVertexShader/CreatePixelShader.
+    if (m_vertices)     { delete[] (SpriteVertex*)m_vertices; m_vertices = 0; }
     m_device = 0;
     m_vertexCount = 0;
     m_currentTexture = 0;
+    m_ready = false;
 }
 
 void SpriteBatch::Begin()
@@ -160,6 +273,7 @@ void SpriteBatch::Begin()
 void SpriteBatch::Draw(void* tex, float x, float y, float w, float h,
                        float u0, float v0, float u1, float v1, u32 color)
 {
+    if (!m_ready) return;
     if (m_vertexCount + 4 > MAX_SPRITES_PER_BATCH * 4) {
         Flush();
     }
@@ -168,16 +282,12 @@ void SpriteBatch::Draw(void* tex, float x, float y, float w, float h,
     }
     m_currentTexture = tex;
 
-    SpriteVertex* v = &m_vertices[m_vertexCount];
-    v[0].x = x;     v[0].y = y;     v[0].z = 0.0f; v[0].rhw = 1.0f; v[0].u = u0; v[0].v = v0; v[0].color = color;
-    v[1].x = x+w;   v[1].y = y;     v[1].z = 0.0f; v[1].rhw = 1.0f; v[1].u = u1; v[1].v = v0; v[1].color = color;
-    v[2].x = x;     v[2].y = y+h;   v[2].z = 0.0f; v[2].rhw = 1.0f; v[2].u = u0; v[2].v = v1; v[2].color = color;
-    v[3].x = x+w;   v[3].y = y+h;   v[3].z = 0.0f; v[3].rhw = 1.0f; v[3].u = u1; v[3].v = v1; v[3].color = color;
+    SpriteVertex* v = (SpriteVertex*)m_vertices + m_vertexCount;
+    v[0].x = x;     v[0].y = y;     v[0].z = 0.0f; v[0].w = 1.0f; v[0].u = u0; v[0].v = v0; v[0].color = color;
+    v[1].x = x+w;   v[1].y = y;     v[1].z = 0.0f; v[1].w = 1.0f; v[1].u = u1; v[1].v = v0; v[1].color = color;
+    v[2].x = x;     v[2].y = y+h;   v[2].z = 0.0f; v[2].w = 1.0f; v[2].u = u0; v[2].v = v1; v[2].color = color;
+    v[3].x = x+w;   v[3].y = y+h;   v[3].z = 0.0f; v[3].w = 1.0f; v[3].u = u1; v[3].v = v1; v[3].color = color;
     m_vertexCount += 4;
-
-    if (m_vertexCount >= MAX_SPRITES_PER_BATCH * 4 - 4) {
-        Flush();
-    }
 }
 
 void SpriteBatch::Draw(void* tex, float x, float y, float w, float h, u32 color)
@@ -190,15 +300,57 @@ void SpriteBatch::End()
     Flush();
 }
 
+// ------------------------------------------------------------------
+//  v2.8.0: CRT post-effect (see kCRTPS_HLSL). Drawn immediately as its
+//  own draw call -- everything queued before it is flushed with the
+//  sprite pixel shader first, and the sprite PS is restored after, so
+//  regular batching is unaffected.
+// ------------------------------------------------------------------
+void SpriteBatch::DrawCRT(float timeSec, float scanStrength,
+                          float vignetteStrength, float grainStrength)
+{
+    if (!m_ready || !m_crtPixelShader) return;
+
+    Flush();
+
+    D3DDeviceX* dev = (D3DDeviceX*)m_device;
+
+    // Full render state (blend, decl, VS + scalars) -- Flush() only sets
+    // it when there was something to flush, and this must work on an
+    // otherwise empty frame too.
+    SetupRenderState();
+
+    // Swap in the CRT pixel shader; vertex stage stays the sprite VS.
+    dev->SetPixelShader((IDirect3DPixelShader9*)m_crtPixelShader);
+
+    float c0[4] = { timeSec, 1280.0f, 720.0f, scanStrength };
+    float c1[4] = { vignetteStrength, grainStrength, 0.0f, 0.0f };
+    dev->SetPixelShaderConstantF(0, c0, 1);
+    dev->SetPixelShaderConstantF(1, c1, 1);
+
+    // Fullscreen quad, UV 0..1. No texture: the CRT PS is pure ALU.
+    SpriteVertex v[4];
+    v[0].x = 0.0f;    v[0].y = 0.0f;    v[0].z = 0.0f; v[0].w = 1.0f;
+    v[0].u = 0.0f;    v[0].v = 0.0f;    v[0].color = 0xFFFFFFFF;
+    v[1].x = 1280.0f; v[1].y = 0.0f;    v[1].z = 0.0f; v[1].w = 1.0f;
+    v[1].u = 1.0f;    v[1].v = 0.0f;    v[1].color = 0xFFFFFFFF;
+    v[2].x = 0.0f;    v[2].y = 720.0f;  v[2].z = 0.0f; v[2].w = 1.0f;
+    v[2].u = 0.0f;    v[2].v = 1.0f;    v[2].color = 0xFFFFFFFF;
+    v[3].x = 1280.0f; v[3].y = 720.0f;  v[3].z = 0.0f; v[3].w = 1.0f;
+    v[3].u = 1.0f;    v[3].v = 1.0f;    v[3].color = 0xFFFFFFFF;
+
+    dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(SpriteVertex));
+
+    // Restore the sprite pixel shader for whatever comes next.
+    dev->SetPixelShader((IDirect3DPixelShader9*)m_pixelShader);
+}
+
 void SpriteBatch::SetupRenderState()
 {
     D3DDeviceX* dev = (D3DDeviceX*)m_device;
     dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
     dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    dev->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
-    dev->SetRenderState(D3DRS_ALPHAREF, 1);
-    dev->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL);
     dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
     dev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
     dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
@@ -206,30 +358,31 @@ void SpriteBatch::SetupRenderState()
     dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
     dev->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
     dev->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
-    dev->SetSamplerState(0, D3DSAMP_MAXANISOTROPY, 1);
 
     dev->SetTexture(0, (D3DTextureX*)m_currentTexture);
 
-    // Programmable pipeline: explicit shaders + vertex declaration.
-    // (No SetFVF / SetVertexShader(NULL) -- Xenos has no FFP fallback.)
+    // Programmable pipeline only: explicit shaders + declaration + scalars.
     dev->SetVertexDeclaration((IDirect3DVertexDeclaration9*)m_vertexDecl);
     dev->SetVertexShader((IDirect3DVertexShader9*)m_vertexShader);
     dev->SetPixelShader((IDirect3DPixelShader9*)m_pixelShader);
+    dev->SetVertexShaderConstantF(0, kVSScaleConst, 1);
+    dev->SetVertexShaderConstantF(1, kVSOffsetConst, 1);
 }
 
 void SpriteBatch::Flush()
 {
-    if (m_vertexCount == 0) return;
+    if (!m_ready || m_vertexCount == 0) return;
 
     SetupRenderState();
 
     D3DDeviceX* dev = (D3DDeviceX*)m_device;
-    dev->SetTexture(0, (D3DTextureX*)m_currentTexture);
 
-    int spriteCount = m_vertexCount / 4;
+    const int spriteCount = m_vertexCount / 4;
     int base = 0;
     for (int i = 0; i < spriteCount; ++i) {
-        dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, &m_vertices[base], sizeof(SpriteVertex));
+        dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2,
+                             (SpriteVertex*)m_vertices + base,
+                             sizeof(SpriteVertex));
         base += 4;
     }
 

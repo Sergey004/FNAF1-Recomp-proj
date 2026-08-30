@@ -1,10 +1,13 @@
 /**
  * Five Nights at Freddy's 1 -- Recompilation
- * TextRenderer.h: D3DX-based text rendering for Xbox 360 XDK
+ * TextRenderer.h: bitmap-font text rendering for Xbox 360 XDK
  *
- * Uses ID3DXFont to draw text onto the D3D9 backbuffer.
- * All GDI constants (FW_BOLD, DT_*, etc.) are defined here
- * since Xbox 360 XDK has no wingdi.h.
+ * The XDK has no ID3DXFont and no GDI -- the previous stub version of this
+ * class drew NOTHING, which contributed to the "black screen". v2.2 renders
+ * real text: an embedded 160x160 RGBA atlas (ASCII 32..126, Liberation Mono)
+ * is decoded with D3DXCreateTextureFromFileInMemoryEx (present in the XDK
+ * d3dx9tex.h) and each character is batched as a white-glyph quad through
+ * fnaf::SpriteBatch, tinted by the requested color.
  */
 
 #ifndef FNAF_TEXTRENDERER_H
@@ -14,6 +17,7 @@
 
 #if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
 #include <xtl.h>
+#include <d3d9.h>
 #include <d3dx9.h>
 typedef D3DDevice D3DDeviceX;
 #else
@@ -22,80 +26,40 @@ typedef D3DDevice D3DDeviceX;
 
 namespace fnaf {
 
-// ============================================================
-//  GDI-compatible constants for Xbox 360 XDK
-//  (normally from wingdi.h, which doesn't exist on XDK)
-// ============================================================
-namespace FontConst {
-    // Font weights
-    static const i32 FW_DONTCARE  = 0;
-    static const i32 FW_THIN      = 100;
-    static const i32 FW_NORMAL    = 400;
-    static const i32 FW_BOLD      = 700;
-    static const i32 FW_BLACK     = 900;
-
-    // Charset
-    static const u8  DEFAULT_CHARSET   = 1;
-    static const u8  ANSI_CHARSET      = 0;
-
-    // Output precision
-    static const u8  OUT_DEFAULT_PRECIS = 0;
-    static const u8  OUT_STRING_PRECIS  = 1;
-
-    // Quality
-    static const u8  DEFAULT_QUALITY     = 0;
-    static const u8  ANTIALIASED_QUALITY = 4;
-    static const u8  CLEARTYPE_QUALITY   = 5;
-
-    // Pitch and family
-    static const u8  DEFAULT_PITCH   = 0;
-    static const u8  FIXED_PITCH     = 1;
-    static const u8  VARIABLE_PITCH  = 2;
-    static const u8  FF_DONTCARE     = 0;
-    static const u8  FF_ROMAN        = 16;
-    static const u8  FF_SWISS        = 32;
-    static const u8  FF_MODERN       = 48;
-    static const u8  FF_SCRIPT       = 64;
-    static const u8  FF_DECORATIVE   = 80;
-
-    // DrawText format flags
-    static const u32 DT_LEFT         = 0x00000000;
-    static const u32 DT_TOP          = 0x00000000;
-    static const u32 DT_CENTER       = 0x00000001;
-    static const u32 DT_RIGHT        = 0x00000002;
-    static const u32 DT_VCENTER      = 0x00000004;
-    static const u32 DT_NOCLIP       = 0x00000100;
-    static const u32 DT_SINGLELINE   = 0x00000020;
-}
-
-// ============================================================
-//  TextRenderer
-// ============================================================
+class SpriteBatch;
 
 class TextRenderer {
 public:
     TextRenderer();
     ~TextRenderer();
 
-    // Initialize font. Call once after D3D device is ready. Use void* to avoid Xbox/PC type mismatch (VS2010)
-    bool Init(void* device, i32 height = 24, const char* faceName = "Arial");
+    // Initialize with the embedded font atlas. `batch` must be an
+    // initialized fnaf::SpriteBatch (quads are queued through it).
+    // heightPx: desired text height in pixels; glyphs are scaled
+    // from their native 16 px cell accordingly.
+    bool Init(void* device, SpriteBatch* batch, i32 heightPx = 16);
+
     void Shutdown();
 
-    // Draw text at (x, y). color: D3DCOLOR (DWORD ARGB).
+    // Draw text at (x, y). color: D3DCOLOR (0xAARRGGBB).
     // Call only between BeginScene and EndScene.
     void DrawText(i32 x, i32 y, const char* text, u32 color);
     void DrawTextf(i32 x, i32 y, u32 color, const char* fmt, ...);
     void DrawTextCentered(i32 y, const char* text, u32 color, i32 screenWidth = 1280);
     void DrawTextCenteredXY(i32 cx, i32 cy, const char* text, u32 color);
 
-    bool IsInitialized() const;
+    // Approximate width in pixels (monospace advance * chars)
+    i32 MeasureText(const char* text) const;
+
+    bool IsInitialized() const { return m_initialized; }
 
 private:
-    void* m_device;
-    void* m_font;
-    bool               m_initialized;
-
-    char m_fmtBuf[512];
+    void*      m_device;
+    void*      m_fontTexture;   // IDirect3DTexture9* from the atlas PNG
+    SpriteBatch* m_batch;
+    float      m_scale;         // requested height / native cell height
+    bool       m_initialized;
+    char       m_fmtBuf[512];
 };
 
 // Pre-defined colors (D3DCOLOR = 0xAARRGGBB)

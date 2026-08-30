@@ -362,7 +362,8 @@ void Game::ProcessPowerOut() {
         m_simpleRNG = m_simpleRNG * 1664525 + 1013904223;
         u32 r = static_cast<u32>(m_simpleRNG);
         f32 range = static_cast<f32>(TimeConstants::POWER_OUT_MAX_SEC - TimeConstants::POWER_OUT_MIN_SEC);
-        m_powerOutDuration = TimeConstants::POWER_OUT_MIN_SEC + (static_cast<f32>(r % 10000) / 10000.0f) * range;
+        m_powerOutDuration = static_cast<f32>(TimeConstants::POWER_OUT_MIN_SEC)
+                           + (static_cast<f32>(r % 10000) / 10000.0f) * range;
         m_powerOutDurationSet = true;
     }
 
