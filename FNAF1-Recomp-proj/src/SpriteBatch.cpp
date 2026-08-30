@@ -10,9 +10,14 @@
  * even for the simplest 2D quad.
  *
  * v2.2b: the shader pair is compiled AT RUNTIME from the HLSL strings below
- * with D3DXCompileShader (present in every XDK: d3dx9shader.h; on 360 the
- * only profiles are vs_3_0/ps_3_0 -- any vs/ps profile is promoted there). The
- * previous scheme -- offline .vsh/.psh bytecode produced by the PC fxc.exe
+ * with D3DXCompileShader (present in every XDK: d3dx9shader.h; on the 360
+ * the only shader profiles are vs_3_0 and ps_3_0 -- any other vs_ or ps_
+ * profile name is promoted there). NOTE TO EDITORS: never write "star-slash"
+ * sequences (asterisk + slash) inside this comment, e.g. a glob like
+ * "vs_* / ps_*" -- it silently closes the block comment and turns the rest
+ * of the header into C++ tokens (that is exactly the v2.3.1 compile break).
+ *
+ * The previous scheme -- offline .vsh/.psh bytecode produced by the PC fxc.exe
  * and loaded from game:\Shaders\ -- could never work: Xenos does not execute
  * PC D3D9 shader tokens (see hedge-dev/XenosRecomp: 360 shader binaries are
  * a completely separate microcode), and if the files were not deployed the
@@ -76,35 +81,6 @@ static const char* kSpritePS_HLSL =
     "float4 main(PS_IN i) : COLOR0\n"
     "{\n"
     "    return tex2D(tex0, i.uv) * i.color;\n"
-    "}\n";
-
-// v2.8.0: CRT post-effect (scanlines + vignette + fine grain), darken-only.
-// c0: x = time (pre-wrapped on the CPU), y = backbuffer width,
-//     z = backbuffer height, w = scanline strength
-// c1: x = vignette strength, y = grain strength
-// No texture fetch at all: the overlay composes on top of the pak-frame
-// static via the standard SRCALPHA/INVSRCALPHA blend (black * alpha).
-static const char* kCRTPS_HLSL =
-    "float4 kCRT0 : register(c0);\n"
-    "float4 kCRT1 : register(c1);\n"
-    "struct PS_IN { float4 color : COLOR0; float2 uv : TEXCOORD0; };\n"
-    "float Hash12(float2 p)\n"
-    "{\n"
-    "    float3 p3 = frac(float3(p.x, p.y, p.x) * 0.1031);\n"
-    "    p3 += dot(p3, float3(p3.y, p3.z, p3.x) + 33.33);\n"
-    "    return frac((p3.x + p3.y) * p3.z);\n"
-    "}\n"
-    "float4 main(PS_IN i) : COLOR0\n"
-    "{\n"
-    "    float2 px = float2(floor(i.uv.x * kCRT0.y), floor(i.uv.y * kCRT0.z));\n"
-    "    float t = kCRT0.x;\n"
-    "    float g = Hash12(px + float2(t * 37.0, t * 17.0)) * kCRT1.y;\n"
-    "    float line = 0.5 + 0.5 * sin(i.uv.y * kCRT0.z * 2.0943951);\n"
-    "    float scan = (1.0 - line) * kCRT0.w;\n"
-    "    float2 d = (i.uv - 0.5) * float2(1.15, 1.0);\n"
-    "    float vig = smoothstep(0.55, 1.1, length(d)) * kCRT1.x;\n"
-    "    float a = saturate(scan + vig + g);\n"
-    "    return float4(0.0, 0.0, 0.0, a);\n"
     "}\n";
 
 // Screen-space -> clip space for a 1280x720 back buffer, y down:
@@ -189,7 +165,6 @@ SpriteBatch::SpriteBatch()
     , m_currentTexture(0)
     , m_vertexShader(0)
     , m_pixelShader(0)
-    , m_crtPixelShader(0)
     , m_vertexDecl(0)
     , m_ready(false)
 {
@@ -229,12 +204,6 @@ bool SpriteBatch::Init(void* device)
         m_initError[sizeof(m_initError) - 1] = '\0';
         return false;
     }
-    // v2.8.0: CRT post-effect PS. Non-fatal: if it fails we just lose the
-    // scanline/vignette/grain look and keep the pak-frame static.
-    if (!CompileShaderFromMemory(dev, kCRTPS_HLSL, "ps_3_0", false,
-                                 &m_crtPixelShader, err, sizeof(err))) {
-        m_crtPixelShader = 0;
-    }
 
     // --- Vertex declaration ---
     IDirect3DVertexDeclaration9* decl = NULL;
@@ -253,9 +222,8 @@ bool SpriteBatch::Init(void* device)
 
 void SpriteBatch::Shutdown()
 {
-    if (m_vertexShader)    { ((IDirect3DVertexShader9*)m_vertexShader)->Release(); m_vertexShader = 0; }
-    if (m_pixelShader)     { ((IDirect3DPixelShader9*)m_pixelShader)->Release();    m_pixelShader = 0; }
-    if (m_crtPixelShader)  { ((IDirect3DPixelShader9*)m_crtPixelShader)->Release(); m_crtPixelShader = 0; }
+    if (m_vertexShader) { ((IDirect3DVertexShader9*)m_vertexShader)->Release(); m_vertexShader = 0; }
+    if (m_pixelShader)  { ((IDirect3DPixelShader9*)m_pixelShader)->Release();   m_pixelShader = 0; }
     if (m_vertexDecl)   { ((IDirect3DVertexDeclaration9*)m_vertexDecl)->Release(); m_vertexDecl = 0; }
     if (m_vertices)     { delete[] (SpriteVertex*)m_vertices; m_vertices = 0; }
     m_device = 0;
@@ -298,51 +266,6 @@ void SpriteBatch::Draw(void* tex, float x, float y, float w, float h, u32 color)
 void SpriteBatch::End()
 {
     Flush();
-}
-
-// ------------------------------------------------------------------
-//  v2.8.0: CRT post-effect (see kCRTPS_HLSL). Drawn immediately as its
-//  own draw call -- everything queued before it is flushed with the
-//  sprite pixel shader first, and the sprite PS is restored after, so
-//  regular batching is unaffected.
-// ------------------------------------------------------------------
-void SpriteBatch::DrawCRT(float timeSec, float scanStrength,
-                          float vignetteStrength, float grainStrength)
-{
-    if (!m_ready || !m_crtPixelShader) return;
-
-    Flush();
-
-    D3DDeviceX* dev = (D3DDeviceX*)m_device;
-
-    // Full render state (blend, decl, VS + scalars) -- Flush() only sets
-    // it when there was something to flush, and this must work on an
-    // otherwise empty frame too.
-    SetupRenderState();
-
-    // Swap in the CRT pixel shader; vertex stage stays the sprite VS.
-    dev->SetPixelShader((IDirect3DPixelShader9*)m_crtPixelShader);
-
-    float c0[4] = { timeSec, 1280.0f, 720.0f, scanStrength };
-    float c1[4] = { vignetteStrength, grainStrength, 0.0f, 0.0f };
-    dev->SetPixelShaderConstantF(0, c0, 1);
-    dev->SetPixelShaderConstantF(1, c1, 1);
-
-    // Fullscreen quad, UV 0..1. No texture: the CRT PS is pure ALU.
-    SpriteVertex v[4];
-    v[0].x = 0.0f;    v[0].y = 0.0f;    v[0].z = 0.0f; v[0].w = 1.0f;
-    v[0].u = 0.0f;    v[0].v = 0.0f;    v[0].color = 0xFFFFFFFF;
-    v[1].x = 1280.0f; v[1].y = 0.0f;    v[1].z = 0.0f; v[1].w = 1.0f;
-    v[1].u = 1.0f;    v[1].v = 0.0f;    v[1].color = 0xFFFFFFFF;
-    v[2].x = 0.0f;    v[2].y = 720.0f;  v[2].z = 0.0f; v[2].w = 1.0f;
-    v[2].u = 0.0f;    v[2].v = 1.0f;    v[2].color = 0xFFFFFFFF;
-    v[3].x = 1280.0f; v[3].y = 720.0f;  v[3].z = 0.0f; v[3].w = 1.0f;
-    v[3].u = 1.0f;    v[3].v = 1.0f;    v[3].color = 0xFFFFFFFF;
-
-    dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, v, sizeof(SpriteVertex));
-
-    // Restore the sprite pixel shader for whatever comes next.
-    dev->SetPixelShader((IDirect3DPixelShader9*)m_pixelShader);
 }
 
 void SpriteBatch::SetupRenderState()

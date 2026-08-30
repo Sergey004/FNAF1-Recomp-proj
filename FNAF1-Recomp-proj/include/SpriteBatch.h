@@ -57,16 +57,9 @@ public:
     void Draw(void* tex, float x, float y, float w, float h, u32 color);
     void End();
 
-    // v2.8.0: fullscreen CRT post-effect, drawn immediately (own draw call).
-    // Procedural pixel shader: scanlines + corner vignette + fine grain.
-    // Pure ALU -- no texture sampling, composes with the existing alpha
-    // blend as a darken-only overlay. Strengths: 0..1 (0 disables a term).
-    void DrawCRT(float timeSec, float scanStrength, float vignetteStrength,
-                 float grainStrength);
-
 private:
+    void SetupRenderState();
     void Flush();
-    void SetupRenderState();   // (declaration was lost in workspace rollback)
 
     void* m_device;
     void* m_vertices;                 // SpriteVertex[MAX_SPRITES_PER_BATCH*4]
@@ -74,7 +67,6 @@ private:
     void* m_currentTexture;
     void* m_vertexShader;             // IDirect3DVertexShader9*
     void* m_pixelShader;              // IDirect3DPixelShader9*
-    void* m_crtPixelShader;           // IDirect3DPixelShader9* (v2.8.0 CRT)
     void* m_vertexDecl;               // IDirect3DVertexDeclaration9*
     bool  m_ready;
     char  m_initError[192];

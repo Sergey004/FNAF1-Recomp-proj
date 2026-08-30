@@ -1,12 +1,6 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
  * MenuSystem.cpp: Main menu logic + rendering
- *
- * v2.8.0: placeholder junk removed from EXTRAS/OPTIONS ([ ZAGLUSHKA ],
- * "Assets ready: use ctf_extractor", "Placeholder — no save yet"); dead
- * "Demo" stub dropped from the (unused on 360) text main-menu branch.
- * The art main menu (GameRender::RenderTitle) now SHOWS the system rows
- * that used to be invisible (SELECT NIGHT / EXTRAS / OPTIONS / EXIT).
  */
 
 #include "MenuSystem.h"
@@ -154,6 +148,9 @@ void MenuSystem::Render(TextRenderer* renderer, i32 screenW, i32 screenH) const
         renderer->DrawText(x, 135, "Nights", TextColor::WHITE);
         renderer->DrawText(x, 170, "at", TextColor::WHITE);
         renderer->DrawText(x, 205, "Freddy's", TextColor::WHITE);
+        // v2.7.4: the old stub "Demo" text here is removed -- the running
+        // title is the pak-art GameRender::RenderTitle; this stub block is
+        // not even reached for MENU_MAIN (main.cpp skips it)
 
         // Options left aligned
         const i32 startY = 340;
@@ -219,15 +216,18 @@ void MenuSystem::Render(TextRenderer* renderer, i32 screenW, i32 screenH) const
     }
     else if (m_screen == MENU_EXTRAS) {
         renderer->DrawTextCentered(240, "EXTRAS", TextColor::YELLOW, screenW);
+        renderer->DrawTextCentered(300, "[ ZAGLUSHKA ]", TextColor::DIM_WHITE, screenW);
         renderer->DrawTextCentered(330, "Jumpscares / Gallery / Animations", TextColor::GRAY, screenW);
         renderer->DrawTextCentered(360, "Coming soon...", TextColor::DARK_GRAY, screenW);
+        renderer->DrawTextCentered(420, "Assets ready: use ctf_extractor", TextColor::DARK_GRAY, screenW);
         renderer->DrawTextCentered(screenH - 80, "B / A : Back", TextColor::DARK_GRAY, screenW);
-        renderer->DrawTextCentered(screenH - 50, "build v2.8.0 (CRT)", TextColor::DARK_GRAY, screenW);
     }
     else if (m_screen == MENU_OPTIONS) {
         renderer->DrawTextCentered(240, "OPTIONS", TextColor::YELLOW, screenW);
+        renderer->DrawTextCentered(300, "[ ZAGLUSHKA ]", TextColor::DIM_WHITE, screenW);
         renderer->DrawTextCentered(330, "Volume  Brightness  Controls", TextColor::GRAY, screenW);
         renderer->DrawTextCentered(360, "Coming soon...", TextColor::DARK_GRAY, screenW);
+        renderer->DrawTextCentered(420, "Placeholder — no save yet", TextColor::DARK_GRAY, screenW);
         renderer->DrawTextCentered(screenH - 80, "B / A : Back", TextColor::DARK_GRAY, screenW);
     }
 }

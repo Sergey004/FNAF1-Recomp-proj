@@ -2,12 +2,19 @@
  * Five Nights at Freddy's 1 — Recompilation
  * GameRender.h: Presentation layer — draws every game screen from fnaf1.pak
  *
- * All texture handles below were extracted from the original game data with
- * ctfak-cpp (Frame Layout Renderer + JSON export + Events Listing):
- *  - Title frame "title" (1280x720): object table with exact positions
- *  - Office frame "Frame 1" (1600x720): rendered at 0.8 scale
- *  - Active 3 (obj 44) animations 51/52/65 = power-out / Foxy / Freddy scares
- *  - Menu static = object "static" animation frames [18,20,12..17]
+ * v2.5: every screen is composed from the REAL pak images with the original
+ * object names, instance positions and hotspots (see PakAssets.h):
+ *  - Disclaimer   : img 605 (the warning text image)
+ *  - Title menu   : logo/buttons/stars/version at hotspot-correct positions
+ *  - Night start  : the "12:00 AM / Nth Night" card images (453/454/...)
+ *  - Office       : TRUE 1600x720 pan window (left stick), data-exact doors,
+ *                   button panels, desk fan + pumpkin, sprite-font HUD
+ *                   (AM img, CLOCK digits, Power left:/Usage: labels, bars)
+ *  - Camera       : presence-aware feeds, location label images, cam map with
+ *                   blinking button, AUDIO ONLY banner, flip-down bar
+ *  - 6 AM         : real "5/6/AM" digit images; nights 5/6/7 show the
+ *                   paycheck / overtime / termination screens
+ *  - Game over    : img 358 backdrop
  */
 
 #ifndef FNAF_GAME_RENDER_H
@@ -33,6 +40,10 @@ public:
 
     // Advance internal animation clocks (static noise, blink timers)
     void Tick(f32 dt);
+
+    // Office view panning (original pans a 1280x720 window across the
+    // 1600x720 office frame). dir = -1..1 from the left stick X.
+    void SetLookDir(f32 dir);
 
     // --- Screens ---
 
@@ -67,16 +78,34 @@ public:
     // Draw the fullscreen static overlay on top of anything
     void DrawStaticOverlay(float alpha);
 
-    // v2.8.0: fullscreen CRT post-pass (scanlines + vignette + fine grain),
-    // drawn on top of EVERYTHING incl. menu text (authentic TV look).
-    // Strengths 0..1; see docs/CRT_EFFECT.md for the per-screen values.
-    void DrawCRTOverlay(f32 scan, f32 vignette, f32 grain);
+    // Debug sprite browser (LB+RB hold on menu/disclaimer): pages through
+    // the pak's counter-font strips, label candidates and small sprites so
+    // every UI text handle can be identified from one Xenia screenshot.
+    void RenderSpriteBrowser(i32 page);
+    i32  SpriteBrowserPageCount() const;
+
+    // Sprite-strip text (the game's real counter fonts from the pak)
+    void DrawStripText(const struct SpriteStrip& strip, float x, float y,
+                       const char* text, u32 color, float scale = 1.0f);
+    f32  MeasureStripText(const struct SpriteStrip& strip, const char* text,
+                          float scale = 1.0f) const;
+    void DrawStripCentered(const struct SpriteStrip& strip, float cx, float y,
+                           const char* text, u32 color, float scale = 1.0f);
 
 private:
     PakLoadedTexture* Tex(const char* name);   // cached FindTexture
     void DrawTex(const char* name, float x, float y, float w, float h, u32 color);
     void DrawFrame(int imgHandle, float x, float y, float w, float h, u32 color);
     void StaticFrame(char out[32]);            // current static frame name
+    void DrawFrameFit(int imgHandle, float cx, float cy, float maxW, float maxH, u32 color);
+
+    // Hotspot-aware draw: (ix,iy) = Clickteam instance position, i.e. where
+    // the image's hotspot lands. If scene==true the office pan offset is
+    // subtracted (1600x720 scene -> 1280x720 window).
+    void DrawInstance(int imgHandle, float ix, float iy, u32 color, bool scene);
+
+    // Tinted solid rectangle via the all-white pak frame (img 23).
+    void DrawSolidRect(float x, float y, float w, float h, u32 color);
 
     SpriteBatch*      m_batch;
     TextRenderer*     m_text;
@@ -85,10 +114,12 @@ private:
     f32  m_time;            // total render time
     f32  m_staticTime;      // static cycle clock
     int  m_staticIndex;     // current static frame
+    f32  m_lookDir;         // left stick X (-1..1)
+    f32  m_panX;            // office pan window offset 0..320
 
-    // tiny cache: last 8 lookups
+    // tiny cache: last 64 lookups
     struct TexCacheEntry { char name[64]; PakLoadedTexture* tex; };
-    TexCacheEntry m_cache[8];
+    TexCacheEntry m_cache[64];
     int  m_cacheCount;
 };
 
