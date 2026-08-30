@@ -61,7 +61,7 @@ public:
     void RenderOffice(const Game& game, bool phonePlaying);
 
     // Camera monitor: screen frame, room feed, static, map, cam label
-    void RenderCamera(const Game& game);
+    void RenderCamera(const Game& game, bool phonePlaying);
 
     // Power out: dark office + flickering Freddy sequence
     void RenderPowerOut(const Game& game);
@@ -104,8 +104,25 @@ private:
     // subtracted (1600x720 scene -> 1280x720 window).
     void DrawInstance(int imgHandle, float ix, float iy, u32 color, bool scene);
 
+    // v2.7.7 clean-room Perspective: draw one pak image as part of the
+    // Perspective.mfx bent scene layer (PANORAMA / HORIZONTAL / Zoom=300,
+    // object (-22,-22) 1324x754 -- exact serialized settings pulled from
+    // the original EXE, see docs/PERSPECTIVE.md). frameX/frameY =
+    // Clickteam instance position (hotspot applied here), panX = current
+    // scene pan (office stick pan or camera feed drift). Emits ONE ~8-px
+    // triangle grid per sprite following the exact PANORAMA curve
+    // (v2.7.6 emitted 1-px strips: same math, but bilinear seam bleed +
+    // pixel snapping smeared and tore the view).
+    void DrawBentInstance(int imgHandle, float frameX, float frameY,
+                          u32 color, float panX);
+
     // Tinted solid rectangle via the all-white pak frame (img 23).
     void DrawSolidRect(float x, float y, float w, float h, u32 color);
+
+    // v2.7.9: layer-3 HUD shared by the office and the monitor
+    // (clock, night, power, usage, mute call -- the monitor toggle
+    // groups 81/82 never hide it in the frame data).
+    void DrawSharedHud(const Game& game, bool phonePlaying);
 
     SpriteBatch*      m_batch;
     TextRenderer*     m_text;
@@ -121,7 +138,24 @@ private:
     struct TexCacheEntry { char name[64]; PakLoadedTexture* tex; };
     TexCacheEntry m_cache[64];
     int  m_cacheCount;
-};
+
+    // v2.7.7: scratch triangle grid for DrawBentInstance (allocated in
+    // Init, capacity kBentVertCap in GameRender.cpp). void* to keep
+    // SpriteBatch.h out of this header -- cast to SpriteVertex* .cpp-side.
+    void* m_bentVerts;
+
+    // v2.7.8 office FX state: door slide anims (obj 59/60 anims a12/a14),
+    // tablet-open white flash (obj 46), tablet-close dark wipe (obj 73),
+    // monitor/door edge detection. Evidence: docs/OFFICE_FX.md.
+    bool m_prevMonitor;
+    bool m_prevDoorL, m_prevDoorR;
+    f32  m_doorT[2];      // -1 idle, else seconds since the slide began
+    bool m_doorClosing[2];
+    f32  m_flashT;        // -1 idle, else seconds since the flash began
+    f32  m_wipeT;         // -1 idle, else seconds since the wipe began
+    f32  m_raiseT;        // v2.7.9: -1 idle, else seconds since the raise began
+    int  m_prevCam;       // v2.7.9: cam of the last settled monitor frame (-1 none)
+    f32  m_lastT;};
 
 } // namespace fnaf
 

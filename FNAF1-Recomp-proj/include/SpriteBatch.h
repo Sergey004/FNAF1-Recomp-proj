@@ -55,6 +55,14 @@ public:
               u32 color);
     // Draw with default UVs 0,0,1,1
     void Draw(void* tex, float x, float y, float w, float h, u32 color);
+
+    // v2.7.7 clean-room Perspective: submit an explicit triangle list in
+    // screen space (same vertex layout as the quad path). One draw call for
+    // a whole warped mesh instead of ~1300 1-px column strips; wide
+    // continuous quads let the GPU bilinear filter run without seam bleed.
+    // Flushes any queued quads first, so paint order stays exact.
+    void DrawTriangles(void* tex, const SpriteVertex* verts, int vertexCount);
+
     void End();
 
 private:

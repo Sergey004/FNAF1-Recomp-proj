@@ -263,6 +263,25 @@ void SpriteBatch::Draw(void* tex, float x, float y, float w, float h, u32 color)
     Draw(tex, x, y, w, h, 0.0f, 0.0f, 1.0f, 1.0f, color);
 }
 
+// v2.7.7 clean-room Perspective: one DrawPrimitiveUP for a whole warped
+// triangle grid. Same shaders / declaration / blend state as the quad path
+// (SetupRenderState), the vertices are plain screen-space SpriteVertices
+// produced by GameRender::DrawBentInstance. Queued quads are flushed first
+// so the mesh lands on top of the flat pass in exact submission order.
+void SpriteBatch::DrawTriangles(void* tex, const SpriteVertex* verts, int vertexCount)
+{
+    if (!m_ready || !verts || vertexCount < 3) return;
+    if (m_vertexCount > 0) {
+        Flush();
+    }
+    m_currentTexture = tex;
+    SetupRenderState();
+
+    D3DDeviceX* dev = (D3DDeviceX*)m_device;
+    dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, vertexCount / 3,
+                         (const void*)verts, sizeof(SpriteVertex));
+}
+
 void SpriteBatch::End()
 {
     Flush();

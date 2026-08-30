@@ -75,6 +75,14 @@ enum PakImg {
     IMG_FAN_0          = 57,   // desk fan, 3 blade frames 138x196 @ (868,400)
     IMG_FAN_1          = 59,
     IMG_FAN_2          = 60,
+    // v2.7.8: light-button panorama variants -- obj 44 "Active 3"
+    // anims 18/34 (left) and 19/43 (right); event groups 119-129.
+    // Full evidence chain: docs/OFFICE_FX.md.
+    IMG_LIGHT_L_HALL   = 58,   // left light on, Bonnie not at the door
+    IMG_LIGHT_L_BONNIE = 225,  // left light on, Bonnie in the doorway
+    IMG_LIGHT_R_HALL   = 127,  // right light on, Chica not at the door
+    IMG_LIGHT_R_CHICA  = 227,  // right light on, Chica in the doorway
+
     IMG_PUMPKIN_0      = 628,  // desk pumpkin (demo build), 7 frames 143x150
     IMG_PUMPKIN_6      = 635,  // handles 628,630..635 (629 does not exist)
 
@@ -214,20 +222,40 @@ inline PakHotspot PakHotspotOf(int handle) {
 }
 
 // ------------------------------------------------------------
-//  Camera feeds — defaults verified visually from the decoded pak:
-//    1A=19 full stage / 0 empty / 223,68,224 stage combos / 355,484
-//    1B=48 empty / 90,120 Bonnie / 215,222 Chica
-//    1C=211 curtain / 338 Foxy / 240 gone (driven by Foxy stage)
-//    2A=43 empty hall / 206 figure / 226 Bonnie closeup
-//    2B=83 empty corner / 205 Bonnie / 354 Chica
-//    3 =62 empty closet / 190 flash variant
-//    4A=67 empty hall / 221 figure
-//    4B=49 empty corner / 220 Chica
-//    5 =540 empty backstage / 555 Bonnie closeup
-//    6 = kitchen — no feed (audio only)
-//    7 =41 empty / 217 Chica variant
+//  Camera feeds — v2.7.10 CANONICAL, read straight out of the original
+//  event scripts (application.json, office frame):
+//    * map-button highlight groups pin the viewing id per camera:
+//      viewing==1:'1A show stage'  ==2:'1B dining area'  ==3:'cam 2A'
+//      ==22:'cam 2B'  ==6:'cam 6 kitchen'  ==7:'cam 7 bathrooms'
+//      ==5:'5 backstage'  ==42:'cam 4B'  ==33:'cam 3 closet'
+//      ==4:'cam 4A'  ==99:'1C stage B'
+//    * each click/highlight family sets exactly one "Active 3" (obj 44)
+//      animation; the anim's frame list IS the feed image:
+//      1A: anim17=19 full, 27=68 no-Bonnie, 41=223 no-Freddy,
+//          42=224 Freddy-only, 60=484 / 54=355 empty
+//      1B: anim13=48 empty, 28=90 Bonnie, 55=215 Chica
+//      2A: anim14=43 empty, 33=206 figure, 15=44 / 39=221 Bonnie
+//      2B: anim20=0 "LET'S PARTY!" empty, 59=479 Bonnie face,
+//          58=478 Chica face, 74=540 rare golden poster,
+//          75=571 Golden Freddy sitting (!), 69..72=549/550/551/552
+//          RULES FOR SAFETY poster variants
+//      3 : anim24=62 empty (single bulb closet), 31=190 Bonnie
+//      4A: anim25=67 empty east hall, 39=221 Bonnie figure
+//      4B: anim64=486 empty corner, 38=220 Chica figure
+//      5 : anim22=83 BACKSTAGE (endo on table, heads shelf,
+//          EMPLOYEES ONLY), 53=354 Bonnie standing, 32=205 Bonnie
+//          dark face, 66=555 Bonnie face very close
+//      6 : audio only (Active 3 hidden, obj 98 shown)
+//      7 : anim21=41 restrooms, 36=217 Bonnie variant
+//      1C: stage0 anim26=66 curtain closed, stage1 anim48=211 Foxy
+//          peeking, stage2 anim49=338 Foxy out, stage3 anim50=240
+//          gone (anim73=553 "IT'S ME" sign rare variant)
+//  v2.7.4..v2.7.9 had 2B/3/4A/4B/5/7 feeds SCRAMBLED (each showed
+//  another room's image; CAM 5 showed 540 = the 2B golden-poster
+//  room) because the enum was filled from image vibes, not events.
 // ------------------------------------------------------------
 enum PakCamFeed {
+    CAMFEED_NONE       = -1,   // kitchen sentinel: no feed, audio only
     CAMFEED_1A_FULL    = 19,
     CAMFEED_1A_NOBC    = 68,   // Chica + Freddy (Bonnie left)
     CAMFEED_1A_NOFC    = 223,  // Bonnie + Chica (Freddy left)
@@ -236,25 +264,32 @@ enum PakCamFeed {
     CAMFEED_1B_EMPTY   = 48,
     CAMFEED_1B_BONNIE  = 90,
     CAMFEED_1B_CHICA   = 215,
-    COVE_CURTAIN       = 211,
-    COVE_PEEK          = 338,
-    COVE_EMPTY         = 240,
+    COVE_CLOSED        = 66,   // stage 0: curtain shut, "Sorry! Out of Order"
+    COVE_PEEK          = 211,  // stage 1: Foxy face in the gap
+    COVE_OUT           = 338,  // stage 2: Foxy standing out, hook visible
+    COVE_EMPTY         = 240,  // stage 3: cove empty, he is running
     CAMFEED_2A_EMPTY   = 43,
     CAMFEED_2A_FIGURE  = 206,
     CAMFEED_2A_BONNIE  = 226,
-    CAMFEED_2B_EMPTY   = 83,
-    CAMFEED_2B_BONNIE  = 205,
-    CAMFEED_2B_CHICA   = 354,
+    CAMFEED_2B_EMPTY   = 0,    // img_0 "LET'S PARTY!" corner — handle 0 IS real
+    CAMFEED_2B_BONNIE  = 479,  // Bonnie face staring into the camera
+    CAMFEED_2B_CHICA   = 478,  // Chica face staring into the camera
     CAMFEED_3_EMPTY    = 62,
     CAMFEED_3_BONNIE   = 190,
     CAMFEED_4A_EMPTY   = 67,
     CAMFEED_4A_FIGURE  = 221,
-    CAMFEED_4B_EMPTY   = 49,
+    CAMFEED_4B_EMPTY   = 486,
     CAMFEED_4B_CHICA   = 220,
-    CAMFEED_5_EMPTY    = 540,
+    CAMFEED_5_EMPTY    = 83,   // THE backstage: endo on table + heads shelf
     CAMFEED_5_BONNIE   = 555,
     CAMFEED_7_EMPTY    = 41,
-    CAMFEED_7_VARIANT  = 217
+    CAMFEED_7_VARIANT  = 217,
+    // ---- v2.7.10: canonical variants kept for the graphics queue ----
+    CAMFEED_2B_GOLDEN_POSTER = 540, // anim 74 (was wrongly CAM 5 empty!)
+    CAMFEED_2B_GOLDENFREDDY  = 571, // anim 75 (easter egg, later)
+    CAMFEED_5_BONNIE_STAND   = 354, // anim 53
+    CAMFEED_5_BONNIE_DARK    = 205, // anim 32
+    CAMFEED_1C_ITSME         = 553  // anim 73 (stage 3, rare sign variant)
 };
 
 // Map button positions on the cam map (instance coords, hotspot-centered):

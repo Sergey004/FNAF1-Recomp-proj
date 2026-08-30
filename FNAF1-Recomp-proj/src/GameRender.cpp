@@ -46,8 +46,30 @@
  *                           1280x720 window; the feed slowly sine-drifts
  *                           across the full 320 px slack like the original
  *                           (office pans by stick, cams drift on their own).
- *                           The fisheye look is baked into Scott's renders,
- *                           not an engine effect.
+ * v2.7.6 — PERSPECTIVE PORT. The v2.7.2 note "the fisheye look is baked
+ *                           into Scott's renders, not an engine effect" was
+ *                           HALF WRONG: the renders are wide-angle, but the
+ *                           strong bend is an ENGINE effect. Frame 1 carries
+ *                           Andos' Perspective.mfx object (objInfo 40,
+ *                           layer 1) with serialized settings PANORAMA /
+ *                           HORIZONTAL / Zoom=300 / rect (-22,-22)
+ *                           1324x754 -- extracted byte-exact from the
+ *                           original EXE, see docs/PERSPECTIVE.md. No event
+ *                           ever touches it, so it re-projects EVERYTHING
+ *                           on layer 0 (office scene AND camera feeds)
+ *                           through a per-column curve: center column full
+ *                           height, edges squeezed 754->454 px. Layer 2+ UI
+ *                           (static, REC, bezel, labels, map, HUD) is drawn
+ *                           AFTER it and stays straight. Ported as the
+ *                           v2.7.7 clean-room triangle mesh in
+ *                           DrawBentInstance() (one ~8-px grid per sprite).
+ * v2.7.7 - cleanpersp: the v2.7.6 strip rasterizer (1-px quads, integer
+ *                           snapping, ~2150 DrawPrimitiveUP/frame) smeared
+ *                           and tore the view. Same curve, new rasterizer:
+ *                           one continuous ~8-px triangle grid per sprite
+ *                           through SpriteBatch::DrawTriangles -- the GPU
+ *                           interpolates the profile (max sag ~0.006 px),
+ *                           no seams, ~1 draw call per bent sprite.
  *  6 AM        "next day" : digit images "5"=350 "6"=351 "AM"=352;
  *                           nights 5/6/7 show paycheck 210 / overtime 522 /
  *                           termination 523 full screens ("the end" frames).
@@ -85,6 +107,29 @@ static const f32 SCREEN_H = 720.0f;
 static const f32 OFFICE_PAN_MAX = 320.0f;   // 1600 - 1280
 
 // ------------------------------------------------------------
+// v2.7.6 PERSPECTIVE PORT -- the exact serialized settings of the
+// "Perspective" object (objInfo 40, handle 40, type 32 = extension) from
+// the original FiveNightsatFreddys.exe. The EDITDATA blob decoded to:
+//   sx=0 sy=0 swidth=1324 sheight=754  (instance at (-22,-22):
+//                                      1280+44 x 720+34, screen + margin)
+//   Effect=0 PANORAMA, Direction=0 HORIZONTAL,
+//   DefaultZoom=300, DefaultOffset=0, SineWaveWaves=4 (unused here)
+// The Events dump has ZERO references to the object: nobody moves, shows,
+// hides or re-parameterizes it -- it bends the whole scene layer forever.
+static const f32 PERSP_OBJ_X  = -22.0f;     // object origin on screen
+static const f32 PERSP_OBJ_W  = 1324.0f;    // 1280 + 2*22 margin columns
+static const f32 PERSP_OBJ_H  = 754.0f;     // 720 + 34 margin rows
+static const f32 PERSP_ZOOM   = 300.0f;     // EDATA DefaultZoom (edge squeeze)
+static const f32 PERSP_PI     = 3.1415f;    // Andos' literal (truncated pi,
+                                            // kept for bit-faithfulness)
+static const f32 PERSP_CENTER_Y = 355.0f;   // -22 + 754/2, pivot of the bend
+
+// Triangle-grid vertex budget for ONE bent instance. Worst case is the
+// 1600-px office bg clipped to the 1280 window at the ~8-px step:
+// 162 columns -> 161 quads -> 966 vertices. 2048 gives ~2x headroom.
+static const int kBentVertCap = 2048;
+
+// ------------------------------------------------------------
 //  Real animation frame tables (image handles from the game data)
 // ------------------------------------------------------------
 
@@ -100,6 +145,43 @@ static const int MENU_BLIP[7] = { 430, 434, 435, 436, 437, 438, 439 };
 // Night start cards ("what day" frame, instance (646,318)); index = night
 static const int NIGHT_CARDS[8] = { 0, 453, 454, 472, 473, 474, 446, 538 };
 
+// ---- v2.7.8 OFFICE_FX_TABLES -- dug out of the original's Frame Items
+// animation table + event script (full evidence: docs/OFFICE_FX.md).
+// CF2.5 frame duration = (100 / animSpeed) / 50 seconds:
+// speed 50 -> 0.040 s/frame, speed 70 -> 0.0286 s/frame.
+// obj 59/60 "left/right door" anims a12 (closing) / a14 (opening), 16
+// frames each; the events cut the close at frame 12 -> static a13, the
+// tail frames are the same slab, so playing the full table lands on it.
+static const int DOOR_L_CLOSE[16] = {103, 88,105, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99,100,101,102};
+static const int DOOR_L_OPEN[16]  = {102,101,100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 89,105, 88,103};
+static const int DOOR_R_CLOSE[16] = {119,104,121,106,107,108,109,110,111,112,113,114,115,116,117,118};
+static const int DOOR_R_OPEN[16]  = {118,117,116,115,114,113,112,111,110,109,108,107,106,121,104,119};
+static const f32 DOOR_FRAME_T = 0.040f;
+// obj 44 "Active 3" anim 52: Foxy sprinting the west hall, 25 frames,
+// plays once (rep 1). foxyRunTimer ticks at 60 Hz -> 25 frames / 1.0 s.
+static const int FOXY_RUN[25] = {413,242,415,243,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,412,412,412,412};
+// obj 46 "Active 5": white flash while the tablet goes up (blip==1,
+// event group 16); one-shot, destroyed on end (group 17).
+static const int FLASH_SEQ[9] = {23,4,25,6,8,9,10,21,22};
+static const f32 FLASH_FRAME_T = 0.02857f;   // speed 70
+// obj 73 "flip down 2": dark uncover wipe when the tablet drops
+// (put down==1, event group 322); starts black, dissolves clear.
+static const int WIPE_SEQ[11] = {141,140,139,138,137,136,133,132,144,46,142};
+static const f32 WIPE_FRAME_T = 0.040f;
+
+// obj 68 "panel": the tablet RAISE animation. Event group 130 creates
+// the object the moment the flip bar is clicked (with the
+// CAMERA_VIDEO_LOA static burst); its 11-frame anim covers the office
+// bottom-up and ONLY when it ends does group 133 destroy the panel and
+// commit viewing := last clicked (group 18) -> blip == 1 -> group 16
+// fires the white flash OVER the freshly appeared feed. The images are
+// exactly the WIPE_SEQ stack played BACKWARDS: 142 = tablet parked on
+// the desk (bottom edge + red/green LEDs), 141 = fully risen. All
+// frames are native 1280x720 window-space art (straight edges baked
+// in) -> drawn FLAT like the wipe, not through the panorama curve.
+static const int RAISE_SEQ[11] = {142,46,144,132,133,136,137,138,139,140,141};
+static const f32 RAISE_FRAME_T = 0.040f;   // speed 50
+
 // v2.7.4: the ORIGINAL grain alpha comes from the object data, not guesswork.
 // Every fullscreen static object in the game carries inkEffect=1 (semi-
 // transparency) with inkEffectValue = 100; Fusion stores the transparency
@@ -109,6 +191,17 @@ static const int NIGHT_CARDS[8] = { 0, 453, 454, 472, 473, 474, 446, 538 };
 // The 'mute call' button uses coeff 50 -> alpha 205/255 = 0.804.
 // (img_11 'frame' @ (0,-1) is 100% transparent A=0 -- it draws NOTHING;
 // the vignette is baked into the pre-rendered room art itself.)
+//
+// v2.7.5 OVERLAY VERDICT (frame layout + events + pixel dump, see
+// docs/OVERLAY_MAP.md): the Frame 1 static object (obj 42 "Active",
+// anim [18,20,12..17] @ speed 100, ink 1/100) has VisibleAtStart=FALSE
+// and the event script only ever toggles it with the monitor:
+//   group 81: viewing == 0 -> HIDE static + REC + frame/bezel + white flash
+//   group 82: viewing >  0 -> SHOW them again
+// So the animated static belongs to the MONITOR ONLY. The office has NO
+// animated noise: its grain is baked into the pre-rendered room art
+// (img_39, mean luma ~10/255). The title's "static" (obj 2) uses ink=9
+// (different effect id, value 0) and is always visible there.
 static const f32 STATIC_ALPHA    = 155.0f / 255.0f;  // coeff 100
 static const f32 MUTECALL_ALPHA  = 205.0f / 255.0f;  // coeff 50
 
@@ -251,13 +344,22 @@ GameRender::GameRender()
     : m_batch(0), m_text(0), m_pak(0)
     , m_time(0.0f), m_staticTime(0.0f), m_staticIndex(0)
     , m_lookDir(0.0f), m_panX(160.0f)
-    , m_cacheCount(0)
+    , m_cacheCount(0), m_bentVerts(0)
 {
+    // v2.7.8 office FX state
+    m_prevMonitor = m_prevDoorL = m_prevDoorR = false;
+    m_doorT[0] = m_doorT[1] = -1.0f;
+    m_doorClosing[0] = m_doorClosing[1] = false;
+    m_flashT = m_wipeT = -1.0f;
+    m_raiseT = -1.0f;      // v2.7.9: tablet raise
+    m_prevCam = -1;        // v2.7.9: no settled monitor cam yet
+    m_lastT = 0.0f;
 }
 
 void GameRender::Init(SpriteBatch* batch, TextRenderer* text, PakLoader* pak) {
     m_batch = batch; m_text = text; m_pak = pak;
     m_cacheCount = 0;
+    if (!m_bentVerts) m_bentVerts = new SpriteVertex[kBentVertCap];
 }
 
 void GameRender::SetLookDir(f32 dir) {
@@ -306,7 +408,9 @@ void GameRender::DrawTex(const char* name, float x, float y, float w, float h, u
 }
 
 void GameRender::DrawFrame(int imgHandle, float x, float y, float w, float h, u32 color) {
-    if (imgHandle <= 0) return;
+    // v2.7.10: img_0 is a REAL asset (CAM 2B "LET'S PARTY!" corner), so
+    // the invalid-handle guard is strictly negative now (CAMFEED_NONE=-1).
+    if (imgHandle < 0) return;
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", imgHandle);
     DrawTex(name, x, y, w, h, color);
@@ -315,7 +419,7 @@ void GameRender::DrawFrame(int imgHandle, float x, float y, float w, float h, u3
 // Fit a sprite inside a maxW x maxH box centered at (cx, cy), keeping the
 // pak image's native aspect ratio (never upscaled beyond 4x).
 void GameRender::DrawFrameFit(int imgHandle, float cx, float cy, float maxW, float maxH, u32 color) {
-    if (imgHandle <= 0) return;
+    if (imgHandle < 0) return;   // v2.7.10: img_0 is real, only -1 is invalid
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", imgHandle);
     PakLoadedTexture* t = Tex(name);
@@ -331,7 +435,7 @@ void GameRender::DrawFrameFit(int imgHandle, float cx, float cy, float maxW, flo
 // Hotspot-aware draw at the original instance position. scene=true subtracts
 // the office pan offset (the office scene is 1600x720, the window 1280x720).
 void GameRender::DrawInstance(int imgHandle, float ix, float iy, u32 color, bool scene) {
-    if (imgHandle <= 0) return;
+    if (imgHandle < 0) return;   // v2.7.10: img_0 is real, only -1 is invalid
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", imgHandle);
     PakLoadedTexture* t = Tex(name);
@@ -346,6 +450,118 @@ void GameRender::DrawInstance(int imgHandle, float ix, float iy, u32 color, bool
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
     m_batch->Draw(t->texture, x, y, (f32)t->origWidth, (f32)t->origHeight, 0.0f, 0.0f, u1, v1, color);
+}
+
+// ------------------------------------------------------------
+// ------------------------------------------------------------
+// v2.7.7 CLEANROOM PERSPECTIVE -- the same PANORAMA effect as the
+// original extension, re-implemented the way it would be written for a
+// GPU today instead of emulating the CF2.5 1-px Stretch() mechanic.
+//
+// Why v2.7.6 (faithful 1-px column strips) looked bad:
+//   * every 1-px quad bilinear-samples its neighbours across the strip
+//     seams -> the whole bent band reads smeared/soft;
+//   * integer column snapping against the fractional pan offset ->
+//     per-column width jitter (hairline gaps/doubles) while panning;
+//   * ~1280 separate DrawPrimitiveUP strip calls per big sprite
+//     (office scene ~2150 quads/frame) for zero visual benefit.
+//
+// The clean-room pass keeps the exact EFFECT math (constants above are
+// the serialized EDATA of the original EXE) and changes only HOW it is
+// rasterized:
+//   1) the flat layer-0 pass underneath is unchanged -- that is the
+//      original grab+blit semantics (flat scene stays visible in the
+//      top/bottom wedges near the screen edges);
+//   2) the bent copy is ONE triangle grid per sprite: an ~8-px column
+//      grid whose vertices follow the PANORAMA profile. The GPU
+//      interpolates the curve between grid columns (max sag ~0.006 px
+//      at 8 px), bilinear filtering runs inside wide continuous quads,
+//      and the office bg costs 161 quads / 1 draw call instead of
+//      1280 strips / 1280 draw calls.
+// Vertex positions are bit-identical to the strip math at every grid
+// column:
+//   h(x)       = max(1, 754 + sin(step) * 300 - 300)
+//   step(x)    = (x + 22 - 662) / (1324 / 3.1415) + 3.1415 / 2
+//   dest_y(fy) = 355 - h/2 + (fy + 22) * h / 754
+// ------------------------------------------------------------
+
+// PANORAMA column height at a screen-space x (exact original formula).
+static f32 BentHeightAt(f32 screenX) {
+    const f32 ci   = screenX - PERSP_OBJ_X;
+    const f32 step = (ci - PERSP_OBJ_W * 0.5f) / (PERSP_OBJ_W / PERSP_PI)
+                   + PERSP_PI * 0.5f;
+    f32 h = PERSP_OBJ_H + sinf(step) * PERSP_ZOOM - PERSP_ZOOM;
+    if (h < 1.0f) h = 1.0f;
+    return h;
+}
+
+void GameRender::DrawBentInstance(int imgHandle, float frameX, float frameY,
+                                  u32 color, float panX) {
+    if (imgHandle < 0 || !m_batch || !m_bentVerts) return;   // v2.7.10: img_0 is real
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", imgHandle);
+    PakLoadedTexture* t = Tex(name);
+    if (!t || !t->texture) return;
+
+    const PakHotspot hs = PakHotspotOf(imgHandle);
+    const f32 fx0 = frameX - hs.x;              // frame-space left of image
+    const f32 fy0 = frameY - hs.y;              // frame-space top of image
+    const f32 iw = (f32)(t->origWidth  ? t->origWidth  : 1);
+    const f32 ih = (f32)(t->origHeight ? t->origHeight : 1);
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+
+    // Visible screen span covered by the image (window = 0..1280).
+    // Float end to end: nothing snaps to the pixel grid any more.
+    const f32 leftPx = fx0 - panX;
+    f32 xa = leftPx;              if (xa < 0.0f)     xa = 0.0f;
+    f32 xb = leftPx + iw;         if (xb > SCREEN_W) xb = SCREEN_W;
+    if (xb - xa < 0.5f) return;
+
+    // ~8 px grid step, both endpoints exact.
+    int cols = (int)((xb - xa) * 0.125f) + 2;
+    if (cols < 2) cols = 2;
+    const f32 stepX = (xb - xa) / (f32)(cols - 1);
+
+    // dest_y(frameY) = 355 - h/2 + (frameY + 22) * h / 754, precomputed
+    // for this sprite's top (fy0) and bottom (fy0 + ih) frame rows.
+    const f32 topA = fy0 + 22.0f;
+    const f32 botA = fy0 + ih + 22.0f;
+
+    SpriteVertex* v = (SpriteVertex*)m_bentVerts;
+    int n = 0;
+    f32 xp = xa;
+    f32 hp = BentHeightAt(xp);
+    f32 ytp = PERSP_CENTER_Y - hp * 0.5f + topA * hp / PERSP_OBJ_H;
+    f32 ybp = PERSP_CENTER_Y - hp * 0.5f + botA * hp / PERSP_OBJ_H;
+    f32 up = (xp + panX - fx0) / iw * u1;
+
+    for (int k = 1; k < cols; ++k) {
+        const f32 xk = (k == cols - 1) ? xb : xa + stepX * (f32)k;
+        const f32 hk  = BentHeightAt(xk);
+        const f32 ytk = PERSP_CENTER_Y - hk * 0.5f + topA * hk / PERSP_OBJ_H;
+        const f32 ybk = PERSP_CENTER_Y - hk * 0.5f + botA * hk / PERSP_OBJ_H;
+        const f32 uk  = (xk + panX - fx0) / iw * u1;
+
+        if (n + 6 > kBentVertCap) break;
+        // quad xp..xk as two tris: TL,BL,TR + BL,BR,TR (cull is NONE)
+        v[n].x = xp; v[n].y = ytp; v[n].z = 0.0f; v[n].w = 1.0f;
+        v[n].u = up; v[n].v = 0.0f; v[n].color = color; ++n;
+        v[n].x = xp; v[n].y = ybp; v[n].z = 0.0f; v[n].w = 1.0f;
+        v[n].u = up; v[n].v = v1;  v[n].color = color; ++n;
+        v[n].x = xk; v[n].y = ytk; v[n].z = 0.0f; v[n].w = 1.0f;
+        v[n].u = uk; v[n].v = 0.0f; v[n].color = color; ++n;
+        v[n].x = xp; v[n].y = ybp; v[n].z = 0.0f; v[n].w = 1.0f;
+        v[n].u = up; v[n].v = v1;  v[n].color = color; ++n;
+        v[n].x = xk; v[n].y = ybk; v[n].z = 0.0f; v[n].w = 1.0f;
+        v[n].u = uk; v[n].v = v1;  v[n].color = color; ++n;
+        v[n].x = xk; v[n].y = ytk; v[n].z = 0.0f; v[n].w = 1.0f;
+        v[n].u = uk; v[n].v = 0.0f; v[n].color = color; ++n;
+
+        xp = xk; hp = hk; ytp = ytk; ybp = ybk; up = uk;
+    }
+
+    if (n >= 6) m_batch->DrawTriangles(t->texture, v, n);
 }
 
 // Tinted solid rectangle: img 23 is a fully white 1280x720 pak frame.
@@ -474,54 +690,15 @@ void GameRender::RenderNightStart(i32 night) {
 }
 
 // ------------------------------------------------------------
-//  Office — TRUE original composition (frame 'Frame 1', 1600x720):
-//  layer 0 = scene (bg 39, doors, panels, fan, pumpkin,GoldenFreddy),
-//  layer 2 = animated static (obj 42) + vignette 'frame' (img_11 @0,-1),
-//  layer 3 = HUD (mute call, clock, night, power/usage, flip bar).
-//  A 1280x720 window pans across the 1600x720 scene (0..320).
+//  v2.7.9 shared layer-3 HUD: mute call, clock, night, power, usage.
+//  In the frame data these objects (137/122/133/101/102/'AM'/usage)
+//  sit on layer 3 and the monitor toggle groups 81/82 hide ONLY the
+//  layer-2 overlays (static/REC/bezel/flash) -- the HUD is never
+//  hidden, so it draws on BOTH the office and the monitor. This is
+//  why the real camera view shows "1 AM"/"Night N"/"Power left:
+//  NN%"/usage bars (reference screenshots).
 // ------------------------------------------------------------
-
-void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
-    if (!m_batch) return;
-    const DoorSystem& doors = game.GetDoors();
-
-    // ---------- scene layer (pans) ----------
-    DrawInstance(IMG_OFFICE_BG,     0.0f,   0.0f, 0xFFFFFFFF, true);
-
-    // desk fan (3 blade frames, ~8 fps). v2.7.1: the desk pumpkin
-    // (img_628..635) is NOT drawn — in the frame data it is gated by the
-    // 'Date & Time'/'month'/'day' objects (Halloween easter egg), and the
-    // real full game has no pumpkin on the desk on regular days (confirmed
-    // against a real-game reference screenshot). Keep the frames here for a
-    // future date check.
-    const int fan = (m_time < 9999.0f) ? (int)(m_time * 8.0f) % 3 : 0;
-    static const int FAN[3] = { IMG_FAN_0, IMG_FAN_1, IMG_FAN_2 };
-    DrawInstance(FAN[fan], 868.0f, 400.0f, 0xFFFFFFFF, true);
-
-    // doors: open doorway vs closed slab
-    const bool lc = doors.IsDoorClosed(DOOR_LEFT);
-    const bool rc = doors.IsDoorClosed(DOOR_RIGHT);
-    DrawInstance(lc ? IMG_DOOR_L_CLOSED : IMG_DOOR_L_OPEN, 72.0f,  -1.0f, 0xFFFFFFFF, true);
-    DrawInstance(rc ? IMG_DOOR_R_CLOSED : IMG_DOOR_R_OPEN, 1270.0f, -2.0f, 0xFFFFFFFF, true);
-
-    // ---- original layer 2: animated static + vignette over the scene,
-    // UNDER the HUD (obj 42 at (0,0) semi-transparency coeff 100 -> alpha
-    // 155/255; img_11 'frame' at (0,-1) is A=0 transparent, skipped) ----
-    DrawStaticOverlay(STATIC_ALPHA);
-
-    // Button panels — state table from the event script + pixel-verified:
-    //   LEFT  @ (48,390):  closed=122  open=124  closed+light=125  open+light=130
-    //   RIGHT @ (1546,400): closed=134  open=135  closed+light=131  open+light=47
-    const bool ll = doors.IsLightOn(DOOR_LEFT);
-    const bool rl = doors.IsLightOn(DOOR_RIGHT);
-    const int lp = lc ? (ll ? IMG_PANEL_L_CL_LT : IMG_PANEL_L_CLOSED)
-                      : (ll ? IMG_PANEL_L_OP_LT : IMG_PANEL_L_OPEN);
-    const int rp = rc ? (rl ? IMG_PANEL_R_CL_LT : IMG_PANEL_R_CLOSED)
-                      : (rl ? IMG_PANEL_R_OP_LT : IMG_PANEL_R_OPEN);
-    DrawInstance(lp,  48.0f, 390.0f, 0xFFFFFFFF, true);
-    DrawInstance(rp, 1546.0f, 400.0f, 0xFFFFFFFF, true);
-
-    // ---------- screen-fixed HUD ----------
+void GameRender::DrawSharedHud(const Game& game, bool phonePlaying) {
     // MUTE CALL blinks while the phone plays (instance (87,37))
     if (phonePlaying) {
         const bool on = ((int)(m_time * 2.0f)) % 2 == 0;
@@ -575,13 +752,165 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
             else               c = D3DCOLOR_XRGB(225, 50, 40);  // red
             DrawSolidRect(120.0f + i * 13.0f, 664.0f, 11.0f, 14.0f, c);
         }
+    }}
+
+// ------------------------------------------------------------
+//  Office — TRUE original composition (frame 'Frame 1', 1600x720):
+//  layer 0 = scene (bg 39, doors, panels, fan, pumpkin,GoldenFreddy),
+//  layer 2 = monitor-gated overlays (static obj 42, REC obj 43, bezel
+//            obj 50) -- event group 81 HARD-HIDES all of them while
+//            viewing==0, i.e. they NEVER draw in the office (v2.7.5),
+//  layer 3 = HUD (mute call, clock, night, power/usage, flip bar).
+//  A 1280x720 window pans across the 1600x720 scene (0..320).
+// ------------------------------------------------------------
+
+void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
+    if (!m_batch) return;
+    const DoorSystem& doors = game.GetDoors();
+
+    // ---------- scene layer (pans + v2.7.6 Perspective bend) ----------
+    // The original's Perspective.mfx grabs the ALREADY DRAWN flat layer 0
+    // and blits the re-projected copy over it; outside the bent band the
+    // flat scene stays visible (top/bottom wedges near the screen edges).
+    // So we draw layer 0 TWICE: flat pass, then the bent re-projection.
+    // Everything below sits on layer 0 and bends; the HUD below stays flat.
+    const f32 pan = m_panX;
+
+    // desk fan (3 blade frames, ~8 fps). v2.7.1: the desk pumpkin
+    // (img_628..635) is NOT drawn — in the frame data it is gated by the
+    // 'Date & Time'/'month'/'day' objects (Halloween easter egg), and the
+    // real full game has no pumpkin on the desk on regular days (confirmed
+    // against a real-game reference screenshot). Keep the frames here for a
+    // future date check.
+    const int fan = (m_time < 9999.0f) ? (int)(m_time * 8.0f) % 3 : 0;
+    static const int FAN[3] = { IMG_FAN_0, IMG_FAN_1, IMG_FAN_2 };
+
+    // doors: open doorway vs closed slab
+    const bool lc = doors.IsDoorClosed(DOOR_LEFT);
+    const bool rc = doors.IsDoorClosed(DOOR_RIGHT);
+
+    // Button panels — state table from the event script + pixel-verified:
+    //   LEFT  @ (48,390):  closed=122  open=124  closed+light=125  open+light=130
+    //   RIGHT @ (1546,400): closed=134  open=135  closed+light=131  open+light=47
+    const bool ll = doors.IsLightOn(DOOR_LEFT);
+    const bool rl = doors.IsLightOn(DOOR_RIGHT);
+    const int lp = lc ? (ll ? IMG_PANEL_L_CL_LT : IMG_PANEL_L_CLOSED)
+                      : (ll ? IMG_PANEL_L_OP_LT : IMG_PANEL_L_OPEN);
+    const int rp = rc ? (rl ? IMG_PANEL_R_CL_LT : IMG_PANEL_R_CLOSED)
+                      : (rl ? IMG_PANEL_R_OP_LT : IMG_PANEL_R_OPEN);
+
+    // ---- v2.7.8 office FX state machine (docs/OFFICE_FX.md) ----
+    const f32 dt = m_time - m_lastT;
+    m_lastT = m_time;
+    const bool monUp = game.GetCameras().IsMonitorUp();
+    if (m_prevMonitor && !monUp) {                 // tablet just dropped
+        m_wipeT  = 0.0f;                           // dark uncover wipe (group 322)
+        m_raiseT = -1.0f;                          // v2.7.9: cancel a half-finished raise
+        m_flashT = -1.0f;
+        m_prevCam = -1;                            // next arrival flashes (group 133)
     }
+    m_prevMonitor = monUp;
+    if (lc != m_prevDoorL) { m_doorT[0] = 0.0f; m_doorClosing[0] = lc; m_prevDoorL = lc; }
+    if (rc != m_prevDoorR) { m_doorT[1] = 0.0f; m_doorClosing[1] = rc; m_prevDoorR = rc; }
+    if (m_doorT[0] >= 0.0f && (m_doorT[0] += dt) >= 16.0f * DOOR_FRAME_T) m_doorT[0] = -1.0f;
+    if (m_doorT[1] >= 0.0f && (m_doorT[1] += dt) >= 16.0f * DOOR_FRAME_T) m_doorT[1] = -1.0f;
+    if (m_wipeT  >= 0.0f && (m_wipeT  += dt) >= 11.0f * WIPE_FRAME_T)  m_wipeT  = -1.0f;
+    if (m_flashT >= 0.0f && (m_flashT += dt) >= 9.0f * FLASH_FRAME_T) m_flashT = -1.0f;
+
+    // panorama variant: obj 44 "Active 3" anim table via event groups
+    // 114-129 (light buttons + strobe) and group 323 (foxy sprint).
+    int bg = IMG_OFFICE_BG;
+    {
+        const AnimatronicAI& ai = game.GetAI();
+        const Animatronic& foxy = ai.GetAnimatronic(ANIM_FOXY);
+        if (foxy.foxyRunning && !foxy.foxyAtDoor) {
+            int idx = foxy.foxyRunTimer * 5 / 12;  // 60 Hz -> 25 frames/1.0 s
+            if (idx > 24) idx = 24;
+            bg = FOXY_RUN[idx];
+        } else {
+            const bool ll = doors.IsLightOn(DOOR_LEFT);
+            const bool rl = doors.IsLightOn(DOOR_RIGHT);
+            if (ll || rl) {
+                // group 122 re-rolls the flicker counter every frame;
+                // groups 119/127: <= 1 (of 0..9) -> dark frame 0 (img_39),
+                // the ~20% off-duty of the fluorescent strobe.
+                const bool dark = (rand() % 10) <= 1;
+                if (ll) {
+                    const Animatronic& b = ai.GetAnimatronic(ANIM_BONNIE);
+                    const bool atDoor = (b.currentRoom == ROOM_WEST_HALL_CORNER ||
+                                         b.currentRoom == ROOM_LEFT_DOOR);
+                    bg = dark ? IMG_OFFICE_BG
+                              : (atDoor ? IMG_LIGHT_L_BONNIE : IMG_LIGHT_L_HALL);
+                }
+                if (rl) {
+                    const Animatronic& c = ai.GetAnimatronic(ANIM_CHICA);
+                    const bool atDoor = (c.currentRoom == ROOM_EAST_HALL_CORNER ||
+                                         c.currentRoom == ROOM_RIGHT_DOOR);
+                    bg = dark ? IMG_OFFICE_BG
+                              : (atDoor ? IMG_LIGHT_R_CHICA : IMG_LIGHT_R_HALL);
+                }
+            }
+        }
+    }
+
+    // door slide anims: obj 59/60 anims a12 (close) / a14 (open)
+    int lImg = lc ? IMG_DOOR_L_CLOSED : IMG_DOOR_L_OPEN;
+    int rImg = rc ? IMG_DOOR_R_CLOSED : IMG_DOOR_R_OPEN;
+    if (m_doorT[0] >= 0.0f) {
+        int idx = (int)(m_doorT[0] / DOOR_FRAME_T);
+        if (idx > 15) idx = 15;
+        lImg = m_doorClosing[0] ? DOOR_L_CLOSE[idx] : DOOR_L_OPEN[idx];
+    }
+    if (m_doorT[1] >= 0.0f) {
+        int idx = (int)(m_doorT[1] / DOOR_FRAME_T);
+        if (idx > 15) idx = 15;
+        rImg = m_doorClosing[1] ? DOOR_R_CLOSE[idx] : DOOR_R_OPEN[idx];
+    }
+
+    // flat layer 0 (what the Perspective object grabs underneath)
+    DrawInstance(bg, 0.0f,   0.0f, 0xFFFFFFFF, true);
+    DrawInstance(FAN[fan], 868.0f, 400.0f, 0xFFFFFFFF, true);
+    DrawInstance(lImg, 72.0f,  -1.0f, 0xFFFFFFFF, true);
+    DrawInstance(rImg, 1270.0f, -2.0f, 0xFFFFFFFF, true);
+    DrawInstance(lp,  48.0f, 390.0f, 0xFFFFFFFF, true);
+    DrawInstance(rp, 1546.0f, 400.0f, 0xFFFFFFFF, true);
+
+    // bent re-projection on top (v2.7.6: same order, one shared curve)
+    DrawBentInstance(bg, 0.0f,   0.0f, 0xFFFFFFFF, pan);
+    DrawBentInstance(FAN[fan], 868.0f, 400.0f, 0xFFFFFFFF, pan);
+    DrawBentInstance(lImg, 72.0f,  -1.0f, 0xFFFFFFFF, pan);
+    DrawBentInstance(rImg, 1270.0f, -2.0f, 0xFFFFFFFF, pan);
+    DrawBentInstance(lp,  48.0f, 390.0f, 0xFFFFFFFF, pan);
+    DrawBentInstance(rp, 1546.0f, 400.0f, 0xFFFFFFFF, pan);
+
+    // ---- v2.7.5 verdict kept: NO animated static in the office. Obj 42
+    // (static, ink 1/100) starts invisible and group 81 hides it whenever
+    // viewing==0; the office grain is baked into img_39's pixels. The
+    // layer-2 overlays (static, REC, bezel) draw ONLY in RenderCamera.
+    // Full map: docs/OVERLAY_MAP.md. ----
+
+    // ---------- screen-fixed HUD (v2.7.9: shared with the
+    // monitor, see DrawSharedHud below) ----------
+    DrawSharedHud(game, phonePlaying);
+
 
     // "open monitor" flip bar — frame obj 'flip panel': img_420 600x60 at
     // instance (554,668), hotspot (299,30) -> draw (255,638).
     // v2.6 and earlier wrongly drew img_156 here (a solid violet fill) —
     // that was the big purple rectangle over the desk.
-    DrawInstance(IMG_FLIP_BAR, 554.0f, 668.0f, 0xFFFFFFFF, false);
+    // v2.7.9: the bar HIDES while the tablet moves (group 331 hides
+    // it the moment the raise starts; group 322 keeps it hidden
+    // during the drop wipe until the player can click again).
+    if (m_raiseT < 0.0f && m_wipeT < 0.0f)
+        DrawInstance(IMG_FLIP_BAR, 554.0f, 668.0f, 0xFFFFFFFF, false);
+
+    // v2.7.8: tablet-close dark wipe (obj 73 "flip down 2", event group
+    // 322 creates it on put down==1) -- starts black, dissolves clear.
+    if (m_wipeT >= 0.0f) {
+        int idx = (int)(m_wipeT / WIPE_FRAME_T);
+        if (idx > 10) idx = 10;
+        DrawFrame(WIPE_SEQ[idx], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+    }
 }
 
 // ------------------------------------------------------------
@@ -644,24 +973,61 @@ static int CamFeedFor(const Game& game, CameraId cam) {
             if (c) return CAMFEED_7_VARIANT;
             return CAMFEED_7_EMPTY;
         default:
-            return 0;   // kitchen: audio only
+            return CAMFEED_NONE;   // v2.7.10: kitchen audio-only; -1 because
+                                   // handle 0 now belongs to CAM 2B (img_0)
     }
 }
 
-void GameRender::RenderCamera(const Game& game) {
+void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     if (!m_batch) return;
     const CameraSystem& cams = game.GetCameras();
     const CameraId cam = cams.GetCurrentCamera();
+    // v2.7.9: the tablet RAISE (obj 68 "panel", event group 130) plays
+    // BEFORE the feed appears: 11 full-screen frames cover the office
+    // bottom-up; when the anim ends, group 133 commits viewing (->
+    // group 18 -> blip==1 -> group 16 white flash) and the monitor
+    // takes over. No instant pop-in like v2.7.8 and earlier.
+    const f32 dt = m_time - m_lastT;
+    if (!m_prevMonitor) m_raiseT = 0.0f;   // monitor just went up
+    m_prevMonitor = true;
+    if (m_raiseT >= 0.0f) {
+        m_raiseT += dt;
+        if (m_raiseT >= 11.0f * RAISE_FRAME_T) {
+            m_raiseT = -1.0f;
+            m_lastT = m_time;
+        } else {
+            // office stays visible under the rising tablet; RenderOffice
+            // also keeps m_lastT and the office FX timers ticking
+            RenderOffice(game, phonePlaying);
+            int ridx = (int)(m_raiseT / RAISE_FRAME_T);
+            if (ridx > 10) ridx = 10;
+            DrawFrame(RAISE_SEQ[ridx], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+            return;
+        }
+    } else {
+        m_lastT = m_time;
+    }
+    // v2.7.9: EVERY committed cam change flashes. Group 18: 'set viewing
+    // to' > 0 -> blip := 1 -> group 16 white flash + blip3. The raise
+    // commit (group 133: viewing := last clicked) rides the same counter,
+    // so the freshly appeared feed ALWAYS flashes once -- and map clicks
+    // flash on every switch (the reference screenshot is exactly that).
+    if ((int)cam != m_prevCam) m_flashT = 0.0f;
+    m_prevCam = (int)cam;
+    if (m_flashT >= 0.0f && (m_flashT += dt) >= 9.0f * FLASH_FRAME_T) m_flashT = -1.0f;
 
     // Room feed: 1600x720 room image centered behind the 1280x720 bezel.
     // Pirate cove follows Foxy's stage machine; kitchen has no feed.
-    int feed = 0;
+    int feed = CAMFEED_NONE;   // v2.7.10: -1 = "no feed", 0 = img_0 (CAM 2B)
     if (cam == CAM_1C) {
         const Animatronic& foxy = game.GetAI().GetAnimatronic(ANIM_FOXY);
         int st = (int)foxy.foxyStage;
         if (st < 0) st = 0;
-        if (st > 2) st = 2;
-        static const int COVE[3] = { COVE_CURTAIN, COVE_PEEK, COVE_EMPTY };
+        if (st > 3) st = 3;   // v2.7.10: four canonical cove states
+        // v2.7.10: was {211,338,240} = one stage late (closed curtain
+        // img_66 never shown!). Canonical: stage0=66 shut, 1=211 peek,
+        // 2=338 out, 3=240 gone/running (Active 3 anims 26/48/49/50).
+        static const int COVE[4] = { COVE_CLOSED, COVE_PEEK, COVE_OUT, COVE_EMPTY };
         feed = COVE[st];
     } else if (cam >= CAM_1A && cam <= CAM_7) {
         feed = CamFeedFor(game, cam);
@@ -672,15 +1038,37 @@ void GameRender::RenderCamera(const Game& game) {
     // Cosine easing = smooth turnaround at both edges, no dead pause.
     const f32 camPan = 0.5f * CAM_PAN_RANGE
                      * (1.0f - cosf(m_time * 6.2831853f / CAM_PAN_PERIOD));
-    if (feed > 0) {
+    if (feed >= 0) {   // v2.7.10: >=0 -- img_0 (CAM 2B) must draw too
+        // v2.7.6: the feed is on layer 0 too -- the Perspective object bends
+        // it with the SAME curve as the office (this is why FNAF camera
+        // feeds bulge). Flat pass first, then the re-projection; drift pan
+        // = the 320 px slack of the 1600x720 image.
         DrawFrame(feed, -camPan, 0.0f, 1600.0f, 720.0f, 0xFFFFFFFF);
+        DrawBentInstance(feed, 0.0f, 0.0f, 0xFFFFFFFF, camPan);
     } else if (cam == CAM_6) {
         DrawInstance(IMG_AUDIO_ONLY, 384.0f, 69.0f, 0xFFFFFFFF, false);
     }
 
-    // Heavy camera static between feed and bezel (same object/coeff as the
-    // office static -> the authentic ~61% opacity)
+    // v2.7.5: the one and only gameplay home of the animated static --
+    // obj 42 "Active" (img 18/20/12..17, ink 1/100 -> alpha 155/255),
+    // which group 82 SHOWs exactly while viewing>0 (monitor up).
     DrawStaticOverlay(STATIC_ALPHA);
+
+    // v2.7.5: the monitor's blinking red REC light -- obj "Active 2",
+    // anim [img_7 red 50x50, img_5 fully transparent] at speed 2
+    // (~0.8 s per phase), instance (92,76) hotspot (24,24) -> draw
+    // (68,52). Layer 2 over the static, under bezel/labels/HUD --
+    // the original instance order is 42 < 43 < 50.
+    if (((int)(m_time * 1.25f)) % 2 == 0)
+        DrawFrame(7, 68.0f, 52.0f, 50.0f, 50.0f, 0xFFFFFFFF);
+
+    // v2.7.8: white flash, layer 2 -- above static/REC (obj 42/43),
+    // below the bezel (obj 50); one-shot 9 frames, then gone.
+    if (m_flashT >= 0.0f) {
+        int idx = (int)(m_flashT / FLASH_FRAME_T);
+        if (idx > 8) idx = 8;
+        DrawFrame(FLASH_SEQ[idx], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+    }
 
     // Monitor bezel (object "frame" img_11)
     DrawInstance(IMG_MONITOR_FRAME, 0.0f, -1.0f, 0xFFFFFFFF, false);
@@ -699,6 +1087,11 @@ void GameRender::RenderCamera(const Game& game) {
                      (f32)mb.x, (f32)mb.y, 0xFFFFFFFF, false);
     }
 
+    // v2.7.9: shared layer-3 HUD (clock/night/power/usage/mute call).
+    // Same objects and positions as the office view -- the frame data
+    // never hides them with the monitor (groups 81/82 touch layer 2).
+    DrawSharedHud(game, phonePlaying);
+
     // "put down" bar — the real bar is img_420 ('flip panel', same as the
     // office bump). The frame's 'flip down' object (img_162) is a SOLID
     // VIOLET fill (a Clickteam zone marker) — drawing it opaque painted a
@@ -712,9 +1105,13 @@ void GameRender::RenderCamera(const Game& game) {
 
 void GameRender::RenderPowerOut(const Game& game) {
     if (!m_batch) return;
+    // v2.7.6: power-out office + flicker frames are layer 0 -> drawn flat,
+    // then re-projected through the Perspective curve
     DrawInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, true);
     const int idx = (int)(game.GetPowerOutTimer() * 6.0f) % 33;
     DrawInstance(FREDDY_FLICKER[idx], 0.0f, 0.0f, 0xFFFFFFFF, true);
+    DrawBentInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, m_panX);
+    DrawBentInstance(FREDDY_FLICKER[idx], 0.0f, 0.0f, 0xFFFFFFFF, m_panX);
 
     // the HUD stays, power reads 0
     DrawInstance(IMG_POWER_LABEL, 106.0f, 638.0f, 0xFF9A9A9A, false);
@@ -746,8 +1143,12 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
     } else {
         frame = SCARE_CHICA;
     }
-    // scare frames are 1600x720 room images — center the window on them
+    // scare frames are 1600x720 room images on layer 0 -- v2.7.6: flat pass
+    // + bent re-projection; the shake offsets shift the source window like
+    // the original's Set position on the feed object (+ox on screen = -ox
+    // on the pan).
     DrawFrame(frame, -160.0f + ox, oy, 1600.0f, 720.0f, 0xFFFFFFFF);
+    DrawBentInstance(frame, 0.0f, oy, 0xFFFFFFFF, 160.0f - ox);
 
     // IT'S ME hallucination flash (obj "Active 21")
     const int fl = (int)(elapsed * 10.0f) % 4;
@@ -776,13 +1177,18 @@ void GameRender::RenderNightComplete(i32 night) {
         DrawInstance(IMG_DIGIT_6, 548.0f, 408.0f, 0xFFFFFFFF, false);
         DrawInstance(IMG_AM_BIG, 640.0f, 406.0f, 0xFFFFFFFF, false);
     }
-    DrawStaticOverlay(0.12f);
+    // v2.7.5: no static. The original "next day" frame holds ONLY the
+    // 5/AM/6 digit images + AI counters -- zero noise objects (dump verdict).
 }
 
 void GameRender::RenderGameOver() {
     if (!m_batch) return;
     DrawFrame(IMG_GAMEOVER_BG, 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
-    DrawStaticOverlay(0.55f);
+    // v2.7.5: no static. The original "gameover" frame = backdrop img_358 +
+    // img_471 + parked Text/counter -- no noise objects at all. (The LOUD
+    // noise burst is the separate "died" frame -- static + opaque blip
+    // flash over black -- shown between the jumpscare and game over; we do
+    // not render that screen yet, see docs/OVERLAY_MAP.md.)
 }
 
 // ------------------------------------------------------------
