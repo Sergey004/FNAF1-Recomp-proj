@@ -13,10 +13,14 @@ Game::Game()
     , m_currentNight(1)
     , m_nightConfig(0)
     , m_lastAIHour(-1)
-    , m_ticksSinceLastMovement(0)
     , m_powerOutTimer(0.0f)
-    , m_powerOutDuration(10.0f)
-    , m_powerOutDurationSet(false)
+    , m_powerOutPhase(0)
+    , m_powerOutPhaseTimer(0.0)
+    , m_powerOutRollTimer(0.0)
+    , m_freddyFaceLit(false)
+    , m_faceLitTimer(0.0)
+    , m_powerOutBlinkOn(false)
+    , m_musicBoxPlaying(false)
     , m_nightStartTimer(0.0f)
     , m_jumpscareTimer(0.0f)
     , m_jumpscareTriggered(false)
@@ -39,7 +43,7 @@ void Game::Init(i32 night) {
 
     // Reset all subsystems
     m_timer.Reset();
-    m_power.Reset();
+    m_power.Reset(night);
     m_doors.Reset();
     m_cameras.Reset();
     m_ai.Reset();
@@ -50,12 +54,21 @@ void Game::Init(i32 night) {
             m_ai.SetAILevel(static_cast<AnimatronicId>(i),
                              m_nightConfig->startingLevels[i]);
         }
+        // Night 4: Freddy starts at 1 + Random(2) (group 308)
+        if (m_nightConfig->freddyRandomStart) {
+            m_ai.SetAILevel(ANIM_FREDDY, 1 + SimpleRandom(1, 2));
+        }
     }
 
     // Reset state
-    m_ticksSinceLastMovement = 0;
     m_powerOutTimer = 0.0f;
-    m_powerOutDurationSet = false;
+    m_powerOutPhase = 0;
+    m_powerOutPhaseTimer = 0.0;
+    m_powerOutRollTimer = 0.0;
+    m_freddyFaceLit = false;
+    m_faceLitTimer = 0.0;
+    m_powerOutBlinkOn = false;
+    m_musicBoxPlaying = false;
     m_nightStartTimer = 0.0f;
     m_jumpscareTimer = 0.0f;
     m_jumpscareTriggered = false;
@@ -126,7 +139,7 @@ void Game::SwitchCamera(CameraId cam) {
 
     // Check if switching to or from Pirate Cove (affects Foxy)
     if (cam == CAM_1C && prevCam != CAM_1C) {
-        m_ai.OnPirateCoveViewed();
+        m_ai.OnCoveLooked();
     }
 
     if (m_callbacks.onCameraChange) {
@@ -194,8 +207,24 @@ const CameraSystem&Game::GetCameras() const { return m_cameras; }
 const AnimatronicAI& Game::GetAI() const { return m_ai; }
 bool Game::IsPowerOut() const { return m_state == GAME_STATE_POWER_OUT; }
 f32  Game::GetPowerOutTimer() const { return m_powerOutTimer; }
+i32  Game::GetPowerOutPhase() const { return m_powerOutPhase; }
+bool Game::IsFreddyFaceLit() const { return m_freddyFaceLit; }
+bool Game::IsPowerOutBlinkOn() const { return m_powerOutBlinkOn; }
 AnimatronicId Game::GetJumpscareAnimatronic() const { return m_jumpscareAnimatronic; }
 bool Game::HasJumpscareTriggered() const { return m_jumpscareTriggered; }
+
+// Per-animatronic scare length: the real animation (docs/AI_MECHANICS.md §9)
+// plus a short hold on the last frame before the death screen.
+f64 Game::GetJumpscareDurationSec() const {
+    switch (m_jumpscareAnimatronic) {
+        case ANIM_FREDDY: return 2.7;   // 31 frames @ 30 FPS, repeat 1 + hold
+        case ANIM_FOXY:   return 2.3;   // 25 frames @ 30 FPS, repeat 1 + hold
+        case ANIM_BONNIE: return 1.1;   // 11 frames @ 45 FPS + hold
+        case ANIM_CHICA:  return 1.1;   // 16 frames @ 60 FPS + hold
+        default:          return 1.5;
+    }
+}
+
 void Game::SetCallbacks(const GameCallbacks& cb) { m_callbacks = cb; }
 const GameCallbacks& Game::GetCallbacks() const { return m_callbacks; }
 
@@ -226,7 +255,7 @@ void Game::ProcessPlaying() {
     // Apply AI level changes for the new hour
     if (hourChanged) {
         i32 newHour = m_timer.GetHour();
-        ApplyAIChangesForHour(newHour);
+        ApplyHourDeltas(newHour);
         NotifyTimeUpdate();
     }
 
@@ -252,10 +281,17 @@ void Game::ProcessPlaying() {
     NotifyPowerUpdate();
 
     if (powerJustOut) {
-        // Power is out!
+        // Power is out! The 4-phase dark-office sequence begins;
+        // the music box starts with phase 1 (group 272).
         m_state = GAME_STATE_POWER_OUT;
         m_powerOutTimer = 0.0f;
-        m_powerOutDurationSet = false;
+        m_powerOutPhase = 0;
+        m_powerOutPhaseTimer = 0.0;
+        m_powerOutRollTimer = 0.0;
+        m_freddyFaceLit = false;
+        m_faceLitTimer = 0.0;
+        m_powerOutBlinkOn = false;
+        m_musicBoxPlaying = false;
 
         // Force all systems off
         m_doors.ForceDoorsOpen();
@@ -264,9 +300,6 @@ void Game::ProcessPlaying() {
 
         if (m_callbacks.onPowerOut) {
             m_callbacks.onPowerOut();
-        }
-        if (m_callbacks.onMusicBoxStart) {
-            m_callbacks.onMusicBoxStart();
         }
 
         if (m_callbacks.onDoorChange) {
@@ -283,18 +316,19 @@ void Game::ProcessPlaying() {
         return;
     }
 
-    // 4. Movement opportunity (every ~5 seconds)
-    m_ticksSinceLastMovement++;
-    if (m_ticksSinceLastMovement >= TimeConstants::MOVEMENT_INTERVAL_TICKS) {
-        m_ticksSinceLastMovement = 0;
-
+    // 4. Per-tick AI updates — the AI schedules every animatronic's own
+    //    movement opportunity internally (Bonnie 4.97s / Chica 4.98s /
+    //    Freddy 3.02s / Foxy 5.01s, groups 188-191).
+    {
         AITickResult results[16];
-        i32 count = m_ai.OnMovementOpportunity(
-            m_doors, m_cameras, m_timer, results, 16);
+        i32 count = m_ai.OnTick(
+            m_doors, m_cameras, m_power, m_timer, results, 16);
 
-        // Process results
         for (i32 i = 0; i < count; ++i) {
             if (results[i].event == AI_EVENT_ATTACK) {
+                // They pull the monitor down on entry (groups 321/322 and
+                // the got-you handlers); kill renders with the office view.
+                m_cameras.SetMonitorUp(false);
                 m_state = GAME_STATE_JUMPSCARE;
                 m_jumpscareTimer = 0.0f;
                 m_jumpscareTriggered = true;
@@ -304,6 +338,10 @@ void Game::ProcessPlaying() {
                     m_callbacks.onJumpscare(results[i].animatronic);
                 }
                 return;
+            }
+            if (results[i].event == AI_EVENT_FOXY_AT_DOOR) {
+                // Foxy force-drops the tablet (groups 321/322)
+                m_cameras.SetMonitorUp(false);
             }
             if (results[i].event == AI_EVENT_FOXY_BANG && m_callbacks.onFoxyDoorBang) {
                 m_callbacks.onFoxyDoorBang(results[i].powerDrained);
@@ -315,33 +353,8 @@ void Game::ProcessPlaying() {
             if (results[i].event == AI_EVENT_FOXY_STAGE_UP && m_callbacks.onFoxyStageChange) {
                 m_callbacks.onFoxyStageChange(results[i].foxyStage);
             }
-        }
-    }
-
-    // 5. Per-tick AI updates (attack checks, Foxy running)
-    {
-        AITickResult results[16];
-        i32 count = m_ai.OnTick(
-            m_doors, m_cameras, m_power, m_timer, results, 16);
-
-        for (i32 i = 0; i < count; ++i) {
-            if (results[i].event == AI_EVENT_ATTACK) {
-                m_state = GAME_STATE_JUMPSCARE;
-                m_jumpscareTimer = 0.0f;
-                m_jumpscareTriggered = true;
-                m_jumpscareAnimatronic = results[i].animatronic;
-
-                if (m_callbacks.onJumpscare) {
-                    m_callbacks.onJumpscare(results[i].animatronic);
-                }
-                return;
-            }
-            if (results[i].event == AI_EVENT_FOXY_BANG && m_callbacks.onFoxyDoorBang) {
-                m_callbacks.onFoxyDoorBang(results[i].powerDrained);
-            }
-            if (results[i].event == AI_EVENT_MOVED && m_callbacks.onAnimatronicMove) {
-                m_callbacks.onAnimatronicMove(results[i].animatronic,
-                                                 results[i].newRoom);
+            if (results[i].event == AI_EVENT_FOXY_RUNNING && m_callbacks.onFoxyStageChange) {
+                m_callbacks.onFoxyStageChange(FOXY_STAGE_4);
             }
         }
     }
@@ -349,29 +362,31 @@ void Game::ProcessPlaying() {
 
 
 // ============================================================
-//  Process: Power Out (Freddy's music box)
+//  Process: Power Out — the 4-phase dark office sequence
+//  (docs/AI_MECHANICS.md §8; groups 272-302)
+//
+//   phase 0: dark office; 20%/5s (forced 20 s) -> phase 1
+//   phase 1: music box; face flicker 25%/0.5s; 20%/5s -> phase 2
+//   phase 2: 20-tick buzz blink -> phase 3
+//   phase 3: black; 20%/2s (forced 20 s) -> Freddy kill
+//   6 AM saves at any point (the clock keeps running).
 // ============================================================
 
 void Game::ProcessPowerOut() {
-    // Advance timer
-    m_timer.Tick();
+    // Advance timer — the clock keeps running
+    bool hourChanged = m_timer.Tick();
+    if (hourChanged) {
+        ApplyHourDeltas(m_timer.GetHour());
+        NotifyTimeUpdate();
+    }
     m_powerOutTimer += static_cast<f32>(TimeConstants::TICK_INTERVAL_SEC);
 
-    // Set random duration for Freddy's attack
-    if (!m_powerOutDurationSet) {
-        m_simpleRNG = m_simpleRNG * 1664525 + 1013904223;
-        u32 r = static_cast<u32>(m_simpleRNG);
-        f32 range = static_cast<f32>(TimeConstants::POWER_OUT_MAX_SEC - TimeConstants::POWER_OUT_MIN_SEC);
-        m_powerOutDuration = static_cast<f32>(TimeConstants::POWER_OUT_MIN_SEC)
-                           + (static_cast<f32>(r % 10000) / 10000.0f) * range;
-        m_powerOutDurationSet = true;
-    }
-
-    // Check if 6 AM arrives first (SURVIVAL!)
+    // Survival first: 6 AM beats Freddy
     if (m_timer.IsNightComplete()) {
-        if (m_callbacks.onMusicBoxStop) {
+        if (m_musicBoxPlaying && m_callbacks.onMusicBoxStop) {
             m_callbacks.onMusicBoxStop();
         }
+        m_musicBoxPlaying = false;
         m_state = GAME_STATE_NIGHT_COMPLETE;
         m_nightCompleteTimer = 0.0f;
         if (m_callbacks.onNightComplete) {
@@ -380,18 +395,90 @@ void Game::ProcessPowerOut() {
         return;
     }
 
-    // Check if Freddy attacks
-    if (m_powerOutTimer >= m_powerOutDuration) {
-        if (m_callbacks.onMusicBoxStop) {
-            m_callbacks.onMusicBoxStop();
+    const f64 dt = TimeConstants::TICK_INTERVAL_SEC;
+    m_powerOutPhaseTimer += dt;
+
+    switch (m_powerOutPhase) {
+        case 0:
+        case 1: {
+            // Phase 1: Freddy face flicker — re-roll every 0.5 s, 25 % lit
+            if (m_powerOutPhase == 1) {
+                m_faceLitTimer += dt;
+                if (m_faceLitTimer >= 0.5) {
+                    m_faceLitTimer -= 0.5;
+                    m_freddyFaceLit = (SimpleRandom(1, 4) == 1);
+                }
+            }
+
+            // 20 % per 5 s (Random(5)+1 == 1, groups 272/291)
+            m_powerOutRollTimer += dt;
+            bool advance = false;
+            if (m_powerOutRollTimer >= TimeConstants::POWER_OUT_PHASE_ROLL_SEC) {
+                m_powerOutRollTimer -= TimeConstants::POWER_OUT_PHASE_ROLL_SEC;
+                if (SimpleRandom(1, TimeConstants::POWER_OUT_ROLL_DENOM) == 1) advance = true;
+            }
+            if (m_powerOutPhaseTimer >= TimeConstants::POWER_OUT_PHASE_MAX_SEC) advance = true;
+
+            if (advance) {
+                m_powerOutPhase++;
+                m_powerOutPhaseTimer = 0.0;
+                m_powerOutRollTimer = 0.0;
+                m_freddyFaceLit = false;
+                m_faceLitTimer = 0.0;
+
+                if (m_powerOutPhase == 1 && !m_musicBoxPlaying) {
+                    // Group 272: the music box starts with phase 1
+                    m_musicBoxPlaying = true;
+                    if (m_callbacks.onMusicBoxStart) m_callbacks.onMusicBoxStart();
+                }
+                if (m_powerOutPhase == 2) {
+                    // Group 293: alterable[7] = Random(2)+1 rolled at entry;
+                    // 1 = office stays visible with the buzz, 2 = hidden
+                    m_powerOutBlinkOn = (SimpleRandom(1, 2) == 1);
+                }
+            }
+            break;
         }
-        m_state = GAME_STATE_JUMPSCARE;
-        m_jumpscareTimer = 0.0f;
-        m_jumpscareTriggered = true;
-        m_jumpscareAnimatronic = ANIM_FREDDY;
-        if (m_callbacks.onJumpscare) {
-            m_callbacks.onJumpscare(ANIM_FREDDY);
+        case 2: {
+            // Phase 2: fixed 20-tick buzz blink (groups 297/298)
+            if (m_powerOutPhaseTimer >= TimeConstants::POWER_OUT_BUZZ_TICKS
+                                      * TimeConstants::TICK_INTERVAL_SEC) {
+                m_powerOutPhase = 3;
+                m_powerOutPhaseTimer = 0.0;
+                m_powerOutRollTimer = 0.0;
+                if (m_musicBoxPlaying && m_callbacks.onMusicBoxStop) {
+                    m_callbacks.onMusicBoxStop();
+                }
+                m_musicBoxPlaying = false;
+            }
+            break;
         }
+        case 3: {
+            // Phase 3: 20 % per 2 s (group 301), forced at 20 s (group 302)
+            m_powerOutRollTimer += dt;
+            bool kill = false;
+            if (m_powerOutRollTimer >= TimeConstants::POWER_OUT_FINAL_ROLL_SEC) {
+                m_powerOutRollTimer -= TimeConstants::POWER_OUT_FINAL_ROLL_SEC;
+                if (SimpleRandom(1, TimeConstants::POWER_OUT_ROLL_DENOM) == 1) kill = true;
+            }
+            if (m_powerOutPhaseTimer >= TimeConstants::POWER_OUT_PHASE_MAX_SEC) kill = true;
+
+            if (kill) {
+                if (m_musicBoxPlaying && m_callbacks.onMusicBoxStop) {
+                    m_callbacks.onMusicBoxStop();
+                }
+                m_musicBoxPlaying = false;
+                m_state = GAME_STATE_JUMPSCARE;
+                m_jumpscareTimer = 0.0f;
+                m_jumpscareTriggered = true;
+                m_jumpscareAnimatronic = ANIM_FREDDY;
+                if (m_callbacks.onJumpscare) {
+                    m_callbacks.onJumpscare(ANIM_FREDDY);
+                }
+            }
+            break;
+        }
+        default: break;
     }
 }
 
@@ -403,7 +490,7 @@ void Game::ProcessPowerOut() {
 void Game::ProcessJumpscare() {
     m_jumpscareTimer += static_cast<f32>(TimeConstants::TICK_INTERVAL_SEC);
 
-    if (m_jumpscareTimer >= TimeConstants::JUMPSCARE_DURATION_SEC) {
+    if (m_jumpscareTimer >= GetJumpscareDurationSec()) {
         m_state = GAME_STATE_GAME_OVER;
         if (m_callbacks.onGameOver) {
             m_callbacks.onGameOver();
@@ -426,19 +513,21 @@ void Game::ProcessNightComplete() {
 
 
 // ============================================================
-//  Apply AI level changes for a specific hour
+//  Apply hourly AI deltas (2/3/4 AM — groups 335-337):
+//  Bonnie +1 at 2 AM; Bonnie/Chica/Foxy +1 at 3 and 4 AM.
 // ============================================================
 
-void Game::ApplyAIChangesForHour(i32 hour) {
-    if (!m_nightConfig) return;
+void Game::ApplyHourDeltas(i32 hour) {
     if (hour <= m_lastAIHour) return;
 
-    for (i32 c = 0; c < m_nightConfig->changeCount; ++c) {
-        const AIChange& change = m_nightConfig->changes[c];
-        if (change.hour == hour) {
-            for (i32 i = 0; i < ANIM_COUNT; ++i) {
-                m_ai.SetAILevel(static_cast<AnimatronicId>(i), change.levels[i]);
-            }
+    for (i32 h = m_lastAIHour + 1; h <= hour; ++h) {
+        AILevels cur;
+        for (i32 k = 0; k < ANIM_COUNT; ++k) {
+            cur[k] = static_cast<i8>(m_ai.GetAILevel(static_cast<AnimatronicId>(k)));
+        }
+        ApplyHourDelta(h, cur);
+        for (i32 k = 0; k < ANIM_COUNT; ++k) {
+            m_ai.SetAILevel(static_cast<AnimatronicId>(k), cur[k]);
         }
     }
 

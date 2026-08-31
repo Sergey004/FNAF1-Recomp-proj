@@ -23,6 +23,8 @@ void UpdateInput(GameInput& out)
     out.cameraRight = false;
     out.pause = false;
     out.back = false;
+    out.tunerToggle = false;
+    out.yToggle = false;
 
     XINPUT_STATE state;
     ZeroMemory(&state, sizeof(state));
@@ -80,6 +82,29 @@ void UpdateInput(GameInput& out)
     bool bNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0;
     out.back = bNow && !bPrev;
     bPrev = bNow;
+
+    // v2.7.11: Y button edge (PERSP tuner knob reset)
+    static bool yPrev = false;
+    bool yNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_Y) != 0;
+    out.yToggle = yNow && !yPrev;
+    yPrev = yNow;
+
+    // v2.7.11: L3+R3 TOGETHER = PERSPECTIVE tuner enter/exit. The stick
+    // buttons are never used anywhere else in the game, so the combo cannot
+    // collide with lights/doors/camera. Fallback defines keep the build
+    // green even on an XDK whose xinputdefs predates the thumb bits.
+#ifndef XINPUT_GAMEPAD_LEFT_THUMB
+#define XINPUT_GAMEPAD_LEFT_THUMB  0x0040
+#endif
+#ifndef XINPUT_GAMEPAD_RIGHT_THUMB
+#define XINPUT_GAMEPAD_RIGHT_THUMB 0x0080
+#endif
+    static bool thumbsPrev = false;
+    const bool thumbsNow =
+        (state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB)  != 0 &&
+        (state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0;
+    out.tunerToggle = thumbsNow && !thumbsPrev;
+    thumbsPrev = thumbsNow;
 }
 
 MenuInput PollMenuInputFromGameInput(const GameInput& gi)

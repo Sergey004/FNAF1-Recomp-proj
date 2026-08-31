@@ -70,10 +70,22 @@
  *                           through SpriteBatch::DrawTriangles -- the GPU
  *                           interpolates the profile (max sag ~0.006 px),
  *                           no seams, ~1 draw call per bent sprite.
+ *                           (v2.7.6 emitted 1-px strips: same math, but
+ *                           bilinear seam bleed + pixel snapping smeared
+ *                           and tore the view.)
  *  6 AM        "next day" : digit images "5"=350 "6"=351 "AM"=352;
  *                           nights 5/6/7 show paycheck 210 / overtime 522 /
  *                           termination 523 full screens ("the end" frames).
  *  Game over   "gameover" : backdrop img_358.
+ *
+ * v2.7.11 - persptune: the three PANORAMA constants (Zoom=300 / pivot
+ *                           Y=355 / arc=3.1415) are LIVE knobs now. L3+R3
+ *                           in game opens the tuner: DPad selects a knob,
+ *                           Up/Down adjusts, A = fast step, Y = reset knob;
+ *                           exiting prints "PERSP FINAL ..." to the log +
+ *                           debug console for baking. Defaults stay the
+ *                           exact serialized EDATA values -> bit-identical
+ *                           to v2.7.10 until you touch it.
  *
  * Counter-font strips: the pak's dynamic digits are 11 identical strip sets
  * whose glyph order is  0 1 2 3 4 5 6 7 8 9 - + . e  (verified visually).
@@ -129,6 +141,27 @@ static const f32 PERSP_CENTER_Y = 355.0f;   // -22 + 754/2, pivot of the bend
 // 162 columns -> 161 quads -> 966 vertices. 2048 gives ~2x headroom.
 static const int kBentVertCap = 2048;
 
+// v2.7.11 PERSPECTIVE TUNER -- live-tunable copies of the three serialized
+// PANORAMA constants above. Initialized 1:1 with v2.7.10 (bit-identical
+// defaults): the bend only changes when the tuner (L3+R3 in game) adjusts
+// them. To bake a tuned look, paste the printed "PERSP FINAL" numbers over
+// the three initializers:
+//   ZOOM     300.0  -- column-height swing. Center column is ALWAYS full
+//                      height (754); edges are 754-ZOOM px. + = bulge
+//                      (fish-eye, edges squeeze in), 0 = dead flat pan,
+//                      - = pincushion (edges stretch OUT, concave look).
+//   CENTER_Y 355.0  -- vertical pivot the columns expand from (object
+//                      center: -22 + 754/2). Move up/down to bias where
+//                      the bend pinches.
+//   ARC      3.1415 -- sine arc span across the 1324-px object. Equals
+//                      Andos' truncated pi: edges reach sin=0 exactly.
+//                      Bigger (up to ~6.28) = sine dips negative at the
+//                      edges -> hard fisheye with collapsed corners;
+//                      smaller = gentler, flatter falloff.
+static f32 g_perspZoom    = PERSP_ZOOM;      // 300.0
+static f32 g_perspCenterY = PERSP_CENTER_Y;  // 355.0
+static f32 g_perspArc     = PERSP_PI;        // 3.1415
+
 // ------------------------------------------------------------
 //  Real animation frame tables (image handles from the game data)
 // ------------------------------------------------------------
@@ -157,9 +190,9 @@ static const int DOOR_L_OPEN[16]  = {102,101,100, 99, 98, 97, 96, 95, 94, 93, 92
 static const int DOOR_R_CLOSE[16] = {119,104,121,106,107,108,109,110,111,112,113,114,115,116,117,118};
 static const int DOOR_R_OPEN[16]  = {118,117,116,115,114,113,112,111,110,109,108,107,106,121,104,119};
 static const f32 DOOR_FRAME_T = 0.040f;
-// obj 44 "Active 3" anim 52: Foxy sprinting the west hall, 25 frames,
-// plays once (rep 1). foxyRunTimer ticks at 60 Hz -> 25 frames / 1.0 s.
-static const int FOXY_RUN[25] = {413,242,415,243,396,397,398,399,400,401,402,403,404,405,406,407,408,409,410,411,412,412,412,412,412};
+// Foxy sprint frames live in FOXY_RUN[33] below (Active 3 anim 51,
+// verified: 33 frames @ speed 65, backTo 31). The old 25-frame table
+// here was actually anim 52 (the kill) -- v2.7.12 fix.
 // obj 46 "Active 5": white flash while the tablet goes up (blip==1,
 // event group 16); one-shot, destroyed on end (group 17).
 static const int FLASH_SEQ[9] = {23,4,25,6,8,9,10,21,22};
@@ -210,16 +243,30 @@ static const f32 MUTECALL_ALPHA  = 205.0f / 255.0f;  // coeff 50
 // objects, so it only appears on Halloween
 static const int PUMPKIN_FRAMES[7] = { 628, 630, 631, 632, 633, 634, 635 };
 
-// Power-out dark office (Active 3 anim 56) and the full 33-frame flicker
-// sequence (anim 51: Freddy's face flashes closer each cycle)
+// Power-out office: anim 56 base (476) + anim 46 dark (304) /
+// anim 47 Freddy face lit (305). v2.7.11 used the 33-frame FOXY RUN
+// sequence (anim 51) here by mistake — see docs/AI_MECHANICS.md §9.
 static const int POWEROUT_OFFICE = 476;
-static const int FREDDY_FLICKER[33] = {
+static const int POWEROUT_DARK   = 304;   // anim 46
+static const int POWEROUT_LIT    = 305;   // anim 47 (Freddy face)
+
+// Foxy sprint down the West Hall — Active 3 anim 51 (33 frames,
+// speed 65 -> 39 FPS, backTo 31). Shown on the office view while
+// Foxy.foxyRunning (group 40 / events render note).
+static const int FOXY_RUN[33] = {
     241, 241, 241, 340, 244, 245, 246, 247, 248, 250, 280, 282, 283, 284, 285,
     286, 287, 288, 289, 290, 292, 302, 306, 327, 329, 330, 331, 332, 333, 334,
     335, 336, 337
 };
 
-// Jump scare sequences (Active 3 anims 65 / 52; single frames for B/C)
+// Jump scare sequences — REAL kill animations from Active 3 (handle 44),
+// verified from the original (docs/AI_MECHANICS.md §9):
+//   anim 35 Bonnie kill  11 frames @ speed 75 (45 FPS)
+//   anim 44 Chica kill   16 frames @ speed 99 (~60 FPS)
+//   anim 52 Foxy kill    25 frames @ speed 50 (30 FPS)
+//   anim 65 Freddy kill  31 frames @ speed 50 (30 FPS)
+// v2.7.11 and earlier mistakenly used the door-window poses (34/43,
+// single frames 225/227) for Bonnie/Chica and 25 FPS timing everywhere.
 static const int SCARE_FREDDY[31] = {
     519, 485, 521, 489, 490, 491, 493, 495, 496, 497, 498, 499, 500, 501,
     502, 503, 504, 505, 506, 507, 508, 509, 510, 511, 512, 513, 514, 515,
@@ -229,9 +276,17 @@ static const int SCARE_FOXY[25] = {
     413, 242, 415, 243, 396, 397, 398, 399, 400, 401, 402, 403, 404, 405,
     406, 407, 408, 409, 410, 411, 412, 412, 412, 412, 412
 };
-static const int SCARE_BONNIE = 225;   // Active 3 anim 34
-static const int SCARE_CHICA  = 227;   // Active 3 anim 43
-static const int GOLDEN_FREDDY= 571;   // Active 3 anim 75
+static const int SCARE_BONNIE_KILL[11] = {
+    301, 291, 303, 293, 294, 295, 296, 297, 298, 299, 300
+};
+static const int SCARE_CHICA_KILL[16] = {
+    279, 65, 281, 69, 216, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 239
+};
+// Door-window poses (anims 34/43) — shown by the office view when the
+// door light reveals Bonnie/Chica, NOT during the kill.
+static const int SCARE_BONNIE_WINDOW = 225;   // Active 3 anim 34
+static const int SCARE_CHICA_WINDOW  = 227;   // Active 3 anim 43
+static const int GOLDEN_FREDDY       = 571;   // Active 3 anim 75
 
 // IT'S ME hallucination flash (frame 3 object "Active 21" anim 0)
 static const int ITSME_FRAMES[4] = { 525, 543, 520, 544 };
@@ -485,12 +540,13 @@ void GameRender::DrawInstance(int imgHandle, float ix, float iy, u32 color, bool
 //   dest_y(fy) = 355 - h/2 + (fy + 22) * h / 754
 // ------------------------------------------------------------
 
-// PANORAMA column height at a screen-space x (exact original formula).
+// PANORAMA column height at a screen-space x (exact original formula;
+// v2.7.11 reads the three tuner knobs, defaults bit-identical).
 static f32 BentHeightAt(f32 screenX) {
     const f32 ci   = screenX - PERSP_OBJ_X;
-    const f32 step = (ci - PERSP_OBJ_W * 0.5f) / (PERSP_OBJ_W / PERSP_PI)
-                   + PERSP_PI * 0.5f;
-    f32 h = PERSP_OBJ_H + sinf(step) * PERSP_ZOOM - PERSP_ZOOM;
+    const f32 step = (ci - PERSP_OBJ_W * 0.5f) / (PERSP_OBJ_W / g_perspArc)
+                   + g_perspArc * 0.5f;
+    f32 h = PERSP_OBJ_H + sinf(step) * g_perspZoom - g_perspZoom;
     if (h < 1.0f) h = 1.0f;
     return h;
 }
@@ -532,15 +588,15 @@ void GameRender::DrawBentInstance(int imgHandle, float frameX, float frameY,
     int n = 0;
     f32 xp = xa;
     f32 hp = BentHeightAt(xp);
-    f32 ytp = PERSP_CENTER_Y - hp * 0.5f + topA * hp / PERSP_OBJ_H;
-    f32 ybp = PERSP_CENTER_Y - hp * 0.5f + botA * hp / PERSP_OBJ_H;
+    f32 ytp = g_perspCenterY - hp * 0.5f + topA * hp / PERSP_OBJ_H;
+    f32 ybp = g_perspCenterY - hp * 0.5f + botA * hp / PERSP_OBJ_H;
     f32 up = (xp + panX - fx0) / iw * u1;
 
     for (int k = 1; k < cols; ++k) {
         const f32 xk = (k == cols - 1) ? xb : xa + stepX * (f32)k;
         const f32 hk  = BentHeightAt(xk);
-        const f32 ytk = PERSP_CENTER_Y - hk * 0.5f + topA * hk / PERSP_OBJ_H;
-        const f32 ybk = PERSP_CENTER_Y - hk * 0.5f + botA * hk / PERSP_OBJ_H;
+        const f32 ytk = g_perspCenterY - hk * 0.5f + topA * hk / PERSP_OBJ_H;
+        const f32 ybk = g_perspCenterY - hk * 0.5f + botA * hk / PERSP_OBJ_H;
         const f32 uk  = (xk + panX - fx0) / iw * u1;
 
         if (n + 6 > kBentVertCap) break;
@@ -732,7 +788,8 @@ void GameRender::DrawSharedHud(const Game& game, bool phonePlaying) {
     {
         const PowerSystem& pw = game.GetPower();
         char num[16];
-        Snprintf(num, sizeof(num), "%d", (i32)(pw.GetPower() + 0.5f));
+        // v2.7.12: original truncates (999 tenths -> "99" at night start)
+        Snprintf(num, sizeof(num), "%d", (i32)(pw.GetPowerTenths() / 10));
         DrawStripText(STRIP_VAR14, 182.0f, 632.0f, num, 0xFFFFFFFF, 1.0f);
         const f32 dw = MeasureStripText(STRIP_VAR14, num, 1.0f);
         // img_208 "%" drawn directly: its data hotspot (-420,0) is a
@@ -824,8 +881,8 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
         const AnimatronicAI& ai = game.GetAI();
         const Animatronic& foxy = ai.GetAnimatronic(ANIM_FOXY);
         if (foxy.foxyRunning && !foxy.foxyAtDoor) {
-            int idx = foxy.foxyRunTimer * 5 / 12;  // 60 Hz -> 25 frames/1.0 s
-            if (idx > 24) idx = 24;
+            int idx = foxy.foxyRunTimer * 33 / 100;  // 60 Hz -> 33 frames / 1.67 s
+            if (idx > 32) idx = 32;
             bg = FOXY_RUN[idx];
         } else {
             const bool ll = doors.IsLightOn(DOOR_LEFT);
@@ -1100,18 +1157,37 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
 }
 
 // ------------------------------------------------------------
-//  Power out: dark office + the full 33-frame flicker sequence (anim 51)
+//  Power out: the real 4-phase sequence (groups 272-302):
+//   phase 0 dark office / phase 1 music box + face flicker
+//   (anim 47 lit @ 25%/0.5s else anim 46 dark) / phase 2 buzz
+//   blink / phase 3 total black.
 // ------------------------------------------------------------
 
 void GameRender::RenderPowerOut(const Game& game) {
     if (!m_batch) return;
     // v2.7.6: power-out office + flicker frames are layer 0 -> drawn flat,
     // then re-projected through the Perspective curve
-    DrawInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, true);
-    const int idx = (int)(game.GetPowerOutTimer() * 6.0f) % 33;
-    DrawInstance(FREDDY_FLICKER[idx], 0.0f, 0.0f, 0xFFFFFFFF, true);
-    DrawBentInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, m_panX);
-    DrawBentInstance(FREDDY_FLICKER[idx], 0.0f, 0.0f, 0xFFFFFFFF, m_panX);
+    const i32 poPhase = game.GetPowerOutPhase();
+
+    int flicker = POWEROUT_DARK;                 // anim 46 (dark office)
+    if (poPhase == 0) {
+        flicker = POWEROUT_DARK;
+    } else if (poPhase == 1) {
+        // face flicker: Game re-rolls 25% lit every 0.5 s (group 289)
+        flicker = game.IsFreddyFaceLit() ? POWEROUT_LIT : POWEROUT_DARK;
+    } else if (poPhase == 2) {
+        // buzz blink: office toggles on/off (alterable[7] Random(2)+1)
+        flicker = POWEROUT_DARK;
+    } else {
+        flicker = POWEROUT_DARK; // phase 3 handled below (no draw)
+    }
+
+    if (poPhase < 3 && (poPhase != 2 || game.IsPowerOutBlinkOn())) {
+        DrawInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, true);
+        DrawInstance(flicker, 0.0f, 0.0f, 0xFFFFFFFF, true);
+        DrawBentInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, m_panX);
+        DrawBentInstance(flicker, 0.0f, 0.0f, 0xFFFFFFFF, m_panX);
+    }
 
     // the HUD stays, power reads 0
     DrawInstance(IMG_POWER_LABEL, 106.0f, 638.0f, 0xFF9A9A9A, false);
@@ -1120,7 +1196,10 @@ void GameRender::RenderPowerOut(const Game& game) {
 }
 
 // ------------------------------------------------------------
-//  Jump scares — real frame sequences from Active 3 anims 65/52/34/43
+//  Jump scares — real kill animations from Active 3 (docs/AI_MECHANICS.md §9):
+//   Freddy anim 65 @30FPS, Foxy anim 52 @30FPS,
+//   Bonnie anim 35 @45FPS, Chica anim 44 @60FPS.
+//  The scare holds its last frame for the remainder of the state.
 // ------------------------------------------------------------
 
 void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
@@ -1133,15 +1212,23 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
 
     int frame = 0;
     if (anim == ANIM_FREDDY) {
-        const int i = (int)(elapsed * 25.0f);
-        frame = SCARE_FREDDY[i < 31 ? i : 30];
+        // anim 65: 31 frames @ 30 FPS (speed 50), repeat 1
+        const int i = (int)(elapsed * 30.0f) % 31;
+        frame = SCARE_FREDDY[i];
     } else if (anim == ANIM_FOXY) {
-        const int i = (int)(elapsed * 25.0f);
-        frame = SCARE_FOXY[i < 25 ? i : 24];
+        // anim 52: 25 frames @ 30 FPS (speed 50), repeat 1
+        const int i = (int)(elapsed * 30.0f) % 25;
+        frame = SCARE_FOXY[i];
     } else if (anim == ANIM_BONNIE) {
-        frame = SCARE_BONNIE;
+        // anim 35: 11 frames @ 45 FPS (speed 75), play once, hold last
+        int i = (int)(elapsed * 45.0f);
+        if (i > 10) i = 10;
+        frame = SCARE_BONNIE_KILL[i];
     } else {
-        frame = SCARE_CHICA;
+        // anim 44: 16 frames @ 60 FPS (speed 99), play once, hold last
+        int i = (int)(elapsed * 60.0f);
+        if (i > 15) i = 15;
+        frame = SCARE_CHICA_KILL[i];
     }
     // scare frames are 1600x720 room images on layer 0 -- v2.7.6: flat pass
     // + bent re-projection; the shake offsets shift the source window like
@@ -1282,6 +1369,94 @@ void GameRender::RenderSpriteBrowser(i32 page) {
         }
     }
     m_text->DrawText(16, 700, "DPAD left/right = page   A/B = exit", 0xFF808080);
+}
+
+// ------------------------------------------------------------
+//  v2.7.11 PERSPECTIVE TUNER -- live bulge/concavity knobs
+//  Knob 0 ZOOM:     edges are (754 - ZOOM) px tall, center always 754.
+//                   + = fish-eye bulge, - = pincushion (concave), 0 = flat.
+//  Knob 1 CENTER_Y: vertical pivot the columns expand from (default 355 =
+//                   object center). Shifts where the bend pinches.
+//  Knob 2 ARC:      sine span across the 1324-px object; 3.1415 = original
+//                   (edges reach sin=0). Bigger = harder edge squeeze.
+//  All steps are per DPad TAP (edges only in UpdateInput); A held = fast.
+// ------------------------------------------------------------
+
+static const f32 PERSP_TUNE_MIN[3]  = { -500.0f, 100.0f, 1.00f  };
+static const f32 PERSP_TUNE_MAX[3]  = {  500.0f, 640.0f, 6.00f  };
+static const f32 PERSP_TUNE_STEP[3] = {   10.0f,   2.0f, 0.05f  };
+static const f32 PERSP_TUNE_FAST[3] = {   50.0f,  10.0f, 0.25f  };
+
+static f32 PerspTunerGet(i32 knob) {
+    if (knob == 0) return g_perspZoom;
+    if (knob == 1) return g_perspCenterY;
+    return g_perspArc;
+}
+
+static void PerspTunerSet(i32 knob, f32 v) {
+    if (knob == 0) g_perspZoom = v;
+    else if (knob == 1) g_perspCenterY = v;
+    else g_perspArc = v;
+}
+
+void GameRender::PerspTunerAdjust(i32 knob, i32 dir, bool fast) {
+    if (knob < 0 || knob >= PERSP_TUNER_KNOBS || dir == 0) return;
+    f32 v = PerspTunerGet(knob)
+          + (fast ? PERSP_TUNE_FAST[knob] : PERSP_TUNE_STEP[knob])
+            * (f32)((dir > 0) ? 1 : -1);
+    if (v < PERSP_TUNE_MIN[knob]) v = PERSP_TUNE_MIN[knob];
+    if (v > PERSP_TUNE_MAX[knob]) v = PERSP_TUNE_MAX[knob];
+    PerspTunerSet(knob, v);
+}
+
+void GameRender::PerspTunerReset(i32 knob) {
+    if (knob < 0) {
+        g_perspZoom    = PERSP_ZOOM;
+        g_perspCenterY = PERSP_CENTER_Y;
+        g_perspArc     = PERSP_PI;
+        return;
+    }
+    PerspTunerSet(knob, PerspTunerDefault(knob));
+}
+
+f32 GameRender::PerspTunerValue(i32 knob) const {
+    if (knob == 0) return g_perspZoom;
+    if (knob == 1) return g_perspCenterY;
+    return g_perspArc;
+}
+
+f32 GameRender::PerspTunerDefault(i32 knob) const {
+    if (knob == 0) return PERSP_ZOOM;
+    if (knob == 1) return PERSP_CENTER_Y;
+    return PERSP_PI;
+}
+
+void GameRender::RenderPerspTuner(i32 sel) {
+    if (!m_text) return;
+    static const char* NAMES[3] = { "ZOOM", "CENTER_Y", "ARC" };
+    static const char* HINTS[3] = {
+        "+bulge  -pincushion  0 flat",
+        "vertical pivot of the bend",
+        "3.1415=orig  > harder edges"
+    };
+    m_text->DrawText(16, 10, "== PERSP TUNER (L3+R3 = exit) ==", 0xFFFFFF00);
+    for (int k = 0; k < PERSP_TUNER_KNOBS; ++k) {
+        char row[96];
+        if (k == 2) {
+            Snprintf(row, sizeof(row), "%s %s = %.4f  def %.4f  %s",
+                     (k == sel) ? "> " : "  ", NAMES[k],
+                     PerspTunerValue(k), PerspTunerDefault(k), HINTS[k]);
+        } else {
+            Snprintf(row, sizeof(row), "%s %s = %.1f  def %.1f  %s",
+                     (k == sel) ? "> " : "  ", NAMES[k],
+                     PerspTunerValue(k), PerspTunerDefault(k), HINTS[k]);
+        }
+        m_text->DrawText(16, 40 + k * 26, row,
+                         (k == sel) ? 0xFFFFFFFF : 0xFF9A9A9A);
+    }
+    m_text->DrawText(16, 126,
+        "DPad L/R = knob  Up/Dn = adjust  A = fast  Y = reset",
+        0xFF808080);
 }
 
 } // namespace fnaf

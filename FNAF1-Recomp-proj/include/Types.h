@@ -84,15 +84,17 @@ enum AnimatronicId {
 };
 
 // ============================================================
-//  Foxy's pirate cove stages
-//  Foxy has a unique 4-stage state machine.
+//  Foxy's cove stages
+//  Foxy has a unique 6-stage state machine (0-5).
 // ============================================================
 
 enum FoxyStage {
     FOXY_STAGE_0 = 0, // Behind curtain — curtain fully closed
-    FOXY_STAGE_1 = 1, // Peeking out — curtain partially open, one eye visible
+    FOXY_STAGE_1 = 1, // Peeking out — curtain partially open
     FOXY_STAGE_2 = 2, // Out of view — curtain wide open, Foxy gone from cove
-    FOXY_STAGE_3 = 3  // Running — Foxy is sprinting down the West Hall
+    FOXY_STAGE_3 = 3, // Lurking — gone from cove, approaching (25 s or on sight)
+    FOXY_STAGE_4 = 4, // Running — sprinting down the West Hall (1.67 s)
+    FOXY_STAGE_5 = 5  // At the left door — bangs or attacks
 };
 
 // ============================================================
@@ -126,32 +128,41 @@ enum DoorSide {
 // ============================================================
 
 namespace TimeConstants {
-    // Original game runs at approximately 60 FPS.
-    // One in-game "hour" lasts about 89 seconds of real time.
-    // Total night duration: 6 hours x 89s = 534 seconds (~8 min 54 sec).
-    
+    // Verified against the original event dump (docs/AI_MECHANICS.md):
+    // CF2.5 frameRate = 60, minute counter >= 90 -> hour++, 6 hours per night.
     static const f64 TICK_RATE           = 60.0;  // Logic updates per second
-    static const f64 HOUR_DURATION_SEC   = 89.0;  // Real seconds per in-game hour
-    static const f64 NIGHT_DURATION_SEC  = 6.0 * HOUR_DURATION_SEC; // 534s total
+    static const f64 HOUR_DURATION_SEC   = 90.0;  // Real seconds per in-game hour (group 264-265)
+    static const f64 NIGHT_DURATION_SEC  = 6.0 * HOUR_DURATION_SEC; // 540s total
     static const f64 TICK_INTERVAL_SEC   = 1.0 / TICK_RATE; // ~0.0167s per tick
     
-    // Movement opportunity occurs every ~5 seconds (300 frames at 60 FPS).
-    // This is the interval at which each animatronic gets a chance to move.
-    static const f64 MOVEMENT_INTERVAL_SEC  = 4.96;  // ~5 seconds
-    static const i32  MOVEMENT_INTERVAL_TICKS = 298;   // ~300 ticks
+    // Movement opportunities: each animatronic has its OWN interval
+    // (groups 188-191, Timer conditions 4970/4980/3020/5010 centiseconds).
+    static const f64 BONNIE_MOVE_INTERVAL_SEC = 4.97;
+    static const f64 CHICA_MOVE_INTERVAL_SEC  = 4.98;
+    static const f64 FREDDY_MOVE_INTERVAL_SEC = 3.02;
+    static const f64 FOXY_MOVE_INTERVAL_SEC   = 5.01;
     
-    // Power-out music box duration (randomized)
-    static const f64 POWER_OUT_MIN_SEC = 5.0;
-    static const f64 POWER_OUT_MAX_SEC = 20.0;
+    // Foxy timings (60 FPS frames, groups 316-320, 329, 313)
+    static const i32 FOXY_RUN_TICKS          = 100;   // stage 4 -> at door (group 317: >100)
+    static const i32 FOXY_LURK_TICKS         = 1500;  // stage 3 -> at door (group 320: >1500)
+    static const i32 FOXY_COOLDOWN_MIN_TICKS = 50;    // tablet cooldown (group 329)
+    static const i32 FOXY_COOLDOWN_RAND      = 1000;
+    
+    // Freddy: door kill chance 25%/s (group 406: Random(4)==1, Timer 1000)
+    static const i32 FREDDY_DOOR_KILL_DENOM = 4;
     
     // Night start title card duration
     static const f64 NIGHT_START_DISPLAY_SEC = 3.0;
     
-    // Jump scare duration
-    static const f64 JUMPSCARE_DURATION_SEC = 1.5;
-    
     // 6 AM celebration display duration
     static const f64 NIGHT_COMPLETE_DISPLAY_SEC = 5.0;
+    
+    // Power-out phase roll chances (groups 272/291/301: Random(5)+1==1)
+    static const i32 POWER_OUT_ROLL_DENOM = 5;
+    static const f64 POWER_OUT_PHASE_MAX_SEC = 20.0;
+    static const f64 POWER_OUT_PHASE_ROLL_SEC = 5.0;   // phases 0/1: roll every 5 s
+    static const f64 POWER_OUT_FINAL_ROLL_SEC = 2.0;   // phase 3: roll every 2 s
+    static const i32 POWER_OUT_BUZZ_TICKS = 20;        // phase 2 length (group 297/298)
 }
 
 // ============================================================
@@ -159,36 +170,17 @@ namespace TimeConstants {
 // ============================================================
 
 namespace PowerConstants {
-    // Power starts at 100% on all nights.
-    // Drain rate depends on the number of active systems.
-    // Each "usage bar" represents a different drain multiplier.
+    // Verified against the original (groups 175-177, 342-345, 324):
+    // "power left" is stored in TENTHS of a percent and starts at 999.
+    // Every 1 second: power -= usage, where usage = 1..5 (1 + monitor +
+    // 2 doors + 2 lights). Extra per-night drains: N2 -1/6s, N3 -1/5s,
+    // N4 -1/4s, N5+ -1/3s.
+    static const i32 POWER_START_TENTHS = 999;
     
-    // Base drain: 1 usage level (always active)
-    // Camera up: +1 usage
-    // Each door closed: +1 usage
-    // Each light on: +1 usage (lights drain very briefly while held)
-    
-    static const f32 BASE_DRAIN_RATE = 1.0f;  // 1 bar per base interval
-    
-    // Power drain per second at usage level 1 (base only, nothing else on)
-    // Calibrated so power lasts ~534 seconds at usage 1.
-    // Drain per second = 100% / (534 * usage_factor)
-    // At usage 1: 100/534 ≈ 0.187% per second
-    // At usage 2: 100/(534/2) ≈ 0.374% per second (drains twice as fast)
-    // At usage 5: drains 5x faster
-    
-    // The original game uses: power -= usage_level per tick (scaled)
-    // Total ticks at 60fps for full night: 534 * 60 = 32040 ticks
-    // Power percent = 100, so drain per tick at usage 1 = 100/32040 ≈ 0.00312%
-    
-    static const f32 TOTAL_NIGHT_TICKS = 32040.0f; // 534s * 60fps
-    static const f32 DRAIN_PER_TICK_USAGE1 = 100.0f / TOTAL_NIGHT_TICKS; // ~0.00312%
-    
-    // Foxy power drain when he bangs on a closed door
-    // First bang: 1%, second: 5%, third: 10%
-    static const f32 FOXY_DRAIN_1 = 1.0f;
-    static const f32 FOXY_DRAIN_2 = 5.0f;
-    static const f32 FOXY_DRAIN_3 = 10.0f;
+    // Foxy door bang: (10 + 50*bangCount) tenths = 1% + 5% per previous bang
+    // (group 324)
+    static const i32 FOXY_BANG_BASE_TENTHS  = 10;
+    static const i32 FOXY_BANG_SCALE_TENTHS = 50;
 }
 
 // ============================================================
@@ -196,23 +188,16 @@ namespace PowerConstants {
 // ============================================================
 
 namespace AIConstants {
-    // Each animatronic has an AI level from 0 to 20.
-    // On each movement opportunity, a random integer in [1, 20] is generated.
-    // If random <= AI_level, the animatronic moves.
-    // At AI 0, the animatronic never moves (0% chance).
-    // At AI 20, the animatronic always moves (100% chance).
-    // At AI 1,  1/20 = 5% chance to move.
-    // At AI 10, 10/20 = 50% chance to move.
-    
+    // Roll: Random(20)+1 <= AI level (groups 188-191).
     static const i32 AI_LEVEL_MIN = 0;
     static const i32 AI_LEVEL_MAX = 20;
-    static const i32 AI_ROLL_MAX  = 20; // Random roll range is [1, 20]
+    static const i32 AI_ROLL_MAX  = 20;
     
-    // Foxy-specific: how many movement opportunities of NOT being checked
-    // before Foxy advances a stage. Lower AI = more opportunities needed.
-    // At AI 1: Foxy needs ~10 unchecked opportunities to reach stage 1
-    // At AI 20: Foxy advances very quickly
-    static const i32 FOXY_STAGE_ADVANCE_BASE = 3; // Base opportunities needed at AI 20
+    // Freddy movement delay after a successful opportunity:
+    // counter must reach (1000 - AI*100) ticks with the monitor down
+    // (groups 397-398).
+    static const i32 FREDDY_DELAY_BASE = 1000;
+    static const i32 FREDDY_DELAY_PER_AI = 100;
 }
 
 // ============================================================
@@ -257,7 +242,7 @@ struct GameCallbacks {
     void (*onAnimatronicMove)(AnimatronicId animatronic, RoomId room);
     
     // Called when Foxy advances his pirate cove stage.
-    // Parameter: new stage (0-3).
+    // Parameter: new stage (0-5, see FoxyStage).
     void (*onFoxyStageChange)(FoxyStage stage);
     
     // Called when Foxy bangs on the left door.

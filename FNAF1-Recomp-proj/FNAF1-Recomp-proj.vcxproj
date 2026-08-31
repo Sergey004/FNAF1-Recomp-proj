@@ -121,9 +121,6 @@
       <RequireFullExperience>true</RequireFullExperience>
       <TitleID>0x464E4131</TitleID>
     </ImageXex>
-    <Deploy>
-      <DeploymentType>CopyToHardDrive</DeploymentType>
-    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='CodeAnalysis|Xbox 360'">
     <ClCompile>
@@ -149,9 +146,6 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
-    <Deploy>
-      <DeploymentType>CopyToHardDrive</DeploymentType>
-    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Profile|Xbox 360'">
     <ClCompile>
@@ -182,9 +176,6 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
-    <Deploy>
-      <DeploymentType>CopyToHardDrive</DeploymentType>
-    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Profile_FastCap|Xbox 360'">
     <ClCompile>
@@ -214,9 +205,6 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
-    <Deploy>
-      <DeploymentType>CopyToHardDrive</DeploymentType>
-    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Xbox 360'">
     <ClCompile>
@@ -247,9 +235,6 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
-    <Deploy>
-      <DeploymentType>CopyToHardDrive</DeploymentType>
-    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LTCG|Xbox 360'">
     <ClCompile>
@@ -278,9 +263,6 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
-    <Deploy>
-      <DeploymentType>CopyToHardDrive</DeploymentType>
-    </Deploy>
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="achievements.xml">

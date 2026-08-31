@@ -70,10 +70,20 @@ public:
     // Power-out state
     bool IsPowerOut() const;
     f32  GetPowerOutTimer() const;
-
+    
+    // Power-out sub-phase (docs/AI_MECHANICS.md §8):
+    // 0 = dark, 1 = music box + face flicker, 2 = buzz blink, 3 = black
+    i32  GetPowerOutPhase() const;
+    // Phase 1: is Freddy's lit face showing right now (25% re-roll / 0.5 s)
+    bool IsFreddyFaceLit() const;
+    // Phase 2: buzz blink — office visible for the whole 20 ticks or not
+    bool IsPowerOutBlinkOn() const;
+    
     // Jump scare info
     AnimatronicId GetJumpscareAnimatronic() const;
     bool HasJumpscareTriggered() const;
+    // How long the scare state lasts (anim + hold), per animatronic
+    f64  GetJumpscareDurationSec() const;
 
     // Set callbacks for platform integration
     void SetCallbacks(const GameCallbacks& cb);
@@ -98,13 +108,18 @@ private:
     const NightConfig* m_nightConfig;
     i32                m_lastAIHour; // Track last hour we applied AI changes
 
-    // Movement opportunity tracking
-    i32 m_ticksSinceLastMovement; // Ticks since last AI movement opportunity
-
+    // Movement opportunities are scheduled inside AnimatronicAI (own
+    // interval per animatronic) — no shared counter anymore.
+    
     // Power-out sub-state
     f32  m_powerOutTimer;       // Seconds since power went out
-    f32  m_powerOutDuration;    // Random duration before Freddy attacks
-    bool m_powerOutDurationSet;
+    i32  m_powerOutPhase;       // 0..3 (docs/AI_MECHANICS.md §8)
+    f64  m_powerOutPhaseTimer;  // Seconds in the current phase
+    f64  m_powerOutRollTimer;   // Sub-timer for the phase rolls
+    bool m_freddyFaceLit;       // Phase 1 flicker state
+    f64  m_faceLitTimer;        // 0.5 s re-roll accumulator
+    bool m_powerOutBlinkOn;     // Phase 2: office visible or hidden
+    bool m_musicBoxPlaying;     // callback bookkeeping
 
     // Night start display timer
     f32  m_nightStartTimer;
@@ -123,7 +138,7 @@ private:
     void ProcessJumpscare();
     void ProcessNightStart();
     void ProcessNightComplete();
-    void ApplyAIChangesForHour(i32 hour);
+    void ApplyHourDeltas(i32 hour);
 
     void NotifyTimeUpdate();
     void NotifyPowerUpdate();

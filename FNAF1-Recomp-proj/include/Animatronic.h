@@ -23,7 +23,7 @@ struct Animatronic {
     bool          active;        // Is this animatronic active this night?
     
     // Foxy-specific state (only used for ANIM_FOXY)
-    FoxyStage     foxyStage;     // 0-3: behind curtain → peeking → gone → running
+    FoxyStage     foxyStage;     // 0-5: curtain → peeking → gone → lurking → running → at door
     i32           foxyLookCount; // How many times player has checked Pirate Cove
     i32           foxyRunTimer;  // Ticks since Foxy started running (stage 3)
     bool          foxyRunning;   // Is Foxy currently running down the hall?

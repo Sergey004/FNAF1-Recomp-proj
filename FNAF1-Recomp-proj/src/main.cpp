@@ -290,7 +290,7 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
     else if(a==ANIM_FREDDY)           g_audio.Play(&g_pak, Snd::FREDDY_LAUGH_LONG, false, 0.9f);
 }
 void OnFoxyStageChange(FoxyStage s){
-    const char* t[]={"Curtain Closed","Peeking","Gone","RUNNING!"};
+    const char* t[]={"Curtain Closed","Peeking","Gone","Lurking","RUNNING!","AT DOOR!"};
     printf("[AI] Foxy: %s\n",t[s]);
     if(s==FOXY_STAGE_3){
         // group 39: Foxy run down the hall
@@ -333,6 +333,14 @@ static bool g_browserMode = false;
 static i32  g_browserPage = 0;
 static int  g_browserHold = 0;
 
+// v2.7.11: PERSPECTIVE TUNER -- L3+R3 toggles it in any state; while a
+// night is running it owns the pad (DPad select/adjust, A fast, Y reset)
+// and draws its HUD over the bent scene. On exit the current knob values
+// are printed to the log + debug console as "PERSP FINAL ..." so they can
+// be baked into GameRender.cpp.
+static bool g_tunerMode = false;
+static i32  g_tunerSel  = 0;
+
 static void TickBrowserEntry(const GameInput& gi) {
     if (gi.leftShoulderHeld && gi.rightShoulderHeld) {
         if (++g_browserHold >= 45) {
@@ -351,7 +359,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.7.10-camfix built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.7.12-aibrains built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     GameCallbacks cb; cb.onTimeUpdate=OnTimeUpdate; cb.onPowerUpdate=OnPowerUpdate;
@@ -365,7 +373,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.7.10-camfix (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.7.12-aibrains (%s %s)", __DATE__, __TIME__);
 
     // Try load pak from Xbox 360 canonical locations (game:\ is XEX directory;
     // e:\/hdd:\ are common on JTAG/RGH dashboards like FSD or Aurora)
@@ -439,6 +447,25 @@ int main(int argc, char* argv[]){
 
     while(true){
         GameInput gi; UpdateInput(gi);
+
+        // ---------------- PERSPECTIVE TUNER (v2.7.11) ----------------
+        // L3+R3 together toggles the tuner (works in every state -- the
+        // stick buttons are unused by the game itself). Exiting dumps the
+        // final knob values for baking.
+        if (gi.tunerToggle) {
+            g_tunerMode = !g_tunerMode;
+            if (g_tunerMode) {
+                g_debugConsole.Print("PERSP tuner ON: DPad sel/adj, A fast, Y reset, L3+R3 exit");
+            } else {
+                printf("PERSP FINAL: ZOOM=%.1f CENTER_Y=%.1f ARC=%.4f\n",
+                       g_render.PerspTunerValue(0), g_render.PerspTunerValue(1),
+                       g_render.PerspTunerValue(2));
+                g_debugConsole.Print("PERSP FINAL: ZOOM=%.1f CENTER_Y=%.1f ARC=%.4f",
+                       g_render.PerspTunerValue(0), g_render.PerspTunerValue(1),
+                       g_render.PerspTunerValue(2));
+            }
+        }
+
         g_render.SetLookDir(gi.lookDir);   // office pan window (v2.5)
         g_render.Tick(1.0f/60.0f);
         g_audio.Tick();
@@ -537,7 +564,20 @@ int main(int argc, char* argv[]){
         }
 
         // ---------------- GAMEPLAY INPUT ----------------
-        if(state==GAME_STATE_PLAYING){
+        if(state==GAME_STATE_PLAYING && g_tunerMode){
+            // v2.7.11: the tuner owns the pad while it is open. DPad edges
+            // (already debounced in UpdateInput) select/adjust the knobs;
+            // A = fast step; Y resets the selected knob to the serialized
+            // default. Gameplay input is swallowed until L3+R3 again.
+            if(gi.cameraLeft)  g_tunerSel = (g_tunerSel + fnaf::GameRender::PERSP_TUNER_KNOBS - 1)
+                                           % fnaf::GameRender::PERSP_TUNER_KNOBS;
+            if(gi.cameraRight) g_tunerSel = (g_tunerSel + 1)
+                                           % fnaf::GameRender::PERSP_TUNER_KNOBS;
+            if(gi.cameraUp)    g_render.PerspTunerAdjust(g_tunerSel, +1, gi.cameraToggle);
+            if(gi.cameraDown)  g_render.PerspTunerAdjust(g_tunerSel, -1, gi.cameraToggle);
+            if(gi.yToggle)     g_render.PerspTunerReset(g_tunerSel);
+        }
+        else if(state==GAME_STATE_PLAYING){
             if(gi.leftDoorToggle) game.ToggleDoor(DOOR_LEFT);
             if(gi.rightDoorToggle) game.ToggleDoor(DOOR_RIGHT);
             if(gi.leftLightToggle) game.ToggleLight(DOOR_LEFT);
@@ -594,6 +634,10 @@ int main(int argc, char* argv[]){
                 g_render.RenderCamera(game, s_phonePlaying);
             } else {
                 g_render.RenderOffice(game, s_phonePlaying);
+            }
+            // v2.7.11: tuner HUD on top of the bent scene (office/monitor)
+            if(g_tunerMode && state==GAME_STATE_PLAYING){
+                g_render.RenderPerspTuner(g_tunerSel);
             }
             FrameEnd();
         }

@@ -84,6 +84,22 @@ public:
     void RenderSpriteBrowser(i32 page);
     i32  SpriteBrowserPageCount() const;
 
+    // --- v2.7.11 PERSPECTIVE TUNER --------------------------------------
+    // Live-adjusts the clean-room PANORAMA bend (the "how curved is the
+    // office" question). Knobs: 0 = ZOOM (+ bulge / - pincushion / 0 flat),
+    // 1 = CENTER_Y (vertical pivot of the bend), 2 = ARC (edge falloff,
+    // serialized pi = 3.1415). Defaults are the EXACT serialized EDATA
+    // values, so the game renders bit-identical to v2.7.10 until the tuner
+    // (L3+R3 in game) touches them. On exit main.cpp prints "PERSP FINAL"
+    // to the log + debug console; paste those numbers over the PERSP_*
+    // constants in GameRender.cpp to bake a tuned look.
+    enum { PERSP_TUNER_KNOBS = 3 };
+    void PerspTunerAdjust(i32 knob, i32 dir, bool fast);
+    void PerspTunerReset(i32 knob);          // knob < 0 resets all three
+    f32  PerspTunerValue(i32 knob) const;
+    f32  PerspTunerDefault(i32 knob) const;
+    void RenderPerspTuner(i32 sel);          // HUD overlay (top-left)
+
     // Sprite-strip text (the game's real counter fonts from the pak)
     void DrawStripText(const struct SpriteStrip& strip, float x, float y,
                        const char* text, u32 color, float scale = 1.0f);
