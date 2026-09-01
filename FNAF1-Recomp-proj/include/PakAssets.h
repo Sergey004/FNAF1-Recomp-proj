@@ -159,6 +159,10 @@ enum PakImg {
     IMG_GAMEOVER_BG    = 358,  // game over backdrop (backstage room)
     IMG_END_DEMO       = 576,  // "Thanks for playing the demo!" 426x224
 
+    // --- v2.7.13 night flow ---
+    IMG_GAMEOVER_TX    = 471,  // "Game Over" caption 206x27 (frame "gameover")
+    IMG_INTRO_AD       = 574,  // "HELP WANTED" newspaper 1280x720 (frame "ad")
+
     IMG_GOLDEN_FREDDY  = 573,  // Golden Freddy slumped in office 541x521
     IMG_LOADING_SPIN   = 482,  // loading spinner 40x40
     IMG_CUST_ARROW_R   = 541,  // customize ">" arrow 34x52

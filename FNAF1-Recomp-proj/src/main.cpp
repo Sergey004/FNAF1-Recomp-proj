@@ -16,6 +16,7 @@
 #include "fnaf.h"
 #include "DebugConsole.h"
 #include "MenuSystem.h"
+#include "Progress.h"     // v2.7.13: persistent night-flow progress
 #include "SpriteBatch.h"
 #include "PakLoader.h"
 #include "InputSystem.h"
@@ -136,6 +137,7 @@ static u32 ColorForState(GameState state, f32 power) {
     switch (state) {
         case GAME_STATE_MENU: return D3DCOLOR_XRGB(10, 10, 10);
         case GAME_STATE_DISCLAIMER: return D3DCOLOR_XRGB(0, 0, 0);
+        case GAME_STATE_INTRO_AD:   return D3DCOLOR_XRGB(0, 0, 0);   // v2.7.13
         case GAME_STATE_NIGHT_START: return D3DCOLOR_XRGB(5, 5, 20);
         case GAME_STATE_PLAYING: { BYTE g = (BYTE)((power/100.0f)*30.0f); return D3DCOLOR_XRGB(5, 5+g, 20); }
         case GAME_STATE_POWER_OUT: return D3DCOLOR_XRGB(2, 2, 4);
@@ -215,6 +217,17 @@ static f32  s_lastPower=-1.0f;
 static bool s_phonePlaying = false;   // voiceover active (for MUTE CALL blink)
 static bool s_phoneMuted = false;     // player muted the call
 
+// v2.7.13: persistent progress (fnaf_save.bin next to the XEX) + the
+// title-menu refresh (Continue target, unlock caps, stars) built from it.
+static GameProgress g_prog;
+static void RefreshMenuFromProgress(MenuSystem& menu) {
+    Progress::Load(g_prog);
+    i32 un = g_prog.nextNight;           if (un < 1) un = 1;       if (un > 7) un = 7;
+    i32 lastDone = g_prog.nextNight - 1; if (lastDone < 0) lastDone = 0; if (lastDone > 7) lastDone = 7;
+    menu.Init(un, lastDone);
+    menu.SetHasSave(lastDone > 0);
+}
+
 void OnTimeUpdate(i32 hour){
     if(hour!=s_lastHour){
         s_lastHour=hour;
@@ -255,9 +268,18 @@ void OnMusicBoxStop(){
 void OnNightComplete(i32 night){
     printf("\n6 AM -- Night %d Complete!\n",night);
     g_audio.StopAll();
-    // 6 AM chime + cheering kids (frame "the end" ambience)
+    // chimes start immediately (frame "next day" group 1); the kids cheer
+    // fires on the roll-landing edge in main (v2.7.13)
     g_audio.Play(&g_pak, Snd::CHIMES, false, 1.0f);
-    g_audio.Play(&g_pak, Snd::CROWD_KIDS, false, 0.8f);
+    // nights 5/6/7: paycheck/overtime/pink slip hold under the music box
+    if(night>=5) g_audio.Play(&g_pak, Snd::CIRCUS, true, 0.85f);
+    // v2.7.13: persist progress (original Ini: level / beatgame / beat6 / beat7)
+    Progress::Load(g_prog);
+    g_prog.nextNight = (night<7)?(night+1):7;
+    if(night>=5) g_prog.beat5 = true;
+    if(night>=6) g_prog.beat6 = true;
+    if(night>=7) g_prog.beat7 = true;
+    Progress::Save(g_prog);
 }
 void OnGameOver(){
     printf("--- GAME OVER ---\n");
@@ -359,7 +381,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.7.12-aibrains built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.7.13-nightflow built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     GameCallbacks cb; cb.onTimeUpdate=OnTimeUpdate; cb.onPowerUpdate=OnPowerUpdate;
@@ -373,7 +395,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.7.12-aibrains (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.7.13-nightflow (%s %s)", __DATE__, __TIME__);
 
     // Try load pak from Xbox 360 canonical locations (game:\ is XEX directory;
     // e:\/hdd:\ are common on JTAG/RGH dashboards like FSD or Aurora)
@@ -427,8 +449,8 @@ int main(int argc, char* argv[]){
     g_audio.Init();
     g_render.Init(&g_batch,&g_text,&g_pak);
 
-    MenuSystem menu; menu.Init(1,0);
-    menu.SetUnlockedNight(1); menu.SetHasSave(false);
+    MenuSystem menu;
+    RefreshMenuFromProgress(menu);   // v2.7.13: boot from fnaf_save.bin
 
     // Boot: disclaimer first (original title-frame String obj 0 flow)
     GameState state = GAME_STATE_DISCLAIMER;
@@ -520,7 +542,7 @@ int main(int argc, char* argv[]){
             MenuAction act=menu.Update(mi);
             if(act!=MENU_ACTION_NONE){ g_audio.Play(&g_pak,Snd::BLIP,false,0.8f); }
             if(FrameBegin(D3DCOLOR_XRGB(0,0,0))){
-                g_render.RenderTitle(menu, menu.HasSave(), menu.HasSave()?1:0);
+                g_render.RenderTitle(menu, menu.HasSave(), Progress::StarCount(g_prog));   // v2.7.13
                 if(menu.GetScreen()!=MENU_MAIN) menu.Render(&g_text, SCREEN_W, SCREEN_H);
                 FrameEnd();
             }
@@ -529,12 +551,34 @@ int main(int argc, char* argv[]){
                 g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
                 game.Init(night);
                 s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
-                state=GAME_STATE_NIGHT_START; tickCount=0; accumulator=0; menuFrameCounter=0;
+                tickCount=0; accumulator=0; menuFrameCounter=0;
+                // v2.7.13: New Game shows the "HELP WANTED" newspaper first
+                state = menu.LastStartWasNewGame() ? GAME_STATE_INTRO_AD
+                                                   : GAME_STATE_NIGHT_START;
             }
             else if(act==MENU_ACTION_EXIT) break;
             Sleep(16); tickCount++; continue;
         } else {
             menuFrameCounter = 0;
+        }
+
+        // ---------------- INTRO AD ("HELP WANTED", v2.7.13) ----------------
+        // New Game only: the newspaper (frame "ad", img_574) holds ~8 s,
+        // any button skips, then the night-1 card.
+        if(state==GAME_STATE_INTRO_AD){
+            ++menuFrameCounter;
+            const bool adLock = menuFrameCounter < 30;   // skip boot bounce
+            if(FrameBegin(D3DCOLOR_XRGB(0,0,0))){
+                g_render.RenderIntroAd(!adLock && (((menuFrameCounter/30)%2)==0));
+                FrameEnd();
+            }
+            const bool adTimeout = menuFrameCounter > 480;   // ~8 s
+            const bool adSkip = !adLock &&
+                (gi.cameraToggle||gi.pause||gi.back||gi.cameraUp||gi.cameraDown);
+            if(adTimeout || adSkip){
+                state=GAME_STATE_NIGHT_START; tickCount=0; accumulator=0;
+            }
+            Sleep(16); tickCount++; continue;
         }
 
         // ---------------- NIGHT START (title card + phone) ----------------
@@ -627,9 +671,15 @@ int main(int argc, char* argv[]){
             } else if(state==GAME_STATE_POWER_OUT){
                 g_render.RenderPowerOut(game);
             } else if(state==GAME_STATE_NIGHT_COMPLETE){
-                g_render.RenderNightComplete(game.GetCurrentNight());
+                // v2.7.13: elapsed drives the data "6" roll (nights 1-4)
+                g_render.RenderNightComplete(game.GetCurrentNight(), endFrames/60.0f);
             } else if(state==GAME_STATE_GAME_OVER){
-                g_render.RenderGameOver();
+                if(endFrames<96){
+                    // v2.7.13: "died" static burst (1.6 s) before the backroom
+                    g_render.DrawStaticOverlay(1.0f);
+                } else {
+                    g_render.RenderGameOver();
+                }
             } else if(game.GetCameras().IsMonitorUp()){
                 g_render.RenderCamera(game, s_phonePlaying);
             } else {
@@ -649,15 +699,34 @@ int main(int argc, char* argv[]){
         }
 
         if(state==GAME_STATE_NIGHT_COMPLETE || state==GAME_STATE_GAME_OVER){
-            // hold the screen ~3 s, then back to the title menu
+            // v2.7.13 night-flow routing (frames "next day" / "the end")
             ++endFrames;
-            if(endFrames>180){
+            // kids cheer when the "6" lands on the clock (~1 s, nights 1-4)
+            if(state==GAME_STATE_NIGHT_COMPLETE && endFrames==60 && game.GetCurrentNight()<5){
+                g_audio.Play(&g_pak,Snd::CROWD_KIDS,false,0.8f);
+            }
+            const f32  holdSec = (f32)endFrames / 60.0f;
+            const bool skipEnd = endFrames>45 &&
+                (gi.cameraToggle||gi.pause||gi.back||gi.cameraUp||gi.cameraDown);
+            bool done=false;
+            if(state==GAME_STATE_NIGHT_COMPLETE){
+                const i32 c = game.GetCurrentNight();
+                if(c<5) done = (holdSec >= (f32)TimeConstants::NIGHT_COMPLETE_DISPLAY_SEC) || skipEnd;
+                else    done = (holdSec >= 12.0f) || skipEnd;  // paycheck/overtime/pink slip
+            } else {
+                done = (holdSec >= 7.6f) || skipEnd;           // 1.6 static + 6.0 backroom
+            }
+            if(done){
                 endFrames=0;
-                if(state==GAME_STATE_NIGHT_COMPLETE){
-                    i32 c=game.GetCurrentNight();
-                    if(c>=1&&c<7){ menu.SetUnlockedNight(c+1); menu.SetHasSave(true); }
+                if(state==GAME_STATE_NIGHT_COMPLETE && game.GetCurrentNight()<5){
+                    // nights 1-4: straight into the next night card
+                    game.Init(game.GetCurrentNight()+1);
+                    s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
+                    state=GAME_STATE_NIGHT_START; tickCount=0; accumulator=0;
+                    continue;
                 }
                 g_audio.StopAll();
+                RefreshMenuFromProgress(menu);   // unlocks + stars from the save
                 state=GAME_STATE_MENU; menu.Reset(); tickCount=0; accumulator=0;
                 g_audio.Play(&g_pak,Snd::STATIC2,true,0.5f);
                 g_audio.Play(&g_pak,Snd::DARKNESS_MUSIC,true,0.6f);

@@ -18,6 +18,7 @@ MenuSystem::MenuSystem()
     , m_unlockedNight(1)
     , m_lastCompletedNight(0)
     , m_hasSave(false)
+    , m_lastStartWasNewGame(false)
 {
 }
 
@@ -32,6 +33,7 @@ void MenuSystem::Init(i32 unlockedNight, i32 lastCompletedNight)
     m_mainSelection = 0;
     m_nightSelection = 1;
     m_selectedNight = 1;
+    m_lastStartWasNewGame = false;
 }
 
 void MenuSystem::Reset()
@@ -39,6 +41,7 @@ void MenuSystem::Reset()
     m_screen = MENU_MAIN;
     m_mainSelection = 0;
     m_nightSelection = 1;
+    m_lastStartWasNewGame = false;
 }
 
 const char* MenuSystem::GetMainOptionLabel(int idx) const
@@ -88,9 +91,11 @@ MenuAction MenuSystem::Update(const MenuInput& in)
             switch (m_mainSelection) {
                 case MENU_OPT_NEW_GAME:
                     m_selectedNight = 1;
+                    m_lastStartWasNewGame = true;   // v2.7.13: show the "ad"
                     return MENU_ACTION_START_NIGHT;
                 case MENU_OPT_CONTINUE:
                     if (m_hasSave) {
+                        m_lastStartWasNewGame = false;   // v2.7.13
                         // continue from next night
                         m_selectedNight = m_lastCompletedNight + 1;
                         if (m_selectedNight > 7) m_selectedNight = 7;
@@ -123,6 +128,7 @@ MenuAction MenuSystem::Update(const MenuInput& in)
 
         if (in.confirm) {
             m_selectedNight = m_nightSelection;
+            m_lastStartWasNewGame = false;   // v2.7.13: direct jump, no "ad"
             return MENU_ACTION_START_NIGHT;
         }
         if (in.back) {

@@ -81,6 +81,8 @@ public:
     void SetHasSave(bool has) { m_hasSave = has; }
     i32  GetUnlockedNight() const { return m_unlockedNight; }
     bool HasSave() const { return m_hasSave; }
+    // v2.7.13: true when the last START_NIGHT came from "New Game"
+    bool LastStartWasNewGame() const { return m_lastStartWasNewGame; }
 
 private:
     MenuScreen m_screen;
@@ -90,6 +92,7 @@ private:
     i32 m_unlockedNight;      // max selectable night (1..7)
     i32 m_lastCompletedNight;
     bool m_hasSave;
+    bool m_lastStartWasNewGame;   // v2.7.13: last START_NIGHT was "New Game" 
 
     // Helpers
     void MoveMainSelection(int dir);

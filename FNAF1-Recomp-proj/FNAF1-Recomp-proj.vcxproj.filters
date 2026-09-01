@@ -27,6 +27,12 @@
     <Filter Include="achievements_pics">
       <UniqueIdentifier>{3bbf909d-ff11-4b3d-9cd0-81b491ee9898}</UniqueIdentifier>
     </Filter>
+    <ClInclude Include="include\font_atlas.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Progress.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="achievements.xml" />
@@ -167,6 +173,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\TextRenderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Progress.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

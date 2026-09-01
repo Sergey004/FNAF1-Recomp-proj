@@ -96,6 +96,11 @@ const RoomInfo& RoomSystem::GetRoomInfo(RoomId room) {
             return s_rooms[i];
         }
     }
+    if (s_roomCount <= 0) {
+        // v2.7.13: deterministic fallback (also silences PREfast C6385)
+        static const RoomInfo kFallback = { ROOM_NONE, "None", CAM_OFF };
+        return kFallback;
+    }
     return s_rooms[s_roomCount - 1]; // ROOM_NONE fallback
 }
 

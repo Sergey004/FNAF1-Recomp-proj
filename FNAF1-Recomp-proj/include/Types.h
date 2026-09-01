@@ -110,7 +110,8 @@ enum GameState {
     GAME_STATE_NIGHT_COMPLETE= 5, // "6 AM" victory screen
     GAME_STATE_GAME_OVER     = 6, // "Game Over" screen
     GAME_STATE_STATIC        = 7, // Camera static / transition
-    GAME_STATE_DISCLAIMER    = 8  // Boot warning screen (title frame String obj 0)
+    GAME_STATE_DISCLAIMER    = 8, // Boot warning screen (title frame String obj 0)
+    GAME_STATE_INTRO_AD      = 9  // v2.7.13 "HELP WANTED" newspaper (frame "ad", New Game)
 };
 
 // ============================================================

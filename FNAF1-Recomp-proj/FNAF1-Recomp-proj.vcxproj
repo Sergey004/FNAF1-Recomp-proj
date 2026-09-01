@@ -80,21 +80,27 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Xbox 360'">
     <LinkIncremental>true</LinkIncremental>
+    <ImageXexOutput>$(OutDir)default.xex</ImageXexOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='CodeAnalysis|Xbox 360'">
     <LinkIncremental>true</LinkIncremental>
+    <ImageXexOutput>$(OutDir)default.xex</ImageXexOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Profile|Xbox 360'">
     <LinkIncremental>false</LinkIncremental>
+    <ImageXexOutput>$(OutDir)default.xex</ImageXexOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Profile_FastCap|Xbox 360'">
     <LinkIncremental>false</LinkIncremental>
+    <ImageXexOutput>$(OutDir)default.xex</ImageXexOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Xbox 360'">
     <LinkIncremental>false</LinkIncremental>
+    <ImageXexOutput>$(OutDir)default.xex</ImageXexOutput>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_LTCG|Xbox 360'">
     <LinkIncremental>false</LinkIncremental>
+    <ImageXexOutput>$(OutDir)default.xex</ImageXexOutput>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Xbox 360'">
     <ClCompile>
@@ -121,6 +127,9 @@
       <RequireFullExperience>true</RequireFullExperience>
       <TitleID>0x464E4131</TitleID>
     </ImageXex>
+    <Deploy>
+      <DeploymentType>CopyToHardDrive</DeploymentType>
+    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='CodeAnalysis|Xbox 360'">
     <ClCompile>
@@ -146,6 +155,9 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
+    <Deploy>
+      <DeploymentType>CopyToHardDrive</DeploymentType>
+    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Profile|Xbox 360'">
     <ClCompile>
@@ -176,6 +188,9 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
+    <Deploy>
+      <DeploymentType>CopyToHardDrive</DeploymentType>
+    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Profile_FastCap|Xbox 360'">
     <ClCompile>
@@ -205,6 +220,9 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
+    <Deploy>
+      <DeploymentType>CopyToHardDrive</DeploymentType>
+    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Xbox 360'">
     <ClCompile>
@@ -235,6 +253,9 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
+    <Deploy>
+      <DeploymentType>CopyToHardDrive</DeploymentType>
+    </Deploy>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release_LTCG|Xbox 360'">
     <ClCompile>
@@ -263,6 +284,9 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
     </ImageXex>
+    <Deploy>
+      <DeploymentType>CopyToHardDrive</DeploymentType>
+    </Deploy>
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="achievements.xml">
@@ -289,6 +313,7 @@
     <ClInclude Include="include\DebugConsole.h" />
     <ClInclude Include="include\DoorSystem.h" />
     <ClInclude Include="include\fnaf.h" />
+    <ClInclude Include="include\font_atlas.h" />
     <ClInclude Include="include\Game.h" />
     <ClInclude Include="include\GameRender.h" />
     <ClInclude Include="include\PakAssets.h" />
@@ -298,6 +323,7 @@
     <ClInclude Include="include\NightConfig.h" />
     <ClInclude Include="include\PakLoader.h" />
     <ClInclude Include="include\PowerSystem.h" />
+    <ClInclude Include="include\Progress.h" />
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\SpriteBatch.h" />
     <ClInclude Include="include\TextRenderer.h" />
@@ -319,6 +345,7 @@
     <ClCompile Include="src\NightConfig.cpp" />
     <ClCompile Include="src\PakLoader.cpp" />
     <ClCompile Include="src\PowerSystem.cpp" />
+    <ClCompile Include="src\Progress.cpp" />
     <ClCompile Include="src\Room.cpp" />
     <ClCompile Include="src\SpriteBatch.cpp" />
     <ClCompile Include="src\TextRenderer.cpp" />

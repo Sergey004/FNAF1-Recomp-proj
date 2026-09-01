@@ -51,6 +51,10 @@ public:
     // screen (title frame, String obj 0, shown centered by boot events).
     void RenderDisclaimer(bool blinkOn);
 
+    // v2.7.13: "HELP WANTED" newspaper (frame "ad", img_574 full screen).
+    // New Game intro; any button skips, ~8 s timeout in main.
+    void RenderIntroAd(bool blinkOn);
+
     // Full title menu, drawn with the original button art and static overlay
     void RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars);
 
@@ -69,8 +73,9 @@ public:
     // Full-screen jump scare sequence per animatronic (real anim frames)
     void RenderJumpscare(AnimatronicId anim, f32 elapsed);
 
-    // 6 AM win screen
-    void RenderNightComplete(i32 night);
+    // 6 AM win screen (elapsed >= 0 enables the data "6"-roll animation
+    // for nights 1-4; elapsed < 0 keeps the static v2.7.12 look)
+    void RenderNightComplete(i32 night, f32 elapsed = -1.0f);
 
     // Static + GAME OVER
     void RenderGameOver();

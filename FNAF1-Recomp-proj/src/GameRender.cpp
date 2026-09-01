@@ -1251,7 +1251,7 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
 //  paycheck / overtime / termination images ("the end" frames).
 // ------------------------------------------------------------
 
-void GameRender::RenderNightComplete(i32 night) {
+void GameRender::RenderNightComplete(i32 night, f32 elapsed) {
     if (!m_batch) return;
     if (night >= 7) {
         DrawFrame(IMG_END_NIGHT7, 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
@@ -1260,17 +1260,34 @@ void GameRender::RenderNightComplete(i32 night) {
     } else if (night == 5) {
         DrawFrame(IMG_END_NIGHT5, 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
     } else {
-        // "6 AM" from the real digit images (lower row of the flip)
-        DrawInstance(IMG_DIGIT_6, 548.0f, 408.0f, 0xFFFFFFFF, false);
-        DrawInstance(IMG_AM_BIG, 640.0f, 406.0f, 0xFFFFFFFF, false);
+        // v2.7.13: "next day" pixel clock with the data roll -- the "6"
+        // slides y 408 -> 298 over ~1 s, covering the parked "5" (544,298);
+        // "AM" sits at (640,296) the whole time (dump coordinates).
+        const f32 t  = (elapsed < 0.0f) ? 1.0f : (elapsed >= 1.0f ? 1.0f : elapsed);
+        const f32 y6 = 408.0f + (298.0f - 408.0f) * t;
+        if (t < 1.0f) DrawInstance(IMG_DIGIT_5, 544.0f, 298.0f, 0xFFFFFFFF, false);
+        DrawInstance(IMG_AM_BIG, 640.0f, 296.0f, 0xFFFFFFFF, false);
+        DrawInstance(IMG_DIGIT_6, 548.0f, y6, 0xFFFFFFFF, false);
     }
     // v2.7.5: no static. The original "next day" frame holds ONLY the
     // 5/AM/6 digit images + AI counters -- zero noise objects (dump verdict).
 }
 
+// v2.7.13: "HELP WANTED" newspaper (frame "ad", img_574 full screen).
+void GameRender::RenderIntroAd(bool blinkOn) {
+    if (!m_batch || !m_text) return;
+    DrawFrame(IMG_INTRO_AD, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+    if (blinkOn) {
+        m_text->DrawTextCenteredXY((i32)(SCREEN_W * 0.5f), (i32)(SCREEN_H - 60.0f),
+                                   "PRESS  A", 0xFFB0B0B0);
+    }
+}
+
 void GameRender::RenderGameOver() {
     if (!m_batch) return;
     DrawFrame(IMG_GAMEOVER_BG, 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+    // v2.7.13: "Game Over" caption img_471 (206x27) from the gameover frame
+    DrawFrame(IMG_GAMEOVER_TX, (SCREEN_W - 206.0f) * 0.5f, 300.0f, 206.0f, 27.0f, 0xFFFFFFFF);
     // v2.7.5: no static. The original "gameover" frame = backdrop img_358 +
     // img_471 + parked Text/counter -- no noise objects at all. (The LOUD
     // noise burst is the separate "died" frame -- static + opaque blip
