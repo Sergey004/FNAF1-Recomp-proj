@@ -1,6 +1,6 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
- * Progress.h: persistent night-flow progress (v2.10)
+ * Progress.h: persistent night-flow progress (v2.11)
  *
  * Replaces the old in-memory "SetUnlockedNight" placeholder. Mirrors the
  * original game's Ini object (frame title groups 30-43 / "next day"
@@ -10,9 +10,13 @@
  *   beat6   — Night 6 cleared  -> title star 2 + "custom night" button
  *   beat7   — Night 7 (custom) cleared -> title star 3
  *
- * Storage: a tiny little-endian binary file written next to the XEX
- * ("game:\\fnaf_save.bin" and the usual JTAG/RGH fallback drives). Plain
- * CRT fopen/fwrite — no XContent/STFS plumbing needed on RGH dashboards.
+ * Storage: INI file via XContent on Xbox 360, [freddy] section
+ *   level=...
+ *   beatgame=...
+ *   beat6=...
+ *   beat7=...
+ * File name: fnaf_save.ini
+ * On PC development builds, fallback to fopen in same INI format.
  */
 
 #ifndef FNAF_PROGRESS_H
@@ -29,6 +33,7 @@ struct GameProgress {
     bool beat5;       // Night 5 complete  (star 1 + 6th night button)
     bool beat6;       // Night 6 complete  (star 2 + custom night button)
     bool beat7;       // Night 7 complete  (star 3)
+    i32 lives;        // original Ini "lives" value, persisted per save
     u32 checksum;     // sum of everything above (xor 0x5A5A5A5A)
 };
 
@@ -39,6 +44,10 @@ public:
 
     // Try every canonical location; true if a valid save was read into p.
     static bool Load(GameProgress& p);
+
+    // Set storage root prefix (e.g. "hdd:\\", "game:\\") used by Save/Load.
+    // Empty string resets to default multi-path search.
+    static void SetStoragePrefix(const char* prefix);
 
     // Write to the first writable location. True on success.
     static bool Save(const GameProgress& p);

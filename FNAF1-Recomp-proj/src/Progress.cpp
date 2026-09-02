@@ -1,6 +1,6 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
- * Progress.cpp: save/load of the night-flow progress (v2.10)
+ * Progress.cpp: save/load of the night-flow progress (v2.11)
  *
  * Data provenance (original events):
  *  - "next day" groups 12/13 set Ini "beat6"/"beat7" when the 6 AM screen
@@ -9,17 +9,76 @@
  *    Night-5 paycheck shows.
  *  - title groups 33/34/35/36: New Game starts "night number" 1, Continue
  *    starts Ini("level"), 6th night -> 6, custom -> 7.
+ *
+ * Storage: XContent INI file fnaf_save.ini with [freddy] section.
+ * PC fallback uses fopen with same INI format.
  */
 
 #include "Progress.h"
 #include <cstdio>
 #include <cstring>
 #include <cstddef>   // offsetof
+#include <xtl.h>
+#include "XdkCompat.h"
 
 namespace fnaf {
 
 static const u32 PROGRESS_MAGIC   = 0x31464E46u;  // 'FNF1' little-endian
 static const u32 PROGRESS_VERSION = 1;
+
+static char s_storagePrefix[64] = "";
+
+#ifdef _XBOX
+static const char* kXContentRoot = "fnaf_save";
+static const char* kXContentFile = "fnaf_save.ini";
+static const WCHAR kXContentDisplayName[] = L"Five Nights at Freddy's 1 Save";
+static XCONTENTDEVICEID g_saveDevice = XCONTENTDEVICE_ANY;
+static bool g_deviceChosen = false;
+#endif
+
+#ifdef _XBOX
+static bool XContentMount(bool create)
+{
+    if (!g_deviceChosen) {
+        ULARGE_INTEGER bytesRequested;
+        bytesRequested.QuadPart = XContentCalculateSize(64 * 1024, 1);
+        DWORD dwFlags = XCONTENTFLAG_NONE;
+        XCONTENTDEVICEID deviceID = XCONTENTDEVICE_ANY;
+        DWORD res = XShowDeviceSelectorUI(0, XCONTENTTYPE_SAVEDGAME, dwFlags, bytesRequested, &deviceID, NULL);
+        if (res != ERROR_IO_PENDING && res != ERROR_SUCCESS) {
+            return false;
+        }
+        g_saveDevice = deviceID;
+        g_deviceChosen = true;
+    }
+
+    XCONTENT_DATA content;
+    memset(&content, 0, sizeof(content));
+    content.DeviceID = g_saveDevice;
+    content.dwContentType = XCONTENTTYPE_SAVEDGAME;
+    wcscpy(content.szDisplayName, kXContentDisplayName);
+    strncpy(content.szFileName, kXContentFile, XCONTENT_MAX_FILENAME_LENGTH - 1);
+
+    DWORD dwContentFlags;
+    if (create) {
+        dwContentFlags = XCONTENTFLAG_CREATEALWAYS;
+    } else {
+        dwContentFlags = XCONTENTFLAG_OPENEXISTING;
+    }
+
+    DWORD dwDisposition = 0;
+    ULARGE_INTEGER uliSize;
+    uliSize.QuadPart = XContentCalculateSize(64 * 1024, 1);
+    DWORD res = XContentCreateEx(0, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
+    return res == ERROR_SUCCESS;
+}
+#endif
+
+void Progress::SetStoragePrefix(const char* prefix){
+    if(!prefix) { s_storagePrefix[0] = '\0'; return; }
+    strncpy(s_storagePrefix, prefix, sizeof(s_storagePrefix)-1);
+    s_storagePrefix[sizeof(s_storagePrefix)-1] = '\0';
+}
 
 void Progress::Reset(GameProgress& p) {
     memset(&p, 0, sizeof(p));
@@ -29,6 +88,7 @@ void Progress::Reset(GameProgress& p) {
     p.beat5     = false;
     p.beat6     = false;
     p.beat7     = false;
+    p.lives    = 0;
     p.checksum  = 0;
 }
 
@@ -40,57 +100,191 @@ static u32 ComputeChecksum(const GameProgress& p) {
     return sum ^ 0x5A5A5A5Au;
 }
 
-// Same canonical locations the pak loader probes. game:\ is the XEX
-// directory on retail; e:\ and hdd:\ cover FSD/Aurora style installs.
-static const char* s_paths[] = {
-    "game:\\fnaf_save.bin",
-    "D:\\fnaf_save.bin",
-    "e:\\fnaf_save.bin",
-    "hdd:\\fnaf_save.bin",
-    "fnaf_save.bin",
-    "./fnaf_save.bin"
+// Default save locations fallback
+static const char* s_defaultPaths[] = {
+    "game:\\fnaf_save.ini",
+    "D:\\fnaf_save.ini",
+    "e:\\fnaf_save.ini",
+    "hdd:\\fnaf_save.ini",
+    "fnaf_save.ini",
+    "./fnaf_save.ini"
 };
-static const int s_pathCount = (int)(sizeof(s_paths) / sizeof(s_paths[0]));
+static const int s_defaultPathCount = (int)(sizeof(s_defaultPaths) / sizeof(s_defaultPaths[0]));
+
+// Simple INI parser for [freddy] section
+static bool ParseIniLine(const char* line, char* key, int* val) {
+    // Skip leading whitespace
+    while (*line && (*line == ' ' || *line == '\t')) ++line;
+    // Expect key=
+    char* pKey = key;
+    while (*line && *line != '=' && *line != ' ' && *line != '\t' && *line != '\r' && *line != '\n') {
+        *pKey++ = *line++;
+    }
+    *pKey = '\0';
+    // Skip to value
+    while (*line && (*line == ' ' || *line == '\t' || *line == '=')) ++line;
+    if (!*line) return false;
+    *val = atoi(line);
+    return true;
+}
 
 bool Progress::Load(GameProgress& p) {
     Reset(p);
-    for (int i = 0; i < s_pathCount; ++i) {
-        FILE* f = fopen(s_paths[i], "rb");
-        if (!f) continue;
-        GameProgress tmp;
-        memset(&tmp, 0, sizeof(tmp));
-        size_t got = fread(&tmp, 1, sizeof(tmp), f);
-        fclose(f);
-        if (got != sizeof(tmp))                continue;
-        if (tmp.magic   != PROGRESS_MAGIC)     continue;
-        if (tmp.version != PROGRESS_VERSION)   continue;
-        if (tmp.checksum != ComputeChecksum(tmp)) continue;
+    char key[64];
+    int val = 0;
+    bool inFreddy = false;
 
-        // sanitize
-        if (tmp.nextNight < 1) tmp.nextNight = 1;
-        if (tmp.nextNight > 7) tmp.nextNight = 7;
-        p = tmp;
-        return true;
+#ifdef _XBOX
+    if (!XContentMount(false)) {
+        return false;
+    }
+    char path[128];
+    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, kXContentFile);
+    FILE* f = fopen(path, "rb");
+    if (f) {
+        char buf[256];
+        while (fgets(buf, sizeof(buf), f)) {
+            char* eol = strchr(buf, '\r');
+            if (eol) *eol = '\0';
+            eol = strchr(buf, '\n');
+            if (eol) *eol = '\0';
+            char* s = buf;
+            while (*s && (*s == ' ' || *s == '\t')) ++s;
+            if (*s == '\0' || *s == ';' || *s == '#') continue;
+            if (*s == '[') {
+                inFreddy = (strcmp(s, "[freddy]") == 0);
+                continue;
+            }
+            if (!inFreddy) continue;
+            if (ParseIniLine(s, key, &val)) {
+                if (strcmp(key, "level") == 0) p.nextNight = val;
+                else if (strcmp(key, "beatgame") == 0) p.beat5 = (val != 0);
+                else if (strcmp(key, "beat6") == 0) p.beat6 = (val != 0);
+                else if (strcmp(key, "beat7") == 0) p.beat7 = (val != 0);
+                else if (strcmp(key, "lives") == 0) p.lives = val;
+            }
+        }
+        fclose(f);
+        XContentClose(kXContentRoot, NULL);
+        if (p.nextNight >= 1 && p.nextNight <= 7) {
+            if (p.nextNight < 1) p.nextNight = 1;
+            if (p.nextNight > 7) p.nextNight = 7;
+            p.magic = PROGRESS_MAGIC;
+            p.version = PROGRESS_VERSION;
+            p.checksum = ComputeChecksum(p);
+            return true;
+        }
+    } else {
+        XContentClose(kXContentRoot, NULL);
     }
     return false;
+#else
+    // Build path list from storage prefix or defaults
+    char pathBuf[256];
+    const char* paths[12];
+    int pathCount = 0;
+    if (s_storagePrefix[0] != '\0') {
+        snprintf(pathBuf, sizeof(pathBuf), "%sfnaf_save.ini", s_storagePrefix);
+        paths[0] = pathBuf;
+        pathCount = 1;
+    } else {
+        for (int i = 0; i < s_defaultPathCount; ++i) paths[i] = s_defaultPaths[i];
+        pathCount = s_defaultPathCount;
+    }
+
+    for (int i = 0; i < pathCount; ++i) {
+        FILE* f = fopen(paths[i], "rb");
+        if (!f) continue;
+
+        char buf[256];
+        while (fgets(buf, sizeof(buf), f)) {
+            char* eol = strchr(buf, '\r');
+            if (eol) *eol = '\0';
+            eol = strchr(buf, '\n');
+            if (eol) *eol = '\0';
+            char* s = buf;
+            while (*s && (*s == ' ' || *s == '\t')) ++s;
+            if (*s == '\0' || *s == ';' || *s == '#') continue;
+            if (*s == '[') {
+                inFreddy = (strcmp(s, "[freddy]") == 0);
+                continue;
+            }
+            if (!inFreddy) continue;
+            if (ParseIniLine(s, key, &val)) {
+                if (strcmp(key, "level") == 0) p.nextNight = val;
+                else if (strcmp(key, "beatgame") == 0) p.beat5 = (val != 0);
+                else if (strcmp(key, "beat6") == 0) p.beat6 = (val != 0);
+                else if (strcmp(key, "beat7") == 0) p.beat7 = (val != 0);
+                else if (strcmp(key, "lives") == 0) p.lives = val;
+            }
+        }
+        fclose(f);
+        if (p.nextNight >= 1 && p.nextNight <= 7) {
+            if (p.nextNight < 1) p.nextNight = 1;
+            if (p.nextNight > 7) p.nextNight = 7;
+            p.magic = PROGRESS_MAGIC;
+            p.version = PROGRESS_VERSION;
+            p.checksum = ComputeChecksum(p);
+            return true;
+        }
+    }
+    return false;
+#endif
 }
 
-bool Progress::Save(const GameProgress& p) {
-    GameProgress out = p;
-    out.magic     = PROGRESS_MAGIC;
-    out.version   = PROGRESS_VERSION;
+bool Progress::Save(const GameProgress& pIn) {
+    GameProgress out = pIn;
     if (out.nextNight < 1) out.nextNight = 1;
     if (out.nextNight > 7) out.nextNight = 7;
-    out.checksum  = ComputeChecksum(out);
 
-    for (int i = 0; i < s_pathCount; ++i) {
-        FILE* f = fopen(s_paths[i], "wb");
-        if (!f) continue;
-        size_t put = fwrite(&out, 1, sizeof(out), f);
+    char iniBuf[256];
+    int len = fnaf::Snprintf(iniBuf, sizeof(iniBuf),
+        "[freddy]\nlevel=%d\nbeatgame=%d\nbeat6=%d\nbeat7=%d\nlives=%d\n",
+        out.nextNight,
+        out.beat5 ? 1 : 0,
+        out.beat6 ? 1 : 0,
+        out.beat7 ? 1 : 0,
+        out.lives);
+
+#ifdef _XBOX
+    if (!XContentMount(true)) {
+        return false;
+    }
+    char path[128];
+    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, kXContentFile);
+    FILE* f = fopen(path, "wb");
+    if (f) {
+        size_t put = fwrite(iniBuf, 1, (size_t)len, f);
         fclose(f);
-        if (put == sizeof(out)) return true;
+        XContentClose(kXContentRoot, NULL);
+        return put == (size_t)len;
+    }
+    XContentClose(kXContentRoot, NULL);
+    return false;
+#else
+    char pathBuf[256];
+    if (s_storagePrefix[0] != '\0') {
+        snprintf(pathBuf, sizeof(pathBuf), "%sfnaf_save.ini", s_storagePrefix);
+        FILE* f = fopen(pathBuf, "wb");
+        if (f) {
+            size_t put = fwrite(iniBuf, 1, (size_t)len, f);
+            fclose(f);
+            if (put == (size_t)len) return true;
+        }
+        return false;
+    }
+
+    for (int i = 0; i < s_defaultPathCount; ++i) {
+        FILE* f = fopen(s_defaultPaths[i], "wb");
+        if (!f) continue;
+        size_t put = fwrite(iniBuf, 1, (size_t)len, f);
+        fclose(f);
+        if (put == (size_t)len) {
+            return true;
+        }
     }
     return false;
+#endif
 }
 
 i32 Progress::StarCount(const GameProgress& p) {

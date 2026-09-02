@@ -43,6 +43,9 @@ static GameRender        g_render;
 static AudioSystem       g_audio;
 static bool              g_pakLoaded = false;
 
+// Game reference for callbacks needing state
+static Game* g_gameRef = nullptr;
+
 static const i32 SCREEN_W = 1280;
 static const i32 SCREEN_H = 720;
 
@@ -246,6 +249,16 @@ void OnJumpscare(AnimatronicId anim){
     g_audio.Stop(Snd::VOICEOVER[4]);
     s_phonePlaying=false;
     g_audio.Play(&g_pak, Snd::XSCREAM, false, 1.0f);
+    // lives decrement on jumpscare (original Ini "lives")
+    Progress::Load(g_prog);
+    if (g_prog.lives > 0) g_prog.lives--;
+    if (g_prog.lives <= 0) {
+        g_prog.nextNight = 1;
+        g_prog.beat5 = false;
+        g_prog.beat6 = false;
+        g_prog.beat7 = false;
+    }
+    Progress::Save(g_prog);
 }
 void OnPowerOut(){
     printf("*** POWER OUT! ***\n");
@@ -273,12 +286,9 @@ void OnNightComplete(i32 night){
     g_audio.Play(&g_pak, Snd::CHIMES, false, 1.0f);
     // nights 5/6/7: paycheck/overtime/pink slip hold under the music box
     if(night>=5) g_audio.Play(&g_pak, Snd::CIRCUS, true, 0.85f);
-    // v2.7.13: persist progress (original Ini: level / beatgame / beat6 / beat7)
+    // v2.7.13: persist progress (original Ini: level)
     Progress::Load(g_prog);
     g_prog.nextNight = (night<7)?(night+1):7;
-    if(night>=5) g_prog.beat5 = true;
-    if(night>=6) g_prog.beat6 = true;
-    if(night>=7) g_prog.beat7 = true;
     Progress::Save(g_prog);
 }
 void OnGameOver(){
@@ -384,6 +394,7 @@ int main(int argc, char* argv[]){
     printf("=== FNAF1-Recomp v2.7.13-nightflow built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
+    g_gameRef = &game;
     GameCallbacks cb; cb.onTimeUpdate=OnTimeUpdate; cb.onPowerUpdate=OnPowerUpdate;
     cb.onJumpscare=OnJumpscare; cb.onPowerOut=OnPowerOut; cb.onMusicBoxStart=OnMusicBoxStart;
     cb.onMusicBoxStop=OnMusicBoxStop; cb.onNightComplete=OnNightComplete;
@@ -523,14 +534,12 @@ int main(int argc, char* argv[]){
                 g_render.RenderDisclaimer(!bootLock && (((menuFrameCounter/30)%2)==0));
                 FrameEnd();
             }
-            if(!bootLock && (gi.cameraToggle||gi.pause||gi.back||gi.cameraUp||gi.cameraDown)){
+            if(!bootLock && gi.pause){
                 state=GAME_STATE_MENU; menuFrameCounter=0;
-                // title ambience (title frame group 2): static2 + darkness music
-                g_audio.Play(&g_pak,Snd::STATIC2,true,0.5f);
-                g_audio.Play(&g_pak,Snd::DARKNESS_MUSIC,true,0.6f);
             }
             Sleep(16); tickCount++; continue;
         }
+
 
         // ---------------- TITLE MENU ----------------
         if(state==GAME_STATE_MENU){
@@ -724,6 +733,27 @@ int main(int argc, char* argv[]){
                     s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
                     state=GAME_STATE_NIGHT_START; tickCount=0; accumulator=0;
                     continue;
+                }
+                // Update progress flags on night completion screens (original next day / the end timing)
+                {
+                    i32 night = game.GetCurrentNight();
+                    Progress::Load(g_prog);
+                    if (night == 5) {
+                        g_prog.beat5 = true;
+                    } else if (night == 6) {
+                        g_prog.beat6 = true;
+                    } else if (night == 7) {
+                        bool perfect = false;
+                        if (g_gameRef) {
+                            const fnaf::AnimatronicAI& ai = g_gameRef->GetAI();
+                            perfect = (ai.GetAILevel(fnaf::ANIM_FREDDY) == 20) &&
+                                      (ai.GetAILevel(fnaf::ANIM_BONNIE) == 20) &&
+                                      (ai.GetAILevel(fnaf::ANIM_CHICA)  == 20) &&
+                                      (ai.GetAILevel(fnaf::ANIM_FOXY)   == 20);
+                        }
+                        if (perfect) g_prog.beat7 = true;
+                    }
+                    Progress::Save(g_prog);
                 }
                 g_audio.StopAll();
                 RefreshMenuFromProgress(menu);   // unlocks + stars from the save
