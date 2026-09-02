@@ -16,7 +16,6 @@
  *   beat6=...
  *   beat7=...
  * File name: fnaf_save.ini
- * On PC development builds, fallback to fopen in same INI format.
  */
 
 #ifndef FNAF_PROGRESS_H
@@ -42,14 +41,10 @@ public:
     // Fill defaults: night 1, nothing beaten.
     static void Reset(GameProgress& p);
 
-    // Try every canonical location; true if a valid save was read into p.
+    // Load save from XContent; true if a valid save was read into p.
     static bool Load(GameProgress& p);
 
-    // Set storage root prefix (e.g. "hdd:\\", "game:\\") used by Save/Load.
-    // Empty string resets to default multi-path search.
-    static void SetStoragePrefix(const char* prefix);
-
-    // Write to the first writable location. True on success.
+    // Write save via XContent. True on success.
     static bool Save(const GameProgress& p);
 
     // Number of title-screen stars (0..3) implied by the flags.

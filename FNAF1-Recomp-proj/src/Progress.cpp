@@ -10,8 +10,7 @@
  *  - title groups 33/34/35/36: New Game starts "night number" 1, Continue
  *    starts Ini("level"), 6th night -> 6, custom -> 7.
  *
- * Storage: XContent INI file fnaf_save.ini with [freddy] section.
- * PC fallback uses fopen with same INI format.
+ * Storage: XContent INI file fnaf_save.ini with [freddy] section on Xbox 360.
  */
 
 #include "Progress.h"
@@ -26,17 +25,12 @@ namespace fnaf {
 static const u32 PROGRESS_MAGIC   = 0x31464E46u;  // 'FNF1' little-endian
 static const u32 PROGRESS_VERSION = 1;
 
-static char s_storagePrefix[64] = "";
-
-#ifdef _XBOX
 static const char* kXContentRoot = "fnaf_save";
 static const char* kXContentFile = "fnaf_save.ini";
 static const WCHAR kXContentDisplayName[] = L"Five Nights at Freddy's 1 Save";
 static XCONTENTDEVICEID g_saveDevice = XCONTENTDEVICE_ANY;
 static bool g_deviceChosen = false;
-#endif
 
-#ifdef _XBOX
 static bool XContentMount(bool create)
 {
     if (!g_deviceChosen) {
@@ -72,13 +66,6 @@ static bool XContentMount(bool create)
     DWORD res = XContentCreateEx(0, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
     return res == ERROR_SUCCESS;
 }
-#endif
-
-void Progress::SetStoragePrefix(const char* prefix){
-    if(!prefix) { s_storagePrefix[0] = '\0'; return; }
-    strncpy(s_storagePrefix, prefix, sizeof(s_storagePrefix)-1);
-    s_storagePrefix[sizeof(s_storagePrefix)-1] = '\0';
-}
 
 void Progress::Reset(GameProgress& p) {
     memset(&p, 0, sizeof(p));
@@ -99,17 +86,6 @@ static u32 ComputeChecksum(const GameProgress& p) {
     for (size_t i = 0; i < count; ++i) sum ^= words[i];
     return sum ^ 0x5A5A5A5Au;
 }
-
-// Default save locations fallback
-static const char* s_defaultPaths[] = {
-    "game:\\fnaf_save.ini",
-    "D:\\fnaf_save.ini",
-    "e:\\fnaf_save.ini",
-    "hdd:\\fnaf_save.ini",
-    "fnaf_save.ini",
-    "./fnaf_save.ini"
-};
-static const int s_defaultPathCount = (int)(sizeof(s_defaultPaths) / sizeof(s_defaultPaths[0]));
 
 // Simple INI parser for [freddy] section
 static bool ParseIniLine(const char* line, char* key, int* val) {
@@ -134,7 +110,6 @@ bool Progress::Load(GameProgress& p) {
     int val = 0;
     bool inFreddy = false;
 
-#ifdef _XBOX
     if (!XContentMount(false)) {
         return false;
     }
@@ -178,58 +153,6 @@ bool Progress::Load(GameProgress& p) {
         XContentClose(kXContentRoot, NULL);
     }
     return false;
-#else
-    // Build path list from storage prefix or defaults
-    char pathBuf[256];
-    const char* paths[12];
-    int pathCount = 0;
-    if (s_storagePrefix[0] != '\0') {
-        snprintf(pathBuf, sizeof(pathBuf), "%sfnaf_save.ini", s_storagePrefix);
-        paths[0] = pathBuf;
-        pathCount = 1;
-    } else {
-        for (int i = 0; i < s_defaultPathCount; ++i) paths[i] = s_defaultPaths[i];
-        pathCount = s_defaultPathCount;
-    }
-
-    for (int i = 0; i < pathCount; ++i) {
-        FILE* f = fopen(paths[i], "rb");
-        if (!f) continue;
-
-        char buf[256];
-        while (fgets(buf, sizeof(buf), f)) {
-            char* eol = strchr(buf, '\r');
-            if (eol) *eol = '\0';
-            eol = strchr(buf, '\n');
-            if (eol) *eol = '\0';
-            char* s = buf;
-            while (*s && (*s == ' ' || *s == '\t')) ++s;
-            if (*s == '\0' || *s == ';' || *s == '#') continue;
-            if (*s == '[') {
-                inFreddy = (strcmp(s, "[freddy]") == 0);
-                continue;
-            }
-            if (!inFreddy) continue;
-            if (ParseIniLine(s, key, &val)) {
-                if (strcmp(key, "level") == 0) p.nextNight = val;
-                else if (strcmp(key, "beatgame") == 0) p.beat5 = (val != 0);
-                else if (strcmp(key, "beat6") == 0) p.beat6 = (val != 0);
-                else if (strcmp(key, "beat7") == 0) p.beat7 = (val != 0);
-                else if (strcmp(key, "lives") == 0) p.lives = val;
-            }
-        }
-        fclose(f);
-        if (p.nextNight >= 1 && p.nextNight <= 7) {
-            if (p.nextNight < 1) p.nextNight = 1;
-            if (p.nextNight > 7) p.nextNight = 7;
-            p.magic = PROGRESS_MAGIC;
-            p.version = PROGRESS_VERSION;
-            p.checksum = ComputeChecksum(p);
-            return true;
-        }
-    }
-    return false;
-#endif
 }
 
 bool Progress::Save(const GameProgress& pIn) {
@@ -246,7 +169,6 @@ bool Progress::Save(const GameProgress& pIn) {
         out.beat7 ? 1 : 0,
         out.lives);
 
-#ifdef _XBOX
     if (!XContentMount(true)) {
         return false;
     }
@@ -261,30 +183,6 @@ bool Progress::Save(const GameProgress& pIn) {
     }
     XContentClose(kXContentRoot, NULL);
     return false;
-#else
-    char pathBuf[256];
-    if (s_storagePrefix[0] != '\0') {
-        snprintf(pathBuf, sizeof(pathBuf), "%sfnaf_save.ini", s_storagePrefix);
-        FILE* f = fopen(pathBuf, "wb");
-        if (f) {
-            size_t put = fwrite(iniBuf, 1, (size_t)len, f);
-            fclose(f);
-            if (put == (size_t)len) return true;
-        }
-        return false;
-    }
-
-    for (int i = 0; i < s_defaultPathCount; ++i) {
-        FILE* f = fopen(s_defaultPaths[i], "wb");
-        if (!f) continue;
-        size_t put = fwrite(iniBuf, 1, (size_t)len, f);
-        fclose(f);
-        if (put == (size_t)len) {
-            return true;
-        }
-    }
-    return false;
-#endif
 }
 
 i32 Progress::StarCount(const GameProgress& p) {
