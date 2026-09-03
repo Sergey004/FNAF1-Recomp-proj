@@ -89,15 +89,15 @@ public:
     void RenderSpriteBrowser(i32 page);
     i32  SpriteBrowserPageCount() const;
 
-    // --- v2.7.11 PERSPECTIVE TUNER --------------------------------------
-    // Live-adjusts the clean-room PANORAMA bend (the "how curved is the
-    // office" question). Knobs: 0 = ZOOM (+ bulge / - pincushion / 0 flat),
-    // 1 = CENTER_Y (vertical pivot of the bend), 2 = ARC (edge falloff,
-    // serialized pi = 3.1415). Defaults are the EXACT serialized EDATA
-    // values, so the game renders bit-identical to v2.7.10 until the tuner
-    // (L3+R3 in game) touches them. On exit main.cpp prints "PERSP FINAL"
-    // to the log + debug console; paste those numbers over the PERSP_*
-    // constants in GameRender.cpp to bake a tuned look.
+    // --- v2.8 PERSPECTIVE TUNER --------------------------------------
+    // Live-adjusts the clean-room PANORAMA parabola shader (RPanorama.fx).
+    // Knobs: 0 = ZOOM (edge vertical squeeze px; + bulge / - pincushion /
+    // 0 flat), 1 = CENTER_Y (vertical pivot of the bend), 2 = CURVE (the
+    // parabola coefficient that replaces the serialized literal 4.0; 0 flat,
+    // >4 sharper edges). Defaults are the exact serialized values
+    // zoom=300/center=355/curve=4.0, so the game renders the original look
+    // until L3+R3 in game touches them. On exit main.cpp prints "PERSP
+    // FINAL" to the log + debug console for baking.
     enum { PERSP_TUNER_KNOBS = 3 };
     void PerspTunerAdjust(i32 knob, i32 dir, bool fast);
     void PerspTunerReset(i32 knob);          // knob < 0 resets all three
@@ -125,17 +125,11 @@ private:
     // subtracted (1600x720 scene -> 1280x720 window).
     void DrawInstance(int imgHandle, float ix, float iy, u32 color, bool scene);
 
-    // v2.7.7 clean-room Perspective: draw one pak image as part of the
-    // Perspective.mfx bent scene layer (PANORAMA / HORIZONTAL / Zoom=300,
-    // object (-22,-22) 1324x754 -- exact serialized settings pulled from
-    // the original EXE, see docs/PERSPECTIVE.md). frameX/frameY =
-    // Clickteam instance position (hotspot applied here), panX = current
-    // scene pan (office stick pan or camera feed drift). Emits ONE ~8-px
-    // triangle grid per sprite following the exact PANORAMA curve
-    // (v2.7.6 emitted 1-px strips: same math, but bilinear seam bleed +
-    // pixel snapping smeared and tore the view).
-    void DrawBentInstance(int imgHandle, float frameX, float frameY,
-                          u32 color, float panX);
+    // v2.8 clean-room Perspective: the SCENE (layer 0) is captured into a
+    // 1280x720 render target and re-projected through the parabola panorama
+    // shader (SpriteBatch::BeginSceneCapture/EndSceneCapture/DrawPerspective),
+    // mirroring the original HWA extension's readFrameToTexture + shader.
+    // (frameX/frameY = Clickteam instance position, hotspot applied here.)
 
     // Tinted solid rectangle via the all-white pak frame (img 23).
     void DrawSolidRect(float x, float y, float w, float h, u32 color);
@@ -159,11 +153,6 @@ private:
     struct TexCacheEntry { char name[64]; PakLoadedTexture* tex; };
     TexCacheEntry m_cache[64];
     int  m_cacheCount;
-
-    // v2.7.7: scratch triangle grid for DrawBentInstance (allocated in
-    // Init, capacity kBentVertCap in GameRender.cpp). void* to keep
-    // SpriteBatch.h out of this header -- cast to SpriteVertex* .cpp-side.
-    void* m_bentVerts;
 
     // v2.7.8 office FX state: door slide anims (obj 59/60 anims a12/a14),
     // tablet-open white flash (obj 46), tablet-close dark wipe (obj 73),

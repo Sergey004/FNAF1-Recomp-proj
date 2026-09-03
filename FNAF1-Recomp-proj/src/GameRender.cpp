@@ -46,46 +46,31 @@
  *                           1280x720 window; the feed slowly sine-drifts
  *                           across the full 320 px slack like the original
  *                           (office pans by stick, cams drift on their own).
- * v2.7.6 — PERSPECTIVE PORT. The v2.7.2 note "the fisheye look is baked
- *                           into Scott's renders, not an engine effect" was
- *                           HALF WRONG: the renders are wide-angle, but the
- *                           strong bend is an ENGINE effect. Frame 1 carries
- *                           Andos' Perspective.mfx object (objInfo 40,
- *                           layer 1) with serialized settings PANORAMA /
- *                           HORIZONTAL / Zoom=300 / rect (-22,-22)
- *                           1324x754 -- extracted byte-exact from the
- *                           original EXE, see docs/PERSPECTIVE.md. No event
- *                           ever touches it, so it re-projects EVERYTHING
- *                           on layer 0 (office scene AND camera feeds)
- *                           through a per-column curve: center column full
- *                           height, edges squeezed 754->454 px. Layer 2+ UI
- *                           (static, REC, bezel, labels, map, HUD) is drawn
- *                           AFTER it and stays straight. Ported as the
- *                           v2.7.7 clean-room triangle mesh in
- *                           DrawBentInstance() (one ~8-px grid per sprite).
- * v2.7.7 - cleanpersp: the v2.7.6 strip rasterizer (1-px quads, integer
- *                           snapping, ~2150 DrawPrimitiveUP/frame) smeared
- *                           and tore the view. Same curve, new rasterizer:
- *                           one continuous ~8-px triangle grid per sprite
- *                           through SpriteBatch::DrawTriangles -- the GPU
- *                           interpolates the profile (max sag ~0.006 px),
- *                           no seams, ~1 draw call per bent sprite.
- *                           (v2.7.6 emitted 1-px strips: same math, but
- *                           bilinear seam bleed + pixel snapping smeared
- *                           and tore the view.)
+ * v2.8 — PERSPECTIVE SHADER PORT. The original Windows/Steam build bends the
+ *                           office with Andos' Perspective OBJECT (objInfo 40,
+ *                           layer 1, PANORAMA / HORIZONTAL / Zoom=300, rect
+ *                           (-22,-22) 1324x754). The HWA version of that
+ *                           extension (RPanorama.fx, ps_2_0) grabs the already
+ *                           drawn layer 0 off the screen and re-projects it
+ *                           through a PARABOLA pixel shader -- NOT a per-column
+ *                           sine Stretch(). v2.6-v2.7.7 implemented the software
+ *                           .mfx sine band instead; v2.8 replaces it with the
+ *                           real shader: RenderOffice/RenderCamera capture the
+ *                           scene to a 1280x720 render target and
+ *                           SpriteBatch::DrawPerspective warps it back through a
+ *                           clean-room ps_3_0 parabola. Layers 2+ (static, REC,
+ *                           bezel, labels, map, HUD) draw flat AFTER it.
  *  6 AM        "next day" : digit images "5"=350 "6"=351 "AM"=352;
  *                           nights 5/6/7 show paycheck 210 / overtime 522 /
  *                           termination 523 full screens ("the end" frames).
  *  Game over   "gameover" : backdrop img_358.
  *
- * v2.7.11 - persptune: the three PANORAMA constants (Zoom=300 / pivot
- *                           Y=355 / arc=3.1415) are LIVE knobs now. L3+R3
- *                           in game opens the tuner: DPad selects a knob,
- *                           Up/Down adjusts, A = fast step, Y = reset knob;
- *                           exiting prints "PERSP FINAL ..." to the log +
- *                           debug console for baking. Defaults stay the
- *                           exact serialized EDATA values -> bit-identical
- *                           to v2.7.10 until you touch it.
+ * v2.8    - persptune: the three PANORAMA shader params (Zoom=300 / pivot
+ *                           Y=355 / curve=4.0) are LIVE knobs now. L3+R3 in
+ *                           game opens the tuner: DPad selects, Up/Down adjusts,
+ *                           A = fast, Y = reset; exiting prints "PERSP FINAL ..."
+ *                           to the log + debug console for baking. Defaults are
+ *                           the exact serialized values (original look).
  *
  * Counter-font strips: the pak's dynamic digits are 11 identical strip sets
  * whose glyph order is  0 1 2 3 4 5 6 7 8 9 - + . e  (verified visually).
@@ -128,39 +113,33 @@ static const f32 OFFICE_PAN_MAX = 320.0f;   // 1600 - 1280
 //   DefaultZoom=300, DefaultOffset=0, SineWaveWaves=4 (unused here)
 // The Events dump has ZERO references to the object: nobody moves, shows,
 // hides or re-parameterizes it -- it bends the whole scene layer forever.
+// Object geometry — the serialized EDATA reference. The panorama pixel
+// shader in SpriteBatch.cpp hardcodes the same values (the HLSL compile-time
+// literals can't read these file-static C++ constants), so keep them 1:1.
 static const f32 PERSP_OBJ_X  = -22.0f;     // object origin on screen
 static const f32 PERSP_OBJ_W  = 1324.0f;    // 1280 + 2*22 margin columns
 static const f32 PERSP_OBJ_H  = 754.0f;     // 720 + 34 margin rows
-static const f32 PERSP_ZOOM   = 300.0f;     // EDATA DefaultZoom (edge squeeze)
-static const f32 PERSP_PI     = 3.1415f;    // Andos' literal (truncated pi,
-                                            // kept for bit-faithfulness)
-static const f32 PERSP_CENTER_Y = 355.0f;   // -22 + 754/2, pivot of the bend
+static const f32 PERSP_ZOOM   = 300.0f;     // EDATA DefaultZoom (edge squeeze px)
+static const f32 PERSP_CURVE  = 4.0f;       // parabola coefficient (RPanorama.fx literal 4.0)
+static const f32 PERSP_CENTER_Y = 355.0f;   // -22 + 754/2, vertical pivot of the bend
 
-// Triangle-grid vertex budget for ONE bent instance. Worst case is the
-// 1600-px office bg clipped to the 1280 window at the ~8-px step:
-// 162 columns -> 161 quads -> 966 vertices. 2048 gives ~2x headroom.
-static const int kBentVertCap = 2048;
-
-// v2.7.11 PERSPECTIVE TUNER -- live-tunable copies of the three serialized
-// PANORAMA constants above. Initialized 1:1 with v2.7.10 (bit-identical
-// defaults): the bend only changes when the tuner (L3+R3 in game) adjusts
-// them. To bake a tuned look, paste the printed "PERSP FINAL" numbers over
-// the three initializers:
-//   ZOOM     300.0  -- column-height swing. Center column is ALWAYS full
-//                      height (754); edges are 754-ZOOM px. + = bulge
-//                      (fish-eye, edges squeeze in), 0 = dead flat pan,
-//                      - = pincushion (edges stretch OUT, concave look).
-//   CENTER_Y 355.0  -- vertical pivot the columns expand from (object
-//                      center: -22 + 754/2). Move up/down to bias where
-//                      the bend pinches.
-//   ARC      3.1415 -- sine arc span across the 1324-px object. Equals
-//                      Andos' truncated pi: edges reach sin=0 exactly.
-//                      Bigger (up to ~6.28) = sine dips negative at the
-//                      edges -> hard fisheye with collapsed corners;
-//                      smaller = gentler, flatter falloff.
+// v2.8 PERSPECTIVE TUNER -- live-tunable copies of the serialized PANORAMA
+// params, initialized to the exact EDATA values (bit-identical look). The
+// bend only changes when the tuner (L3+R3 in game) adjusts them; on exit
+// main.cpp prints "PERSP FINAL" for baking. They drive the parabola pixel
+// shader in SpriteBatch::DrawPerspective, not a CPU per-column loop:
+//   ZOOM     300.0 -- edge vertical squeeze in px (fB = 1 - zoom/754). The
+//                     center column reads the full height, edges read only
+//                     a 754-zoom px band. + = bulge (fish-eye), 0 = flat,
+//                     - = pincushion (edges stretch out).
+//   CENTER_Y 355.0 -- vertical pivot the columns shrink toward (object
+//                     center: -22 + 754/2).
+//   CURVE    4.0   -- parabola coefficient, replaces the literal 4.0 in
+//                     RPanorama.fx; 0 = flat, 4 = original, >4 = sharper
+//                     edge falloff.
 static f32 g_perspZoom    = PERSP_ZOOM;      // 300.0
 static f32 g_perspCenterY = PERSP_CENTER_Y;  // 355.0
-static f32 g_perspArc     = PERSP_PI;        // 3.1415
+static f32 g_perspCurve   = PERSP_CURVE;     // 4.0
 
 // ------------------------------------------------------------
 //  Real animation frame tables (image handles from the game data)
@@ -399,7 +378,7 @@ GameRender::GameRender()
     : m_batch(0), m_text(0), m_pak(0)
     , m_time(0.0f), m_staticTime(0.0f), m_staticIndex(0)
     , m_lookDir(0.0f), m_panX(160.0f)
-    , m_cacheCount(0), m_bentVerts(0)
+    , m_cacheCount(0)
 {
     // v2.7.8 office FX state
     m_prevMonitor = m_prevDoorL = m_prevDoorR = false;
@@ -414,7 +393,6 @@ GameRender::GameRender()
 void GameRender::Init(SpriteBatch* batch, TextRenderer* text, PakLoader* pak) {
     m_batch = batch; m_text = text; m_pak = pak;
     m_cacheCount = 0;
-    if (!m_bentVerts) m_bentVerts = new SpriteVertex[kBentVertCap];
 }
 
 void GameRender::SetLookDir(f32 dir) {
@@ -509,116 +487,21 @@ void GameRender::DrawInstance(int imgHandle, float ix, float iy, u32 color, bool
 
 // ------------------------------------------------------------
 // ------------------------------------------------------------
-// v2.7.7 CLEANROOM PERSPECTIVE -- the same PANORAMA effect as the
-// original extension, re-implemented the way it would be written for a
-// GPU today instead of emulating the CF2.5 1-px Stretch() mechanic.
-//
-// Why v2.7.6 (faithful 1-px column strips) looked bad:
-//   * every 1-px quad bilinear-samples its neighbours across the strip
-//     seams -> the whole bent band reads smeared/soft;
-//   * integer column snapping against the fractional pan offset ->
-//     per-column width jitter (hairline gaps/doubles) while panning;
-//   * ~1280 separate DrawPrimitiveUP strip calls per big sprite
-//     (office scene ~2150 quads/frame) for zero visual benefit.
-//
-// The clean-room pass keeps the exact EFFECT math (constants above are
-// the serialized EDATA of the original EXE) and changes only HOW it is
-// rasterized:
-//   1) the flat layer-0 pass underneath is unchanged -- that is the
-//      original grab+blit semantics (flat scene stays visible in the
-//      top/bottom wedges near the screen edges);
-//   2) the bent copy is ONE triangle grid per sprite: an ~8-px column
-//      grid whose vertices follow the PANORAMA profile. The GPU
-//      interpolates the curve between grid columns (max sag ~0.006 px
-//      at 8 px), bilinear filtering runs inside wide continuous quads,
-//      and the office bg costs 161 quads / 1 draw call instead of
-//      1280 strips / 1280 draw calls.
-// Vertex positions are bit-identical to the strip math at every grid
-// column:
-//   h(x)       = max(1, 754 + sin(step) * 300 - 300)
-//   step(x)    = (x + 22 - 662) / (1324 / 3.1415) + 3.1415 / 2
-//   dest_y(fy) = 355 - h/2 + (fy + 22) * h / 754
+// v2.8 CLEANROOM PERSPECTIVE (shader port). The original HWA "Perspective"
+// extension (RPanorama.fx, ps_2_0) grabs the ALREADY DRAWN layer 0 and
+// re-projects it through a parabola pixel shader -- NOT the per-column sine
+// Stretch() of the software .mfx. The math, mapped through the serialized
+// object (1324x754 at -22,-22 over the 1280x720 window):
+//   fB     = 1 - zoom/754                    (edge vertical scale, zoom=300)
+//   fC(x)  = max(0.02, 1 + (fB-1)*curve*(u-0.5)^2)   (u = obj-normalized x)
+//   src.y  = (v - pivot)*fC + pivot          (v = obj-normalized y, pivot=0.5)
+//   win    = (src*obj + origin) / window     (object -> capture space)
+// The scene is captured to a 1280x720 render target and blitted back through
+// this shader (SpriteBatch::BeginSceneCapture / EndSceneCapture /
+// DrawPerspective). The HWA path has NO flat "wedges": the parabola maps the
+// whole window 1:1, cropping only the source's top/bottom at the screen
+// edges. HUD/bezel/static/flash (layers 2/3) draw flat AFTER the panorama.
 // ------------------------------------------------------------
-
-// PANORAMA column height at a screen-space x (exact original formula;
-// v2.7.11 reads the three tuner knobs, defaults bit-identical).
-static f32 BentHeightAt(f32 screenX) {
-    const f32 ci   = screenX - PERSP_OBJ_X;
-    const f32 step = (ci - PERSP_OBJ_W * 0.5f) / (PERSP_OBJ_W / g_perspArc)
-                   + g_perspArc * 0.5f;
-    f32 h = PERSP_OBJ_H + sinf(step) * g_perspZoom - g_perspZoom;
-    if (h < 1.0f) h = 1.0f;
-    return h;
-}
-
-void GameRender::DrawBentInstance(int imgHandle, float frameX, float frameY,
-                                  u32 color, float panX) {
-    if (imgHandle < 0 || !m_batch || !m_bentVerts) return;   // v2.7.10: img_0 is real
-    char name[32];
-    Snprintf(name, sizeof(name), "img_%d", imgHandle);
-    PakLoadedTexture* t = Tex(name);
-    if (!t || !t->texture) return;
-
-    const PakHotspot hs = PakHotspotOf(imgHandle);
-    const f32 fx0 = frameX - hs.x;              // frame-space left of image
-    const f32 fy0 = frameY - hs.y;              // frame-space top of image
-    const f32 iw = (f32)(t->origWidth  ? t->origWidth  : 1);
-    const f32 ih = (f32)(t->origHeight ? t->origHeight : 1);
-    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
-    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-
-    // Visible screen span covered by the image (window = 0..1280).
-    // Float end to end: nothing snaps to the pixel grid any more.
-    const f32 leftPx = fx0 - panX;
-    f32 xa = leftPx;              if (xa < 0.0f)     xa = 0.0f;
-    f32 xb = leftPx + iw;         if (xb > SCREEN_W) xb = SCREEN_W;
-    if (xb - xa < 0.5f) return;
-
-    // ~8 px grid step, both endpoints exact.
-    int cols = (int)((xb - xa) * 0.125f) + 2;
-    if (cols < 2) cols = 2;
-    const f32 stepX = (xb - xa) / (f32)(cols - 1);
-
-    // dest_y(frameY) = 355 - h/2 + (frameY + 22) * h / 754, precomputed
-    // for this sprite's top (fy0) and bottom (fy0 + ih) frame rows.
-    const f32 topA = fy0 + 22.0f;
-    const f32 botA = fy0 + ih + 22.0f;
-
-    SpriteVertex* v = (SpriteVertex*)m_bentVerts;
-    int n = 0;
-    f32 xp = xa;
-    f32 hp = BentHeightAt(xp);
-    f32 ytp = g_perspCenterY - hp * 0.5f + topA * hp / PERSP_OBJ_H;
-    f32 ybp = g_perspCenterY - hp * 0.5f + botA * hp / PERSP_OBJ_H;
-    f32 up = (xp + panX - fx0) / iw * u1;
-
-    for (int k = 1; k < cols; ++k) {
-        const f32 xk = (k == cols - 1) ? xb : xa + stepX * (f32)k;
-        const f32 hk  = BentHeightAt(xk);
-        const f32 ytk = g_perspCenterY - hk * 0.5f + topA * hk / PERSP_OBJ_H;
-        const f32 ybk = g_perspCenterY - hk * 0.5f + botA * hk / PERSP_OBJ_H;
-        const f32 uk  = (xk + panX - fx0) / iw * u1;
-
-        if (n + 6 > kBentVertCap) break;
-        // quad xp..xk as two tris: TL,BL,TR + BL,BR,TR (cull is NONE)
-        v[n].x = xp; v[n].y = ytp; v[n].z = 0.0f; v[n].w = 1.0f;
-        v[n].u = up; v[n].v = 0.0f; v[n].color = color; ++n;
-        v[n].x = xp; v[n].y = ybp; v[n].z = 0.0f; v[n].w = 1.0f;
-        v[n].u = up; v[n].v = v1;  v[n].color = color; ++n;
-        v[n].x = xk; v[n].y = ytk; v[n].z = 0.0f; v[n].w = 1.0f;
-        v[n].u = uk; v[n].v = 0.0f; v[n].color = color; ++n;
-        v[n].x = xp; v[n].y = ybp; v[n].z = 0.0f; v[n].w = 1.0f;
-        v[n].u = up; v[n].v = v1;  v[n].color = color; ++n;
-        v[n].x = xk; v[n].y = ybk; v[n].z = 0.0f; v[n].w = 1.0f;
-        v[n].u = uk; v[n].v = v1;  v[n].color = color; ++n;
-        v[n].x = xk; v[n].y = ytk; v[n].z = 0.0f; v[n].w = 1.0f;
-        v[n].u = uk; v[n].v = 0.0f; v[n].color = color; ++n;
-
-        xp = xk; hp = hk; ytp = ytk; ybp = ybk; up = uk;
-    }
-
-    if (n >= 6) m_batch->DrawTriangles(t->texture, v, n);
-}
 
 // Tinted solid rectangle: img 23 is a fully white 1280x720 pak frame.
 void GameRender::DrawSolidRect(float x, float y, float w, float h, u32 color) {
@@ -825,13 +708,11 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     if (!m_batch) return;
     const DoorSystem& doors = game.GetDoors();
 
-    // ---------- scene layer (pans + v2.7.6 Perspective bend) ----------
+    // ---------- scene layer (v2.8: captured then shader-warped) ----------
     // The original's Perspective.mfx grabs the ALREADY DRAWN flat layer 0
-    // and blits the re-projected copy over it; outside the bent band the
-    // flat scene stays visible (top/bottom wedges near the screen edges).
-    // So we draw layer 0 TWICE: flat pass, then the bent re-projection.
-    // Everything below sits on layer 0 and bends; the HUD below stays flat.
-    const f32 pan = m_panX;
+    // and re-projects it through a parabola shader (RPanorama.fx). We draw
+    // layer 0 into a capture target, then DrawPerspective warps the whole
+    // composed scene. HUD/overlays (layers 2/3) draw flat afterward.
 
     // desk fan (3 blade frames, ~8 fps). v2.7.1: the desk pumpkin
     // (img_628..635) is NOT drawn — in the frame data it is gated by the
@@ -924,21 +805,18 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
         rImg = m_doorClosing[1] ? DOOR_R_CLOSE[idx] : DOOR_R_OPEN[idx];
     }
 
-    // flat layer 0 (what the Perspective object grabs underneath)
+    // capture the flat layer 0 into the panorama target...
+    m_batch->BeginSceneCapture(0xFF000000u);
     DrawInstance(bg, 0.0f,   0.0f, 0xFFFFFFFF, true);
     DrawInstance(FAN[fan], 868.0f, 400.0f, 0xFFFFFFFF, true);
     DrawInstance(lImg, 72.0f,  -1.0f, 0xFFFFFFFF, true);
     DrawInstance(rImg, 1270.0f, -2.0f, 0xFFFFFFFF, true);
     DrawInstance(lp,  48.0f, 390.0f, 0xFFFFFFFF, true);
     DrawInstance(rp, 1546.0f, 400.0f, 0xFFFFFFFF, true);
+    m_batch->EndSceneCapture();
 
-    // bent re-projection on top (v2.7.6: same order, one shared curve)
-    DrawBentInstance(bg, 0.0f,   0.0f, 0xFFFFFFFF, pan);
-    DrawBentInstance(FAN[fan], 868.0f, 400.0f, 0xFFFFFFFF, pan);
-    DrawBentInstance(lImg, 72.0f,  -1.0f, 0xFFFFFFFF, pan);
-    DrawBentInstance(rImg, 1270.0f, -2.0f, 0xFFFFFFFF, pan);
-    DrawBentInstance(lp,  48.0f, 390.0f, 0xFFFFFFFF, pan);
-    DrawBentInstance(rp, 1546.0f, 400.0f, 0xFFFFFFFF, pan);
+    // ...then warp the whole composed scene through the parabola shader.
+    m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
 
     // ---- v2.7.5 verdict kept: NO animated static in the office. Obj 42
     // (static, ink 1/100) starts invisible and group 81 hides it whenever
@@ -1096,12 +974,12 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     const f32 camPan = 0.5f * CAM_PAN_RANGE
                      * (1.0f - cosf(m_time * 6.2831853f / CAM_PAN_PERIOD));
     if (feed >= 0) {   // v2.7.10: >=0 -- img_0 (CAM 2B) must draw too
-        // v2.7.6: the feed is on layer 0 too -- the Perspective object bends
-        // it with the SAME curve as the office (this is why FNAF camera
-        // feeds bulge). Flat pass first, then the re-projection; drift pan
-        // = the 320 px slack of the 1600x720 image.
+        // v2.8: the feed is on layer 0 too -- captured and warped with the
+        // SAME parabola as the office (this is why camera feeds bulge).
+        m_batch->BeginSceneCapture(0xFF000000u);
         DrawFrame(feed, -camPan, 0.0f, 1600.0f, 720.0f, 0xFFFFFFFF);
-        DrawBentInstance(feed, 0.0f, 0.0f, 0xFFFFFFFF, camPan);
+        m_batch->EndSceneCapture();
+        m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
     } else if (cam == CAM_6) {
         DrawInstance(IMG_AUDIO_ONLY, 384.0f, 69.0f, 0xFFFFFFFF, false);
     }
@@ -1165,8 +1043,8 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
 
 void GameRender::RenderPowerOut(const Game& game) {
     if (!m_batch) return;
-    // v2.7.6: power-out office + flicker frames are layer 0 -> drawn flat,
-    // then re-projected through the Perspective curve
+    // v2.8: power-out office + flicker frames are layer 0 -> captured and
+    // re-projected through the Perspective parabola shader
     const i32 poPhase = game.GetPowerOutPhase();
 
     int flicker = POWEROUT_DARK;                 // anim 46 (dark office)
@@ -1183,10 +1061,11 @@ void GameRender::RenderPowerOut(const Game& game) {
     }
 
     if (poPhase < 3 && (poPhase != 2 || game.IsPowerOutBlinkOn())) {
+        m_batch->BeginSceneCapture(0xFF000000u);
         DrawInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, true);
         DrawInstance(flicker, 0.0f, 0.0f, 0xFFFFFFFF, true);
-        DrawBentInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, m_panX);
-        DrawBentInstance(flicker, 0.0f, 0.0f, 0xFFFFFFFF, m_panX);
+        m_batch->EndSceneCapture();
+        m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
     }
 
     // the HUD stays, power reads 0
@@ -1230,12 +1109,13 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
         if (i > 15) i = 15;
         frame = SCARE_CHICA_KILL[i];
     }
-    // scare frames are 1600x720 room images on layer 0 -- v2.7.6: flat pass
-    // + bent re-projection; the shake offsets shift the source window like
-    // the original's Set position on the feed object (+ox on screen = -ox
-    // on the pan).
+    // scare frames are 1600x720 room images on layer 0 -- v2.8: captured and
+    // warped with the same parabola; the shake offsets shift the source
+    // window like the original's Set position (+ox on screen).
+    m_batch->BeginSceneCapture(0xFF000000u);
     DrawFrame(frame, -160.0f + ox, oy, 1600.0f, 720.0f, 0xFFFFFFFF);
-    DrawBentInstance(frame, 0.0f, oy, 0xFFFFFFFF, 160.0f - ox);
+    m_batch->EndSceneCapture();
+    m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
 
     // IT'S ME hallucination flash (obj "Active 21")
     const int fl = (int)(elapsed * 10.0f) % 4;
@@ -1389,31 +1269,31 @@ void GameRender::RenderSpriteBrowser(i32 page) {
 }
 
 // ------------------------------------------------------------
-//  v2.7.11 PERSPECTIVE TUNER -- live bulge/concavity knobs
-//  Knob 0 ZOOM:     edges are (754 - ZOOM) px tall, center always 754.
-//                   + = fish-eye bulge, - = pincushion (concave), 0 = flat.
-//  Knob 1 CENTER_Y: vertical pivot the columns expand from (default 355 =
+//  v2.8 PERSPECTIVE TUNER -- live parabola shader knobs
+//  Knob 0 ZOOM:     edge vertical squeeze in px (fB = 1 - zoom/754).
+//                   + = fish-eye bulge, - = pincushion, 0 = flat.
+//  Knob 1 CENTER_Y: vertical pivot the columns shrink toward (default 355 =
 //                   object center). Shifts where the bend pinches.
-//  Knob 2 ARC:      sine span across the 1324-px object; 3.1415 = original
-//                   (edges reach sin=0). Bigger = harder edge squeeze.
+//  Knob 2 CURVE:    parabola coefficient (replaces RPanorama.fx's literal
+//                   4.0); 0 = flat, 4 = original, >4 = sharper edges.
 //  All steps are per DPad TAP (edges only in UpdateInput); A held = fast.
 // ------------------------------------------------------------
 
-static const f32 PERSP_TUNE_MIN[3]  = { -500.0f, 100.0f, 1.00f  };
-static const f32 PERSP_TUNE_MAX[3]  = {  500.0f, 640.0f, 6.00f  };
-static const f32 PERSP_TUNE_STEP[3] = {   10.0f,   2.0f, 0.05f  };
-static const f32 PERSP_TUNE_FAST[3] = {   50.0f,  10.0f, 0.25f  };
+static const f32 PERSP_TUNE_MIN[3]  = { -500.0f, 100.0f, 0.00f };
+static const f32 PERSP_TUNE_MAX[3]  = {  500.0f, 640.0f, 8.00f };
+static const f32 PERSP_TUNE_STEP[3] = {   10.0f,   2.0f, 0.25f };
+static const f32 PERSP_TUNE_FAST[3] = {   50.0f,  10.0f, 1.00f };
 
 static f32 PerspTunerGet(i32 knob) {
     if (knob == 0) return g_perspZoom;
     if (knob == 1) return g_perspCenterY;
-    return g_perspArc;
+    return g_perspCurve;
 }
 
 static void PerspTunerSet(i32 knob, f32 v) {
     if (knob == 0) g_perspZoom = v;
     else if (knob == 1) g_perspCenterY = v;
-    else g_perspArc = v;
+    else g_perspCurve = v;
 }
 
 void GameRender::PerspTunerAdjust(i32 knob, i32 dir, bool fast) {
@@ -1430,7 +1310,7 @@ void GameRender::PerspTunerReset(i32 knob) {
     if (knob < 0) {
         g_perspZoom    = PERSP_ZOOM;
         g_perspCenterY = PERSP_CENTER_Y;
-        g_perspArc     = PERSP_PI;
+        g_perspCurve   = PERSP_CURVE;
         return;
     }
     PerspTunerSet(knob, PerspTunerDefault(knob));
@@ -1439,28 +1319,28 @@ void GameRender::PerspTunerReset(i32 knob) {
 f32 GameRender::PerspTunerValue(i32 knob) const {
     if (knob == 0) return g_perspZoom;
     if (knob == 1) return g_perspCenterY;
-    return g_perspArc;
+    return g_perspCurve;
 }
 
 f32 GameRender::PerspTunerDefault(i32 knob) const {
     if (knob == 0) return PERSP_ZOOM;
     if (knob == 1) return PERSP_CENTER_Y;
-    return PERSP_PI;
+    return PERSP_CURVE;
 }
 
 void GameRender::RenderPerspTuner(i32 sel) {
     if (!m_text) return;
-    static const char* NAMES[3] = { "ZOOM", "CENTER_Y", "ARC" };
+    static const char* NAMES[3] = { "ZOOM", "CENTER_Y", "CURVE" };
     static const char* HINTS[3] = {
         "+bulge  -pincushion  0 flat",
         "vertical pivot of the bend",
-        "3.1415=orig  > harder edges"
+        "4.0=orig  0 flat  > sharper"
     };
     m_text->DrawText(16, 10, "== PERSP TUNER (L3+R3 = exit) ==", 0xFFFFFF00);
     for (int k = 0; k < PERSP_TUNER_KNOBS; ++k) {
         char row[96];
         if (k == 2) {
-            Snprintf(row, sizeof(row), "%s %s = %.4f  def %.4f  %s",
+            Snprintf(row, sizeof(row), "%s %s = %.2f  def %.2f  %s",
                      (k == sel) ? "> " : "  ", NAMES[k],
                      PerspTunerValue(k), PerspTunerDefault(k), HINTS[k]);
         } else {

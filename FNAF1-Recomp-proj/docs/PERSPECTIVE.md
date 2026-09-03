@@ -1,7 +1,7 @@
 ============================================================================
 FNAF1-Recomp -- docs/PERSPECTIVE.md
 The bent office/camera view, reverse engineered from the original
-FiveNightsatFreddys.exe -- and its v2.7.7 clean-room rasterizer.
+FiveNightsatFreddys.exe -- and its v2.8 clean-room shader port.
 ============================================================================
 
 WHAT THIS IS
@@ -10,9 +10,15 @@ The original FNAF 1 office view (and every camera feed) is not a flat
 image sliding on screen. The gameplay frame carries a THIRD-PARTY
 Clickteam Fusion 2.5 extension object -- Andos' "Perspective" (source:
 github.com/Andos/Perspective) -- which re-projects the whole scene layer
-through a per-column cylindrical curve every frame. That is the famous
-"bent camera" look: pan the office and the walls bow like you are
-turning your head.
+through a curve every frame. That is the famous "bent camera" look: pan
+the office and the walls bow like you are turning your head.
+
+The extension ships TWO renderers: a Windows/software `.mfx` that does a
+per-column sine `Stretch()`, and an HWA pixel shader (`RPanorama.fx` /
+`RPanorama.hlsl`) that does a parabola re-projection. The **Windows/Steam
+build of FNAF 1 uses the HWA shader**, so that is the authoritative
+reference -- v2.6-v2.7.7 ported the *software* sine band by mistake; v2.8
+ports the real shader.
 
 EVIDENCE CHAIN (how it was found)
 ---------------------------------
@@ -32,8 +38,7 @@ EVIDENCE CHAIN (how it was found)
    with its serialized setup for the whole night -- and since it is
    never hidden, it bends the camera feeds as well as the office.
 4. Object bank chunk (raw chunk 8745, entry 40/196, type 32 = extension)
-   decoded from the EXE. Its serialized EDITDATA (28 bytes, no ext
-   header in this storage) is:
+   decoded from the EXE. Its serialized EDITDATA is:
        00 00 00 00  2c 05 f2 02  00 00 00 00  2c 01 00 00
        00 00 00 00  04 00 00 00  00 00 00 00
    Decoded against the EDITDATA struct in Andos' Main.h:
@@ -44,81 +49,63 @@ EVIDENCE CHAIN (how it was found)
        DefaultZoom = 300   <-- the edge squeeze, in pixels
        DefaultOffset = 0, SineWaveWaves = 4 (unused by PANORAMA)
        PerspectiveDir = 0, resample = 0
-5. Andos' Runtime.cpp, DisplayRunObject(), HWA path: the object grabs
-   the ALREADY DRAWN render target and re-stretches it column by column
-   into a temp surface, then blits it back opaque. Nothing else draws
-   between: the flat scene stays visible wherever the bent copy does
-   not cover it (the top/bottom wedges near the screen edges).
+5. The HWA path (Windows/RPanorama.fx) does NOT do per-column columns:
+   it `readFrameToTexture`-grabs the already drawn window (plus the 22 px
+   margin = 1324x754) and draws it back at the object rect through a
+   ps_2_0 pixel shader. The shader re-samples vertically per column with a
+   PARABOLA, so the whole window is re-projected 1:1 with no flat "wedges"
+   -- the source's top/bottom are simply cropped at the screen edges.
 
-THE MATH (verbatim from Andos' PANORAMA / HORIZONTAL branch)
-------------------------------------------------------------
-for every 1-px column i in 0..1324:
-    step(i) = (i - 1324/2) / (1324/3.1415) + 3.1415/2
-    h(i)    = max(1, 754 + sin(step(i)) * 300 - 300)
-    draw column i at x = -22 + i,
-    y = -22 + 754/2 - h/2, height h   (pivot = screen y 355)
+THE MATH (verbatim from RPanorama.fx, HORIZONTAL / pDir == 0)
+-------------------------------------------------------------
+Let u,v be the pixel's object-normalized coords (0..1 over 1324x754),
+pivot = 0.5 (object center), fPixelHeight = 1/754.
 
-Column height: 754 px in the center column, 454 px at both object edges
-(469.7 / 470.4 at the VISIBLE screen edges x=0 / x=1279, i.e. ~62%).
-Note Andos uses the literal 3.1415 (truncated pi) -- kept as-is for
-faithfulness. A sprite whose top edge sits at frame row fy0 is mapped
-per column by:
-    dest_y(fy) = 355 - h/2 + (fy + 22) * h / 754
-(r = frame row + 22 because the object spans screen rows -22..732).
-At the center column h = 754 and dest_y == fy exactly (1:1); the bend
-grows toward both screen edges.
+    fB    = 1.0 - (zoom / 754)                 // zoom = 300 -> 0.621
+    fC(u) = max(0.02, 1.0 + (fB - 1.0) * 4.0 * (u - 0.5)^2)
+    src.y = (v - pivot) * fC + pivot
+    src.x = u
+    color = tex2D(capture, src -> window_space)
 
-HISTORY: v2.7.6 (the strip port) and why it was replaced
---------------------------------------------------------
-v2.7.6 emulated the extension MECHANIC: every layer-0 sprite was drawn
-as ~1 quad per screen column straight from its pak texture (up to 1280
-strips per sprite, flat pass + bent pass, ~2150 quads per office frame).
-Faithful to the CF2.5 blitter -- and the worst possible way to do this
-on a GPU:
+For HORIZONTAL the x coordinate passes through untouched; the vertical
+position is scaled by fC about the pivot and re-centered. Since the object
+only spans -22..1302 x / -22..732 y over a 1280x720 window, the visible
+window samples the parabola over u in [22/1324, 1302/1324]: fC = 1 at the
+center column, ~0.628 at the visible left/right edges, so edge columns read
+only the central ~63% of the source band and stretch it to the full window
+height (the office appears to bulge). Center column is 1:1.
 
-  * each 1-px strip bilinear-samples half a texel into its neighbour on
-    BOTH edges -> the seams bleed and the whole bent band reads smeared;
-  * strip destinations snapped to integer pixels while the pan offset is
-    fractional -> per-column width jitter (hairline gaps / doubles) and
-    shimmer while panning;
-  * ~1300-2150 DrawPrimitiveUP calls per frame for zero visual benefit.
+HISTORY: v2.6-v2.7.7 (the software path) and why it was replaced
+----------------------------------------------------------------
+v2.6/v2.7.6/v2.7.7 implemented the SOFTWARE `.mfx` mechanic instead: a
+per-column sine band (edges squeezed 754 -> 454 px, holding the flat scene
+visible in the top/bottom "wedges" the shader never produces). That model
+is a per-sprite triangle grid and does not match the Windows/Steam build.
+v2.8 drops it entirely for the shader.
 
-v2.7.7 CLEAN-ROOM REWRITE (current)
------------------------------------
-Keep the EFFECT, drop the 1995-style mechanic. The curve is sampled at
-an ~8-px column grid and handed to the GPU as ONE indexed-free triangle
-list per sprite (SpriteBatch::DrawTriangles, one DrawPrimitiveUP):
+v2.8 CLEAN-ROOM SHADER PORT (current)
+-------------------------------------
+The scene is captured off-screen and re-projected by a clean-room ps_3_0
+pixel shader, mirroring the original HWA flow:
 
-  pass 1 (unchanged)  flat layer-0 sprites -- the original grab+blit
-                      semantics: the flat scene stays visible in the
-                      top/bottom wedges near the screen edges;
-  pass 2 (new)        per sprite, a (cols-1) x 2 quad grid. Column x
-                      vertices:
-                          y_top(x) = 355 - h/2 + (fy0     + 22) * h/754
-                          y_bot(x) = 355 - h/2 + (fy0+ih  + 22) * h/754
-                          u(x)     = (x + panX - fx0) / iw   (linear!)
-                      v = 0 at the top edge, v = ih/alignedH at the
-                      bottom edge, so the sprite's full row range maps
-                      through the same curve as v2.7.6 bit-exactly.
+  1. `SpriteBatch::BeginSceneCapture` switches the render target to a
+     1280x720 EDRAM surface and clears it;
+  2. the flat layer-0 scene (office bg / fan / doors / panels, or the
+     camera feed) draws into that target;
+  3. `EndSceneCapture` resolves the EDRAM capture into a sampleable texture
+     and restores the back buffer;
+  4. `DrawPerspective` draws a full-screen quad (whose UVs are the
+     object-normalized coords) through the parabola shader above;
+  5. layers 2/3 (static, REC, flash, bezel, labels, map, HUD) draw flat
+     on top and stay straight.
 
-Properties:
-  * the profile is linear-interpolated by the GPU between grid columns;
-    at an 8-px step the max deviation from the true sine is ~0.006 px
-    (curvature bound: 300*(pi/1324)^2 * step^2/8) -- invisible;
-  * u(x) is exactly linear in x, so UV interpolation has ZERO error;
-  * wide continuous quads => bilinear filtering behaves: sharp texture,
-    no seam bleed, no per-pixel snapping, no shimmer;
-  * office bg worst case: 162 columns -> 161 quads -> 966 vertices,
-    ONE draw call (was 1280 strips / 1280 draw calls). Whole bent office
-    scene: ~6 DrawTriangles calls + the small flat pass.
-  * vertex scratch: one 2048-SpriteVertex buffer allocated in Init()
-    (kBentVertCap, GameRender.cpp); DrawBentInstance never allocates.
+The shader source lives in `SpriteBatch.cpp` (`kPanoramaPS_HLSL`), compiled
+at runtime with `D3DXCompileShader(ps_3_0)` like the sprite shaders, and the
+three tuner knobs feed its `gParams` constant register.
 
-Preview without a console: scripts/preview_perspective_clean.py renders
-the EXACT pass-1+pass-2 math from the real img_39 (1600x720 office
-panorama) at pan = 0 / 160 / 320 -- download/perspective_preview/*.png.
-That output is the ground truth the mesh converges to (the script
-evaluates the profile per 1-px column, i.e. denser than the 8-px grid).
+The device's auto depth-stencil is DISABLED (main.cpp): the game never
+writes depth, and the EDRAM would otherwise overflow -- back buffer +
+capture target nearly fill the 10 MB EDRAM already.
 
 WHERE THE NUMBERS CAME FROM (reproduction recipe)
 -------------------------------------------------
@@ -126,31 +113,24 @@ scripts/extract_perspective_edata.py walks the EXE: PE '.reloc' end ->
 pack header (0x7777, headerSize 32) -> 8 pack records -> chunk stream
 ("PAMU", build 284) -> chunk 8745 -> nested chunks (17476 header /
 17477 name / 17478 ObjectCommon; nested chunks are flag=3 encrypted
-with the standard MakeKey(editorFilename, name, copyright) RC4-variant
--- key strings here:
-    name            = "Five Nights at Freddy's"
-    editorFilename  = "C:\Users\Scott\Desktop\Five Nights\FiveNights-55.mfa"
-    copyright       = "" )
+with the standard MakeKey(editorFilename, name, copyright) RC4-variant).
 -> ObjectCommon ext block at offset 116 -> EDATA above.
 
 VERIFICATION AFTER BUILD
 ------------------------
-1. APPLY_PATCH.bat must end with:
-       [OK]   src\GameRender.cpp has the v2.7.7 clean-room Perspective
-       [OK]   include\GameRender.h declares DrawBentInstance
-       [OK]   include\SpriteBatch.h declares DrawTriangles
-2. Rebuild Solution (VS2010). First Output line must be:
-       === FNAF1-Recomp v2.7.7-cleanpersp built ... ===
-3. In game: the office edges bend smoothly (doorways squeeze toward the
-   screen edges, ~62% height at the extremes, center column untouched)
-   with NO smearing, NO vertical hairlines and NO shimmer while panning;
-   the camera feeds bulge the same way; map/bezel/labels/HUD stay
-   straight.
+1. Rebuild the Solution (VS2010). The boot log must include the build
+   banner, and SpriteBatch::Init must not report a "Panorama PS" or
+   "Perspective capture RT" failure (any failure is surfaced as a
+   full-screen message box instead of a black screen).
+2. In game: the office edges bend smoothly -- center column 1:1, the
+   visible screen edges re-project the central ~63% band, no flat wedges,
+   no smearing, no hairlines, no shimmer while panning; the camera feeds
+   bulge the same way; map/bezel/labels/HUD stay straight.
 
 PERF NOTE
 ---------
-Bent office frame: flat pass (~7 quads) + ~6 DrawTriangles calls with
-~1300 vertices total -- two orders of magnitude fewer CPU draw calls
-than v2.7.6. If a slow console ever needs more headroom, coarsen the
-grid by changing the 0.125f grid-step factor in DrawBentInstance (one
-constant; 16 px halves the vertices, sag stays < 0.03 px).
+The panorama is now ONE render-target capture + ONE resolve + ONE
+full-screen shader pass per frame, independent of how many sprites the
+scene contains (the old path cost ~6 triangle-grid draws + a flat pass).
+The capture/resolve is the only fixed cost; the parabola runs per-pixel on
+the GPU.

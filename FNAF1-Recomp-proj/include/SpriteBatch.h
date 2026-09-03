@@ -56,12 +56,24 @@ public:
     // Draw with default UVs 0,0,1,1
     void Draw(void* tex, float x, float y, float w, float h, u32 color);
 
-    // v2.7.7 clean-room Perspective: submit an explicit triangle list in
-    // screen space (same vertex layout as the quad path). One draw call for
-    // a whole warped mesh instead of ~1300 1-px column strips; wide
-    // continuous quads let the GPU bilinear filter run without seam bleed.
+    // General-purpose explicit triangle list in screen space (same vertex
+    // layout as the quad path); one DrawPrimitiveUP for a whole mesh.
     // Flushes any queued quads first, so paint order stays exact.
+    // (No longer used by the Perspective path -- v2.8 replaced the bent mesh
+    // with the render-target + parabola shader.)
     void DrawTriangles(void* tex, const SpriteVertex* verts, int vertexCount);
+
+    // v2.8 clean-room Perspective shader (see GameRender.cpp / RPanorama.fx).
+    // The original HWA "Perspective" extension grabs the ALREADY DRAWN flat
+    // layer 0 off the screen and re-projects it through a ps_2_0 parabola
+    // pixel shader. We mirror that with a 1280x720 render-target capture:
+    //   BeginSceneCapture -> (draw layer 0) -> EndSceneCapture (resolves the
+    //   EDRAM capture into a sampleable texture) -> DrawPerspective (full-
+    //   screen parabola pass). Layers 2/3 are drawn flat afterwards.
+    bool PerspectiveReady() const { return m_panReady; }
+    void BeginSceneCapture(u32 clearColor);
+    void EndSceneCapture();
+    void DrawPerspective(float zoom, float centerY, float curve);
 
     void End();
 
@@ -76,6 +88,11 @@ private:
     void* m_vertexShader;             // IDirect3DVertexShader9*
     void* m_pixelShader;              // IDirect3DPixelShader9*
     void* m_vertexDecl;               // IDirect3DVertexDeclaration9*
+    void* m_panRT;                    // D3DSurface*     (1280x720 EDRAM capture RT)
+    void* m_panTex;                   // D3DTexture*     (resolve destination, sampleable)
+    void* m_panPS;                    // D3DPixelShader* (parabola panorama)
+    void* m_backRT;                   // D3DSurface*     (saved back-buffer RT0)
+    bool  m_panReady;
     bool  m_ready;
     char  m_initError[192];
 };

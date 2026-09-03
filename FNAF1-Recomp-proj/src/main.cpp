@@ -25,6 +25,7 @@
 #include "asset_mapping.hpp"
 
 #include <xtl.h>
+#include <xinputdefs.h>  // XINPUT_KEYSTROKE / XINPUT_FLAG_KEYBOARD (USB-keyboard reset)
 #include "XdkCompat.h"   // Snprintf — XDK CRT predates C99 snprintf
 #define PlatformSleepMs(ms) Sleep(ms)
 
@@ -96,8 +97,12 @@ static bool InitD3D() {
         d3dpp.BackBufferCount   = cfgs[c].count;
         d3dpp.MultiSampleType   = D3DMULTISAMPLE_NONE;
         d3dpp.SwapEffect        = D3DSWAPEFFECT_DISCARD;
-        d3dpp.EnableAutoDepthStencil = TRUE;
-        d3dpp.AutoDepthStencilFormat = D3DFMT_D24S8;
+        // v2.8: depth-stencil DISABLED. The game is pure 2D (Z writes are
+        // never enabled) and the Perspective post-process needs its own
+        // 1280x720 EDRAM render target; back buffer + capture would overflow
+        // the 10MB EDRAM if a full D24S8 depth buffer were also resident.
+        d3dpp.EnableAutoDepthStencil = FALSE;
+        d3dpp.AutoDepthStencilFormat = D3DFMT_UNKNOWN;
         d3dpp.Windowed = FALSE;
         d3dpp.hDeviceWindow = NULL;
         d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
@@ -152,7 +157,7 @@ static u32 ColorForState(GameState state, f32 power) {
 }
 static bool FrameBegin(u32 clearColor) {
     if (!g_pd3dDevice) return false;
-    g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET|D3DCLEAR_ZBUFFER, clearColor, 1.0f, 0);
+    g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, clearColor, 1.0f, 0);
     HRESULT hr = g_pd3dDevice->BeginScene();
     if (SUCCEEDED(hr)) {
         // reset the sprite queue for this frame; screens just queue quads,
@@ -229,6 +234,24 @@ static void RefreshMenuFromProgress(MenuSystem& menu) {
     i32 lastDone = g_prog.nextNight - 1; if (lastDone < 0) lastDone = 0; if (lastDone > 7) lastDone = 7;
     menu.Init(un, lastDone);
     menu.SetHasSave(lastDone > 0);
+}
+
+// Original title events: pressing <Delete> on the title screen wipes the Ini
+// (level=1, beatgame/beat6/beat7=0). On the console this arrives from a USB
+// keyboard through XInputGetKeystroke (XINPUT_FLAG_KEYBOARD).
+static void PollTitleKeyboardReset(MenuSystem& menu) {
+    XINPUT_KEYSTROKE ks;
+    while (XInputGetKeystroke(XUSER_INDEX_ANY, XINPUT_FLAG_KEYBOARD, &ks) == ERROR_SUCCESS) {
+        if ((ks.Flags & XINPUT_KEYSTROKE_KEYDOWN) && ks.VirtualKey == VK_DELETE) {
+            Progress::Reset(g_prog);
+            if (Progress::Save(g_prog)) {
+                RefreshMenuFromProgress(menu);
+                g_debugConsole.Print("SAVE WIPED (Delete)");
+            } else {
+                g_debugConsole.Print("SAVE WIPE FAILED");
+            }
+        }
+    }
 }
 
 void OnTimeUpdate(i32 hour){
@@ -490,10 +513,10 @@ int main(int argc, char* argv[]){
             if (g_tunerMode) {
                 g_debugConsole.Print("PERSP tuner ON: DPad sel/adj, A fast, Y reset, L3+R3 exit");
             } else {
-                printf("PERSP FINAL: ZOOM=%.1f CENTER_Y=%.1f ARC=%.4f\n",
+                printf("PERSP FINAL: ZOOM=%.1f CENTER_Y=%.1f CURVE=%.2f\n",
                        g_render.PerspTunerValue(0), g_render.PerspTunerValue(1),
                        g_render.PerspTunerValue(2));
-                g_debugConsole.Print("PERSP FINAL: ZOOM=%.1f CENTER_Y=%.1f ARC=%.4f",
+                g_debugConsole.Print("PERSP FINAL: ZOOM=%.1f CENTER_Y=%.1f CURVE=%.2f",
                        g_render.PerspTunerValue(0), g_render.PerspTunerValue(1),
                        g_render.PerspTunerValue(2));
             }
@@ -544,6 +567,7 @@ int main(int argc, char* argv[]){
         // ---------------- TITLE MENU ----------------
         if(state==GAME_STATE_MENU){
             if(menuFrameCounter < 30){ menuFrameCounter++; }
+            PollTitleKeyboardReset(menu);   // hidden Delete-key save wipe (original title events)
             MenuInput mi; mi.up=gi.cameraUp; mi.down=gi.cameraDown; mi.left=gi.cameraLeft; mi.right=gi.cameraRight;
             mi.confirm=gi.cameraToggle; mi.back=gi.back;
             if(gi.lookDir < -0.5f) mi.left=true;
