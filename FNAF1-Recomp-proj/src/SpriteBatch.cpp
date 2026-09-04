@@ -383,7 +383,7 @@ void SpriteBatch::EndSceneCapture()
     if (m_vertexCount > 0) Flush();
     D3DDeviceX* dev = (D3DDeviceX*)m_device;
     dev->Resolve(D3DRESOLVE_RENDERTARGET0, NULL, (D3DBaseTexture*)m_panTex,
-                 NULL, 0, 0);
+                 NULL, 0, 0, NULL, 0.0f, 0, NULL);
     dev->SetRenderTarget(0, (D3DSurface*)m_backRT);
     if (m_backRT) {
         ((D3DSurface*)m_backRT)->Release();

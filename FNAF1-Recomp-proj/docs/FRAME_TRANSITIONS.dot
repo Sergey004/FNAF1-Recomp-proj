@@ -1,0 +1,90 @@
+// FNaF1 frame transition + fade graph (Graphviz).
+// Extracted by ctfak-cpp from FiveNightsatFreddys.exe (CF2.5 R284).
+// Frame navigation via the Game object (ObjectType -3):
+//   act #0 = Next frame, #2 = Jump to frame, #4 = End application, #8 = Jump (expr).
+digraph FNAF1 {
+    rankdir=LR;
+    node [shape=box, style="rounded,filled", fillcolor="#1b1b2f", fontcolor="#e8e8f0", fontname="sans-serif"];
+    edge [fontname="sans-serif", fontsize=10, fontcolor="#9aa"];
+
+    END [shape=doublecircle, fillcolor="#3a1b1b", label="END"];
+
+    f0 [label="f0\nFrame 17\n(fade 1010/1010)"];
+    f1 [label="f1\ntitle"];
+    f2 [label="f2\nwhat day\n(fade-out 1010)"];
+    f3 [label="f3\nFrame 1 — ночь\n435 групп"];
+    f4 [label="f4\ndied"];
+    f5 [label="f5\nfreddy"];
+    f6 [label="f6\nnext day 6:00\n(fade 1010/900)"];
+    f7 [label="f7\nwait"];
+    f8 [label="f8\ngameover\n(fade-in 1010)"];
+    f9 [label="f9\nthe end\n(fade 2000/2000)"];
+    f10 [label="f10\nad\n(fade 2000/2000)"];
+    f11 [label="f11\nthe end 2\n(fade 2000/2000)"];
+    f12 [label="f12\ncustomize\n(fade-in 560)"];
+    f13 [label="f13\nthe end 3\n(fade 2000/2000)"];
+    f14 [label="f14\ncreepy start"];
+    f15 [label="f15\ncreepy end"];
+    f16 [label="f16\nend of demo\n(fade 1130/1010)"];
+    cam [shape=ellipse, style=dashed, fillcolor="#1b1b2f", label="camera\n(dynamic expr)"];
+
+    f0 -> f1  [label="timer 40s | Enter | click"];
+    f0 -> END [label="Esc"];
+
+    f1 -> END [label="Esc"];
+    f1 -> f2  [label="night 2/3"];
+    f1 -> f9  [label="night 1"];
+    f1 -> f11 [label="night 4"];
+    f1 -> f13 [label="6th night"];
+
+    f2 -> f6  [label="altV[0] > 130"];
+
+    f3 -> END [label="Esc"];
+    f3 -> f4  [label="death (altV[3]==1)"];
+    f3 -> f14 [label="yellow bear altV[1]>=300"];
+    f3 -> f3  [label="time==6 | C/D/NumPlus"];
+    f3 -> f1  [label="Active3 value 52/65"];
+    f3 -> f2  [label="Active2 altV[6]==3 + timer"];
+    f3 -> cam [style=dashed, label="act #8 (viewing)"];
+
+    f4 -> END [label="Esc"];
+    f4 -> f7  [label="timer 200s"];
+
+    f5 -> END [label="Esc"];
+    f5 -> f7  [label="timer 240s"];
+
+    f6 -> END [label="Esc"];
+    f6 -> f4  [label="night<=5"];
+    f6 -> f15 [label="night>2 (demo)"];
+    f6 -> f10 [label="night==6"];
+    f6 -> f12 [label="night==7"];
+    f6 -> f8  [label="night==8"];
+
+    f7 -> f0 [label="timer 2s/20s"];
+
+    f8 -> END [label="Esc"];
+    f8 -> f5  [label="random!=1"];
+    f8 -> f14 [label="random==1"];
+
+    f9  -> END [label="Esc"];
+    f9  -> f5  [label="timer 300s"];
+
+    f10 -> f4 [label="Esc/Enter/click/timer"];
+
+    f11 -> END [label="Esc"];
+    f11 -> f5  [label="timer 300s"];
+
+    f12 -> END [label="Esc"];
+    f12 -> f4  [label="1987==0"];
+    f12 -> f14 [label="1987==1"];
+
+    f13 -> END [label="Esc"];
+    f13 -> f5  [label="timer 300s"];
+
+    f14 -> f5 [label="timer 200s"];
+
+    f15 -> END [label="timer 20s"];
+
+    f16 -> END [label="Esc"];
+    f16 -> f5  [label="timer 300s"];
+}

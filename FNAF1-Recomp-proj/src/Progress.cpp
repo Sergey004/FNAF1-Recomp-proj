@@ -27,6 +27,7 @@ static const u32 PROGRESS_VERSION = 1;
 
 static const char* kXContentRoot = "fnaf_save";
 static const char* kXContentFile = "fnaf_save.ini";
+static const char* kAchFile = "fnaf_ach.ini";
 static const WCHAR kXContentDisplayName[] = L"Five Nights at Freddy's 1 Save";
 static XCONTENTDEVICEID g_saveDevice = XCONTENTDEVICE_ANY;
 static bool g_deviceChosen = false;
@@ -191,6 +192,55 @@ i32 Progress::StarCount(const GameProgress& p) {
     if (p.beat6) ++stars;
     if (p.beat7) ++stars;
     return stars;
+}
+
+// ---------------------------------------------------------------------------
+// Achievements persistence (v2.14). A second file in the SAME fnaf_save root,
+// decoupled from GameProgress so Progress::Reset (the hidden Delete-key wipe)
+// only resets night flow and never clears earned achievements.
+// ---------------------------------------------------------------------------
+
+bool Progress::LoadAchieve(u32* bits) {
+    if (!bits) return false;
+    *bits = 0;
+    if (!XContentMount(false)) return false;
+    char path[128];
+    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, kAchFile);
+    FILE* f = fopen(path, "rb");
+    bool ok = false;
+    if (f) {
+        char buf[128];
+        while (fgets(buf, sizeof(buf), f)) {
+            char* eol = strchr(buf, '\r'); if (eol) *eol = '\0';
+            eol = strchr(buf, '\n'); if (eol) *eol = '\0';
+            char* s = buf;
+            while (*s && (*s == ' ' || *s == '\t')) ++s;
+            if (strncmp(s, "unlocked=", 9) == 0) {
+                *bits = (u32)atoi(s + 9);
+                ok = true;
+            }
+        }
+        fclose(f);
+    }
+    XContentClose(kXContentRoot, NULL);
+    return ok;
+}
+
+bool Progress::SaveAchieve(u32 bits) {
+    char buf[64];
+    int len = fnaf::Snprintf(buf, sizeof(buf), "unlocked=%u\n", (unsigned)bits);
+    if (!XContentMount(true)) return false;
+    char path[128];
+    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, kAchFile);
+    FILE* f = fopen(path, "wb");
+    if (f) {
+        size_t put = fwrite(buf, 1, (size_t)len, f);
+        fclose(f);
+        XContentClose(kXContentRoot, NULL);
+        return put == (size_t)len;
+    }
+    XContentClose(kXContentRoot, NULL);
+    return false;
 }
 
 } // namespace fnaf

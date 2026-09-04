@@ -84,6 +84,7 @@
 #include "PakLoader.h"
 #include "MenuSystem.h"
 #include "Game.h"
+#include "Achievements.h"
 #include <cstdio>
 #include <cstring>
 #include <math.h>       // cosf — camera feed drift
@@ -519,6 +520,44 @@ void GameRender::DrawStaticOverlay(float alpha) {
     char name[32];
     StaticFrame(name);
     DrawTex(name, 0, 0, SCREEN_W, SCREEN_H, color);
+}
+
+// ------------------------------------------------------------
+//  v2.14 achievements screen + toast. Text-only for now: the achievement
+//  icons are PNGs on disk and the system "Achievement Unlocked — 10G" toast
+//  needs a SPA game-config we cannot ship on an unsigned recomp, so the list
+//  and the toast are drawn locally with the font.
+// ------------------------------------------------------------
+void GameRender::RenderAchievements(const Achievements& a) {
+    if (!m_text) return;
+    char line[160];
+    Snprintf(line, sizeof(line), "ACHIEVEMENTS  %d/%d unlocked  (%d G)",
+             a.UnlockedCount(), (int)Achievements::COUNT, a.TotalGamerscore());
+    m_text->DrawText(16, 20, line, 0xFFFFFFFF);
+
+    int y = 58;
+    for (int i = 0; i < Achievements::COUNT; ++i) {
+        const AchievementDef& d = a.Get(i);
+        const bool unlocked = a.IsUnlocked(i + 1);
+        if (d.secret && !unlocked) {
+            m_text->DrawText(16, y, "???", 0xFF9A9A9A);
+            m_text->DrawText(40, y + 22, "Hidden achievement", 0xFF6A6A6A);
+        } else {
+            Snprintf(line, sizeof(line), "%s  (%dG)", d.name, d.gamerscore);
+            m_text->DrawText(16, y, line, unlocked ? 0xFFFFFFFF : 0xFF9A9A9A);
+            m_text->DrawText(40, y + 22, d.description, unlocked ? 0xFFB0B0B0 : 0xFF6A6A6A);
+        }
+        y += 56;
+    }
+    m_text->DrawText(16, 692, "Y/B = back", 0xFF808080);
+}
+
+void GameRender::DrawAchievementToast(const char* name, int gamerscore) {
+    if (!m_text) return;
+    char line[160];
+    m_text->DrawTextCenteredXY((i32)(SCREEN_W * 0.5f), 48, "Achievement Unlocked!", 0xFFFFFF00);
+    Snprintf(line, sizeof(line), "%s  (%dG)", name, gamerscore);
+    m_text->DrawTextCenteredXY((i32)(SCREEN_W * 0.5f), 76, line, 0xFFFFFFFF);
 }
 
 void GameRender::DrawStripCentered(const SpriteStrip& strip, float cx, float y,

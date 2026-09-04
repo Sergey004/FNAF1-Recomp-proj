@@ -304,6 +304,7 @@
     <None Include="achievements_pics\аch_jumpscare.png" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\Achievements.h" />
     <ClInclude Include="include\Animatronic.h" />
     <ClInclude Include="include\AnimatronicAI.h" />
     <ClInclude Include="include\asset_mapping.h" />
@@ -331,6 +332,7 @@
     <ClInclude Include="include\XdkCompat.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Achievements.cpp" />
     <ClCompile Include="src\AnimatronicAI.cpp" />
     <ClCompile Include="src\AudioSystem.cpp" />
     <ClCompile Include="src\CameraSystem.cpp" />

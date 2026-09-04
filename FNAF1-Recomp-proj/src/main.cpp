@@ -17,6 +17,7 @@
 #include "DebugConsole.h"
 #include "MenuSystem.h"
 #include "Progress.h"     // v2.7.13: persistent night-flow progress
+#include "Achievements.h" // v2.14: in-game achievements
 #include "SpriteBatch.h"
 #include "PakLoader.h"
 #include "InputSystem.h"
@@ -228,6 +229,8 @@ static bool s_phoneMuted = false;     // player muted the call
 // v2.7.13: persistent progress (fnaf_save.bin next to the XEX) + the
 // title-menu refresh (Continue target, unlock caps, stars) built from it.
 static GameProgress g_prog;
+static Achievements g_ach;      // v2.14: in-game achievements (auto-loaded at boot)
+static bool g_achScreen = false;
 static void RefreshMenuFromProgress(MenuSystem& menu) {
     Progress::Load(g_prog);
     i32 un = g_prog.nextNight;           if (un < 1) un = 1;       if (un > 7) un = 7;
@@ -282,6 +285,7 @@ void OnJumpscare(AnimatronicId anim){
         g_prog.beat7 = false;
     }
     Progress::Save(g_prog);
+    g_ach.OnJumpscare();   // v2.14: "No Hiding"
 }
 void OnPowerOut(){
     printf("*** POWER OUT! ***\n");
@@ -313,6 +317,19 @@ void OnNightComplete(i32 night){
     Progress::Load(g_prog);
     g_prog.nextNight = (night<7)?(night+1):7;
     Progress::Save(g_prog);
+
+    // v2.14: unlock night-scoped achievements. "perfect" gates "No Tampering"
+    // (Custom Night 20/20/20/20); "No Running"/"No Laughing" are the
+    // prevent-side night 4/5 achievements tracked during the night.
+    bool perfect = false;
+    if (g_gameRef) {
+        const fnaf::AnimatronicAI& ai = g_gameRef->GetAI();
+        perfect = (ai.GetAILevel(fnaf::ANIM_FREDDY) == 20) &&
+                  (ai.GetAILevel(fnaf::ANIM_BONNIE) == 20) &&
+                  (ai.GetAILevel(fnaf::ANIM_CHICA)  == 20) &&
+                  (ai.GetAILevel(fnaf::ANIM_FOXY)   == 20);
+    }
+    g_ach.OnNightComplete(night, perfect);
 }
 void OnGameOver(){
     printf("--- GAME OVER ---\n");
@@ -343,6 +360,8 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
     // deep steps for Bonnie/Chica, giggle for Freddy (data: groups 198-243)
     if(a==ANIM_BONNIE||a==ANIM_CHICA) g_audio.Play(&g_pak, Snd::DEEP_STEPS, false, 0.9f);
     else if(a==ANIM_FREDDY)           g_audio.Play(&g_pak, Snd::FREDDY_LAUGH_LONG, false, 0.9f);
+    // v2.14: "No Laughing" — Freddy steps into the East Hall on Night 5
+    if(a==ANIM_FREDDY && r==ROOM_EAST_HALL) g_ach.OnFreddyEast();
 }
 void OnFoxyStageChange(FoxyStage s){
     const char* t[]={"Curtain Closed","Peeking","Gone","Lurking","RUNNING!","AT DOOR!"};
@@ -352,6 +371,8 @@ void OnFoxyStageChange(FoxyStage s){
         g_audio.Play(&g_pak, Snd::RUN, true, 1.0f);
         g_audio.Play(&g_pak, Snd::RUNNING_FAST, true, 1.0f);
     }
+    // v2.14: "No Running" — Foxy leaves the cove (stage 4 sprint)
+    if(s==FOXY_STAGE_4) g_ach.OnFoxyRan();
 }
 void OnFoxyDoorBang(f32 p){
     printf("[AI] Foxy bangs! -%.1f%%\n",p);
@@ -485,10 +506,11 @@ int main(int argc, char* argv[]){
 
     MenuSystem menu;
     RefreshMenuFromProgress(menu);   // v2.7.13: boot from fnaf_save.bin
+    g_ach.Init();                     // v2.14: load achievements (device already chosen)
 
     // Boot: disclaimer first (original title-frame String obj 0 flow)
     GameState state = GAME_STATE_DISCLAIMER;
-    if(cmdNight!=0){ game.Init(cmdNight); state=GAME_STATE_NIGHT_START; }
+    if(cmdNight!=0){ game.Init(cmdNight); g_ach.BeginNight(cmdNight); state=GAME_STATE_NIGHT_START; }
 
     i32 tickCount=0;
     static int menuFrameCounter = 0;
@@ -525,6 +547,7 @@ int main(int argc, char* argv[]){
         g_render.SetLookDir(gi.lookDir);   // office pan window (v2.5)
         g_render.Tick(1.0f/60.0f);
         g_audio.Tick();
+        g_ach.Tick(1.0f/60.0f);     // v2.14: achievement toast timer
         if(state!=GAME_STATE_MENU && state!=GAME_STATE_DISCLAIMER){
             TickPhoneCall(game, 1.0f/60.0f);
         }
@@ -559,6 +582,8 @@ int main(int argc, char* argv[]){
             }
             if(!bootLock && gi.pause){
                 state=GAME_STATE_MENU; menuFrameCounter=0;
+                g_audio.Play(&g_pak,Snd::STATIC2,true,0.5f);
+                g_audio.Play(&g_pak,Snd::DARKNESS_MUSIC,true,0.6f);
             }
             Sleep(16); tickCount++; continue;
         }
@@ -568,28 +593,45 @@ int main(int argc, char* argv[]){
         if(state==GAME_STATE_MENU){
             if(menuFrameCounter < 30){ menuFrameCounter++; }
             PollTitleKeyboardReset(menu);   // hidden Delete-key save wipe (original title events)
-            MenuInput mi; mi.up=gi.cameraUp; mi.down=gi.cameraDown; mi.left=gi.cameraLeft; mi.right=gi.cameraRight;
-            mi.confirm=gi.cameraToggle; mi.back=gi.back;
-            if(gi.lookDir < -0.5f) mi.left=true;
-            if(gi.lookDir > 0.5f) mi.right=true;
-            MenuAction act=menu.Update(mi);
-            if(act!=MENU_ACTION_NONE){ g_audio.Play(&g_pak,Snd::BLIP,false,0.8f); }
+
+            MenuAction act = MENU_ACTION_NONE;
+            // v2.14: achievements screen — Y opens on the title, B/Y closes
+            if(g_achScreen){
+                if(gi.back || gi.yToggle) g_achScreen = false;
+            } else {
+                if(gi.yToggle) g_achScreen = true;
+                MenuInput mi; mi.up=gi.cameraUp; mi.down=gi.cameraDown; mi.left=gi.cameraLeft; mi.right=gi.cameraRight;
+                mi.confirm=gi.cameraToggle; mi.back=gi.back;
+                if(gi.lookDir < -0.5f) mi.left=true;
+                if(gi.lookDir > 0.5f) mi.right=true;
+                act=menu.Update(mi);
+                if(act!=MENU_ACTION_NONE){ g_audio.Play(&g_pak,Snd::BLIP,false,0.8f); }
+            }
+
             if(FrameBegin(D3DCOLOR_XRGB(0,0,0))){
-                g_render.RenderTitle(menu, menu.HasSave(), Progress::StarCount(g_prog));   // v2.7.13
-                if(menu.GetScreen()!=MENU_MAIN) menu.Render(&g_text, SCREEN_W, SCREEN_H);
+                if(g_achScreen){
+                    g_render.RenderAchievements(g_ach);
+                } else {
+                    g_render.RenderTitle(menu, menu.HasSave(), Progress::StarCount(g_prog));   // v2.7.13
+                    if(menu.GetScreen()!=MENU_MAIN) menu.Render(&g_text, SCREEN_W, SCREEN_H);
+                }
                 FrameEnd();
             }
-            if(act==MENU_ACTION_START_NIGHT){
-                i32 night=menu.GetSelectedNight();
-                g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
-                game.Init(night);
-                s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
-                tickCount=0; accumulator=0; menuFrameCounter=0;
-                // v2.7.13: New Game shows the "HELP WANTED" newspaper first
-                state = menu.LastStartWasNewGame() ? GAME_STATE_INTRO_AD
-                                                   : GAME_STATE_NIGHT_START;
+
+            if(!g_achScreen){
+                if(act==MENU_ACTION_START_NIGHT){
+                    i32 night=menu.GetSelectedNight();
+                    g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
+                    game.Init(night);
+                    g_ach.BeginNight(night);   // v2.14: reset per-night achievement flags
+                    s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
+                    tickCount=0; accumulator=0; menuFrameCounter=0;
+                    // v2.7.13: New Game shows the "HELP WANTED" newspaper first
+                    state = menu.LastStartWasNewGame() ? GAME_STATE_INTRO_AD
+                                                       : GAME_STATE_NIGHT_START;
+                }
+                else if(act==MENU_ACTION_EXIT) break;
             }
-            else if(act==MENU_ACTION_EXIT) break;
             Sleep(16); tickCount++; continue;
         } else {
             menuFrameCounter = 0;
@@ -722,6 +764,10 @@ int main(int argc, char* argv[]){
             if(g_tunerMode && state==GAME_STATE_PLAYING){
                 g_render.RenderPerspTuner(g_tunerSel);
             }
+            // v2.14: achievement-unlocked toast, drawn over any screen
+            if(g_ach.HasToast()){
+                g_render.DrawAchievementToast(g_ach.ToastName(), g_ach.ToastGamerscore());
+            }
             FrameEnd();
         }
 
@@ -754,6 +800,7 @@ int main(int argc, char* argv[]){
                 if(state==GAME_STATE_NIGHT_COMPLETE && game.GetCurrentNight()<5){
                     // nights 1-4: straight into the next night card
                     game.Init(game.GetCurrentNight()+1);
+                    g_ach.BeginNight(game.GetCurrentNight()+1);   // v2.14
                     s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
                     state=GAME_STATE_NIGHT_START; tickCount=0; accumulator=0;
                     continue;

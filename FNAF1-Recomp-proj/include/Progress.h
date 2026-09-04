@@ -49,6 +49,13 @@ public:
 
     // Number of title-screen stars (0..3) implied by the flags.
     static i32 StarCount(const GameProgress& p);
+
+    // ---- v2.14 achievements (separate file, same XContent root) ----
+    // The achievement-unlock bitmask is kept OUT of GameProgress so the
+    // Delete-key progress wipe never clears it. Stored as fnaf_ach.ini
+    // (key `unlocked=N`, bit i-1 = achievement id i unlocked).
+    static bool LoadAchieve(u32* bits);
+    static bool SaveAchieve(u32 bits);
 };
 
 } // namespace fnaf

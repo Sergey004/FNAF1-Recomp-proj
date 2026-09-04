@@ -1,0 +1,90 @@
+/**
+ * Five Nights at Freddy's 1 — Recompilation
+ * Achievements.h: in-game achievement system (v2.14)
+ *
+ * The original game is a retail title whose achievements (id, name,
+ * description, gamerscore, icon) are baked into an Xbox LIVE SPA game-config
+ * produced by the external "Game Configuration" tool; the runtime only calls
+ * XUserWriteAchievements to mark an id as earned. This recomp cannot ship a
+ * signed SPA, so achievements are implemented IN-GAME:
+ *
+ *   * a fixed table of 10 achievements (mirrors achievements.xml);
+ *   * an unlock bitmask persisted to fnaf_save:\fnaf_ach.ini (separate from
+ *     the night-flow save, so the Delete-key progress wipe never clears it);
+ *   * an optional XUserWriteAchievements() write on unlock, gated by the
+ *     FNAF_LIVE_SAFE build switch in Achievements.cpp (works on devkit/LIVE
+ *     and on RGH/JTAG dashes); the achievement names/GS/icons shown by the
+ *     Guide still come from the title's SPA config, so the in-game UI below
+ *     is what this recomp uses to display them;
+ *   * a transient on-screen "Achievement Unlocked" toast (drawn by
+ *     GameRender) and a title-menu achievements screen.
+ *
+ * This class owns state and logic; rendering lives in GameRender.
+ */
+
+#ifndef FNAF_ACHIEVEMENTS_H
+#define FNAF_ACHIEVEMENTS_H
+
+#include "Types.h"
+
+namespace fnaf {
+
+struct AchievementDef {
+    int  id;              // 1..10
+    int  gamerscore;      // 20..100
+    const char* name;
+    const char* description;
+    const char* icon;     // file under game:\achievements_pics\ (informational)
+    bool secret;          // shown as a locked mystery until earned
+};
+
+class Achievements {
+public:
+    enum { COUNT = 10 };
+
+    Achievements();
+
+    // Load the saved unlock bitmask. Call AFTER Progress::Load at boot so the
+    // XContent device has already been chosen (no second selector dialog).
+    void Init();
+
+    bool IsUnlocked(int id) const;
+
+    // Night-scoped "prevent X" tracking, reset at the start of each night.
+    void BeginNight(int night);
+    void OnFoxyRan();
+    void OnFreddyEast();
+
+    // Unlock everything a completed night can earn (ids 1..9).
+    void OnNightComplete(int night, bool perfect);
+    // "No Hiding" (id 10) — caught by an animatronic.
+    void OnJumpscare();
+
+    void Unlock(int id);   // idempotent: mark + save + system write + toast
+
+    // ---- UI access ----
+    const AchievementDef& Get(int i) const;   // 0..9
+    int  UnlockedCount() const;
+    int  TotalGamerscore() const;             // sum of unlocked gamerscore
+
+    // ---- toast (drawn by GameRender) ----
+    void Tick(float dt);
+    bool        HasToast() const       { return m_toastId >= 0; }
+    const char* ToastName() const;
+    int         ToastGamerscore() const;
+
+private:
+    u32   m_unlocked;     // bit (id-1) set = achievement id unlocked
+    bool  m_foxyRan;      // this night
+    bool  m_freddyEast;   // this night
+    int   m_night;
+    int   m_toastId;      // -1 = none
+    float m_toastTime;
+
+    void Save();
+    void SystemWrite(int id);
+};
+
+} // namespace fnaf
+
+#endif // FNAF_ACHIEVEMENTS_H

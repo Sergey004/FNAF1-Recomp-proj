@@ -31,6 +31,7 @@ struct PakLoadedTexture;   // defined as struct in PakLoader.h (C4099)
 class MenuSystem;
 class Game;
 class AudioSystem;
+class Achievements;
 
 class GameRender {
 public:
@@ -82,6 +83,11 @@ public:
 
     // Draw the fullscreen static overlay on top of anything
     void DrawStaticOverlay(float alpha);
+
+    // v2.14: in-game achievements — full list screen (called from the title
+    // menu) and the transient "Achievement Unlocked" toast overlay.
+    void RenderAchievements(const Achievements& a);
+    void DrawAchievementToast(const char* name, int gamerscore);
 
     // Debug sprite browser (LB+RB hold on menu/disclaimer): pages through
     // the pak's counter-font strips, label candidates and small sprites so
