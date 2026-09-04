@@ -84,6 +84,9 @@ public:
     // Draw the fullscreen static overlay on top of anything
     void DrawStaticOverlay(float alpha);
 
+    // Full-screen black fade overlay (0..1 opacity), for frame transitions.
+    void DrawFade(float alpha);
+
     // v2.14: in-game achievements — full list screen (called from the title
     // menu) and the transient "Achievement Unlocked" toast overlay.
     void RenderAchievements(const Achievements& a);

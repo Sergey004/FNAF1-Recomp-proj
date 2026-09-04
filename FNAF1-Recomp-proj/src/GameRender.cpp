@@ -522,6 +522,16 @@ void GameRender::DrawStaticOverlay(float alpha) {
     DrawTex(name, 0, 0, SCREEN_W, SCREEN_H, color);
 }
 
+// Full-screen black fade overlay for frame-to-frame transitions. Reuses the
+// all-white img_23 tinted black (alpha in the top byte), same convention as
+// DrawStaticOverlay above.
+void GameRender::DrawFade(float alpha) {
+    if (!m_batch || alpha <= 0.0f) return;
+    u32 a = (u32)(alpha * 255.0f);
+    if (a > 255) a = 255;
+    DrawSolidRect(0.0f, 0.0f, SCREEN_W, SCREEN_H, (a << 24));
+}
+
 // ------------------------------------------------------------
 //  v2.14 achievements screen + toast. Text-only for now: the achievement
 //  icons are PNGs on disk and the system "Achievement Unlocked — 10G" toast
