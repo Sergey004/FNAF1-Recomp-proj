@@ -105,6 +105,16 @@ public:
     // Returns false if sound not found or no free voice.
     bool Play(PakLoader* pak, const char* sndName, bool loop, float volume);
 
+    // v2.16 channel mixer: matches the original "Speaker" channel model.
+    // Sounds are bound to a channel; the channel's volume is a live value
+    // that events change (proximity, camera, doors). Returns false on failure.
+    bool PlayOnChannel(PakLoader* pak, const char* sndName, bool loop, int channel);
+
+    // Set a channel's volume (0..1), applying it live to any voice already
+    // playing on that channel. channel 0..31.
+    void SetChannelVolume(int channel, float volume);
+    float GetChannelVolume(int channel) const;
+
     // Stop every voice currently playing the given sound
     void Stop(const char* sndName);
 
@@ -117,15 +127,18 @@ private:
     struct VoiceSlot {
         void*  voice;        // IXAudio2SourceVoice*
         char   name[64];
+        int    channel;      // v2.16: mixer channel this voice is bound to (-1 = none)
         bool   inUse;
     };
 
     void FreeSlot(int idx);
+    bool PlayInternal(PakLoader* pak, const char* sndName, bool loop, float volume, int channel);
 
     void* m_xaudio;          // IXAudio2*
     void* m_master;          // IXAudio2MasteringVoice*
     VoiceSlot m_slots[16];
     int   m_slotCount;
+    float m_channelVolume[32];   // v2.16: per-channel volume 0..1 (default 1.0)
     bool  m_ok;
 };
 

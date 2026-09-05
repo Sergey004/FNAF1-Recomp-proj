@@ -41,9 +41,11 @@ AudioSystem::AudioSystem()
     , m_slotCount(MAX_VOICES)
     , m_ok(false)
 {
+    for (int i = 0; i < 32; ++i) m_channelVolume[i] = 1.0f;
     for (int i = 0; i < MAX_VOICES; ++i) {
         m_slots[i].voice = 0;
         m_slots[i].name[0] = '\0';
+        m_slots[i].channel = -1;
         m_slots[i].inUse = false;
     }
 }
@@ -84,6 +86,7 @@ void AudioSystem::FreeSlot(int idx) {
         s.voice = 0;
     }
     s.name[0] = '\0';
+    s.channel = -1;
     s.inUse = false;
 }
 
@@ -116,7 +119,7 @@ void AudioSystem::Tick() {
     }
 }
 
-bool AudioSystem::Play(PakLoader* pak, const char* sndName, bool loop, float volume) {
+bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, float volume, int channel) {
     if (!m_ok || !pak || !sndName || !sndName[0]) return false;
 
     PakLoadedSound* snd = pak->FindSound(sndName);
@@ -184,9 +187,38 @@ bool AudioSystem::Play(PakLoader* pak, const char* sndName, bool loop, float vol
     VoiceSlot& s = m_slots[slot];
     s.voice = voice;
     s.inUse = true;
+    s.channel = channel;
     strncpy(s.name, sndName, sizeof(s.name) - 1);
     s.name[sizeof(s.name) - 1] = '\0';
     return true;
+}
+
+bool AudioSystem::Play(PakLoader* pak, const char* sndName, bool loop, float volume) {
+    return PlayInternal(pak, sndName, loop, volume, -1);
+}
+
+bool AudioSystem::PlayOnChannel(PakLoader* pak, const char* sndName, bool loop, int channel) {
+    // Play at the channel's CURRENT volume; later SetChannelVolume re-applies
+    // the (possibly ramping) volume to this live voice.
+    return PlayInternal(pak, sndName, loop, GetChannelVolume(channel), channel);
+}
+
+void AudioSystem::SetChannelVolume(int channel, float volume) {
+    if (channel < 0 || channel >= 32) return;
+    if (volume < 0.0f) volume = 0.0f;
+    if (volume > 1.0f) volume = 1.0f;
+    m_channelVolume[channel] = volume;
+    // Re-apply to every live voice bound to this channel.
+    for (int i = 0; i < m_slotCount; ++i) {
+        if (m_slots[i].inUse && m_slots[i].channel == channel && m_slots[i].voice) {
+            reinterpret_cast<IXAudio2SourceVoice*>(m_slots[i].voice)->SetVolume(volume);
+        }
+    }
+}
+
+float AudioSystem::GetChannelVolume(int channel) const {
+    if (channel < 0 || channel >= 32) return 1.0f;
+    return m_channelVolume[channel];
 }
 
 void AudioSystem::Stop(const char* sndName) {

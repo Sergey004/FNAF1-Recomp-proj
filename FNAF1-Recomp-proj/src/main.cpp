@@ -323,6 +323,51 @@ static void TickFade(GameState& state, float dt) {
 static void DrawFadeOverlay() {
     if (g_fade.alpha > 0.0f) g_render.DrawFade(g_fade.alpha);
 }
+
+// ---- v2.16 audio mixer channels (match the original "Speaker" channels) ----
+enum {
+    CH_FAN        = 1,   // Buzz_Fan loop — base 25 (camera down) / 10 (camera up)
+    CH_COLDPRESC  = 2,   // ColdPresc B loop — base 50
+    CH_BALLAST    = 3,   // BallastHum loop — muted by camera-up / lights
+    CH_EERIE      = 18,  // EerieAmbience loop — proximity (muted at start)
+    CH_PHONE      = 19,  // voiceover phone — 100 office / 50 viewing / 0 mute
+    CH_ROBOTVOICE = 21   // robotvoice loop — proximity (muted at start)
+};
+
+// v2.16: per-frame dynamic channel volumes (the "1:1" mixer). Runs while the
+// office is active; matches the original's live per-channel volume events
+// (camera up/down, lights, mute-call, animatronic proximity).
+static void TickAudioMixer(const Game& game) {
+    const bool monUp  = game.GetCameras().IsMonitorUp();
+    const DoorSystem& doors = game.GetDoors();
+    const bool lightL = doors.IsLightOn(DOOR_LEFT);
+    const bool lightR = doors.IsLightOn(DOOR_RIGHT);
+
+    // fan: 25 down / 10 up (groups 143/144)
+    g_audio.SetChannelVolume(CH_FAN, monUp ? 0.10f : 0.25f);
+    // ballast hum: mute when camera up or a light is on (groups 114-129/326)
+    g_audio.SetChannelVolume(CH_BALLAST, (monUp || lightL || lightR) ? 0.0f : 0.50f);
+    // phone: 100 office / 50 viewing / 0 mute (groups 360/361/379)
+    g_audio.SetChannelVolume(CH_PHONE, s_phoneMuted ? 0.0f : (monUp ? 0.50f : 1.0f));
+
+    // proximity ambience (robotvoice ch21, EerieAmbience ch18)
+    const AnimatronicAI& ai = game.GetAI();
+    const RoomId bonnie = ai.GetAnimatronic(ANIM_BONNIE).currentRoom;
+    const RoomId chica  = ai.GetAnimatronic(ANIM_CHICA).currentRoom;
+    const RoomId freddy = ai.GetAnimatronic(ANIM_FREDDY).currentRoom;
+    const RoomId foxy   = ai.GetAnimatronic(ANIM_FOXY).currentRoom;
+
+    float watched = 0.0f;
+    if (bonnie == ROOM_WEST_HALL_CORNER || bonnie == ROOM_LEFT_DOOR)  { if (watched < 0.6f) watched = 0.6f; }
+    if (chica  == ROOM_EAST_HALL_CORNER || chica  == ROOM_RIGHT_DOOR) { if (watched < 0.6f) watched = 0.6f; }
+    if (freddy == ROOM_EAST_HALL || freddy == ROOM_EAST_HALL_CORNER || freddy == ROOM_RIGHT_DOOR) { if (watched < 0.4f) watched = 0.4f; }
+    if (foxy   == ROOM_LEFT_DOOR || foxy == ROOM_OFFICE) watched = 1.0f;
+    if (freddy == ROOM_OFFICE) watched = 1.0f;
+
+    g_audio.SetChannelVolume(CH_ROBOTVOICE, watched);
+    g_audio.SetChannelVolume(CH_EERIE,      watched * 0.6f);
+}
+
 static void RefreshMenuFromProgress(MenuSystem& menu) {
     Progress::Load(g_prog);
     i32 un = g_prog.nextNight;           if (un < 1) un = 1;       if (un > 7) un = 7;
@@ -384,7 +429,7 @@ void OnPowerOut(){
     // group 285: powerdown + stop office loops
     g_audio.Stop(Snd::COLD_PRESC); g_audio.Stop(Snd::BUZZ_FAN);
     g_audio.Stop(Snd::BALLAST_HUM); g_audio.Stop(Snd::ROBOT_VOICE);
-    g_audio.Stop(Snd::STATIC_LOOP); g_audio.Stop(Snd::STATIC2);
+    g_audio.Stop(Snd::EERIE_AMBIENCE); g_audio.Stop(Snd::STATIC_LOOP); g_audio.Stop(Snd::STATIC2);
     s_phonePlaying=false;
     g_audio.Play(&g_pak, Snd::POWERDOWN, false, 1.0f);
 }
@@ -478,7 +523,8 @@ void OnFoxyDoorBang(f32 p){
 static void StartPhoneCall(i32 night) {
     if (night < 1 || night > 5) return;           // nights 6/7: no call
     if (s_phoneMuted) return;
-    g_audio.Play(&g_pak, Snd::VOICEOVER[night-1], false, 1.0f);
+    g_audio.SetChannelVolume(CH_PHONE, 1.0f);     // office, monitor down
+    g_audio.PlayOnChannel(&g_pak, Snd::VOICEOVER[night-1], false, CH_PHONE);
     s_phonePlaying = true;
 }
 
@@ -645,15 +691,20 @@ int main(int argc, char* argv[]){
         g_ach.Tick(1.0f/60.0f);     // v2.14: achievement toast timer
         TickFade(state, 1.0f/60.0f);  // v2.15: advance any running fade (may change `state`)
 
-        // v2.15: office ambience fires exactly once when we actually land in
-        // PLAYING (the fade-out of the "what day" card may delay the switch).
+        // v2.16: office ambience starts once on landing in PLAYING, on mixer channels
+        // (1:1 with office frame group 15), including the proximity loops that
+        // begin MUTED and are ramped by TickAudioMixer.
         if (state == GAME_STATE_PLAYING && !g_officeAmb && g_fade.phase == 0) {
-            g_audio.Play(&g_pak, Snd::COLD_PRESC, true, 0.6f);
-            g_audio.Play(&g_pak, Snd::BUZZ_FAN, true, 0.6f);
-            g_audio.Play(&g_pak, Snd::BALLAST_HUM, true, 0.5f);
-            // NOTE: robotvoice (sample #40, ch21) is ALSO a start-of-frame loop
-            // in the original, but it starts MUTED (vol 0) and is raised only by
-            // proximity triggers (Active 21) — a sub-system not ported yet.
+            g_audio.SetChannelVolume(CH_FAN,       0.25f);
+            g_audio.SetChannelVolume(CH_COLDPRESC, 0.50f);
+            g_audio.SetChannelVolume(CH_BALLAST,   0.50f);
+            g_audio.PlayOnChannel(&g_pak, Snd::BUZZ_FAN,    true, CH_FAN);
+            g_audio.PlayOnChannel(&g_pak, Snd::COLD_PRESC,  true, CH_COLDPRESC);
+            g_audio.PlayOnChannel(&g_pak, Snd::BALLAST_HUM, true, CH_BALLAST);
+            g_audio.SetChannelVolume(CH_ROBOTVOICE, 0.0f);
+            g_audio.PlayOnChannel(&g_pak, Snd::ROBOT_VOICE,    true, CH_ROBOTVOICE);
+            g_audio.SetChannelVolume(CH_EERIE, 0.0f);
+            g_audio.PlayOnChannel(&g_pak, Snd::EERIE_AMBIENCE, true, CH_EERIE);
             g_officeAmb = true;
         }
         if (state != GAME_STATE_PLAYING) g_officeAmb = false;
@@ -679,6 +730,7 @@ int main(int argc, char* argv[]){
 
         if(state==GAME_STATE_PLAYING){
             TickPhoneCall(game, 1.0f/60.0f);   // phone call belongs to the office, not the ad/card
+            TickAudioMixer(game);              // v2.16: dynamic channel volumes each frame
         }
 
         // ---------------- DEBUG SPRITE BROWSER ----------------
@@ -852,6 +904,11 @@ int main(int argc, char* argv[]){
             }
             if(gi.pause){
                 if(s_phonePlaying){ for(int v=0;v<5;++v) g_audio.Stop(Snd::VOICEOVER[v]); s_phonePlaying=false; }
+                // stop the office ambience when leaving to the menu, else it keeps
+                // playing and doubles on resume (the mixer re-starts it for the office)
+                g_audio.Stop(Snd::COLD_PRESC); g_audio.Stop(Snd::BUZZ_FAN);
+                g_audio.Stop(Snd::BALLAST_HUM); g_audio.Stop(Snd::ROBOT_VOICE);
+                g_audio.Stop(Snd::EERIE_AMBIENCE);
                 StartTransition(state, GAME_STATE_MENU); menu.Reset();
                 continue;
             }
