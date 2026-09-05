@@ -39,9 +39,18 @@ static bool XContentMount(bool create)
         bytesRequested.QuadPart = XContentCalculateSize(64 * 1024, 1);
         DWORD dwFlags = XCONTENTFLAG_NONE;
         XCONTENTDEVICEID deviceID = XCONTENTDEVICE_ANY;
-        DWORD res = XShowDeviceSelectorUI(0, XCONTENTTYPE_SAVEDGAME, dwFlags, bytesRequested, &deviceID, NULL);
-        if (res != ERROR_IO_PENDING && res != ERROR_SUCCESS) {
-            return false;
+        // XShowDeviceSelectorUI is ASYNC: it needs a real XOVERLAPPED and must be
+        // pumped to completion. The old NULL-overlapped call never let the picker
+        // show up. Same pattern as XShowMessageBoxUI in main.cpp.
+        XOVERLAPPED overlapped;
+        memset(&overlapped, 0, sizeof(overlapped));
+        DWORD res = XShowDeviceSelectorUI(0, XCONTENTTYPE_SAVEDGAME, dwFlags, bytesRequested, &deviceID, &overlapped);
+        if (res == ERROR_IO_PENDING) {
+            while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
+            res = XGetOverlappedResult(&overlapped, NULL, TRUE);
+        }
+        if (res != ERROR_SUCCESS) {
+            return false;   // cancelled/failed: g_deviceChosen stays false -> retry next time
         }
         g_saveDevice = deviceID;
         g_deviceChosen = true;

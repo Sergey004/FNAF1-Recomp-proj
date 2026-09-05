@@ -186,3 +186,69 @@ So the authentic recipe, verified against the data: dark pre-render +
 noise sprite at (255-coeff)/255. A real shader post-process (ps_3_0
 grain/vignette RT pass) is possible on the 360 if the user ever wants
 the grain OVER the HUD, but the original does not do that.
+
+## v2.15 — complete sound map (ground truth from Events/*)
+
+Full extraction of the `Speaker` object actions across all 17 frames
+(106 play events, 234 Speaker lines). The action numbers resolve to:
+
+| act # | meaning | params |
+|---|---|---|
+| `1`  | stop all samples / reset channels | none |
+| `11` | play sample (ONE-SHOT) on channel | `sample #N "name"`, `expr ==: channel` |
+| `12` | play sample (LOOPING) on channel | `sample #N "name"`, `expr ==: channel`, `expr ==: 0` (loop forever) |
+| `17` | set channel volume 0..100 | `expr ==: channel`, `expr ==: value` |
+
+There is **no separate "stop channel" action** — muting a channel is `act #17` with value 0.
+
+### Start-of-frame sounds (the ambience anchors)
+
+| Frame | Sounds at frame start |
+|---|---|
+| Frame 17 (disclaimer) | — |
+| title | `static2` (ch1) + `darkness music` loop (ch2) |
+| what day (night card) | `blip3` (ch1) |
+| **Frame 1 (office)** | `ColdPresc B` loop (ch2, **vol 50**), `Buzz_Fan` loop (ch1), `BallastHum` loop (ch3), `robotvoice` loop (ch21, **vol 0 = muted**) |
+| died | `static` (ch1) |
+| freddy | `XSCREAM` (ch1) + `static` |
+| next day | `chimes 2` (ch1) + `CROWD_SMALL_CHIL` (ch2) |
+| the end / the end 2 / the end 3 | `music box` loop (ch1) |
+| creepy end | `XSCREAM2` (ch29) |
+| end of demo | `music box` one-shot (ch1) |
+
+### Dynamic-volume sub-systems the recomp does NOT port yet
+
+The original is heavily channel-based — volume is a *live* per-channel
+value changed by events (proximity, camera state, door state, presence):
+
+- **`robotvoice` (ch21) + `EerieAmbience` (ch18)** — both start-loop MUTED
+  (vol 0) at office start; raised only by proximity triggers
+  (`Active 21`, bonnie@CAM2B / chica@CAM4B, night>=4). This is a faint
+  "being watched" ambience, not a constant office loop.
+- **BallastHum (ch3)** — muted/reduced when the camera monitor is up or a
+  light is on (groups 114-129, 143, 326).
+- **Fan (BuzzFan ch1)** — 25 when camera down, 10 when camera up.
+- **`deep steps` (ch8)** — volume = distance 10..40, muted when the
+  animatronic overlaps you (groups 199-244).
+- **Kitchen/oven (ch10) + Freddy kitchen music (ch22)** — volume by
+  presence and whether you're looking at CAM 6.
+- **`pirate song2` (ch13)** — 15 when viewing cove, 5 otherwise.
+- **`circus` (ch15)** and **breaths (ch14)** — fixed low bases.
+- **Phone talk (ch19)** — 100 office, 50 while viewing, 0 mute-call.
+- **Freddy proximity (ch16 laugh / ch24 running fast3)** — 15..100 ramp as
+  Freddy walks his path into the office (groups 389-395).
+
+### Triggers the current recomp maps differently
+
+- **Phone call (voiceover1c..5)** — original: plays at OFFICE START when
+  `night number == N` (`play voice N == 0`), **no 2.5 s delay**. Fixed in
+  main.cpp to only tick during `GAME_STATE_PLAYING` (was leaking into the
+  newspaper); the 2.5 s delay itself is still a deviation from `1:1`.
+- **Freddy laughs** — `Laugh_Giggle_Girl_1d/2d/8d` (samples #56/57/58) are
+  the "freddy got in" laughs (groups 402-404); `Laugh_Giggle_Girl_1`
+  (#38) is the GOLDEN FREDDY ("yellow bear") laugh (group 44). The recomp
+  maps `FREDDY_LAUGH[3]` to an hourly giggle and `FREDDY_LAUGH_LONG` to
+  Freddy's move — both trigger differently from the data.
+- **Menu blip3** — `option selected` counter == 0..3 (title groups 28-31);
+  recomp plays it on `MENU_ACTION`; the night-card blip3 (what-day group 2)
+  was added in v2.15.

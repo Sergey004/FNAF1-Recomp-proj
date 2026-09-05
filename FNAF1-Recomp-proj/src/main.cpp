@@ -231,6 +231,98 @@ static bool s_phoneMuted = false;     // player muted the call
 static GameProgress g_prog;
 static Achievements g_ach;      // v2.14: in-game achievements (auto-loaded at boot)
 static bool g_achScreen = false;
+
+// ---- v2.15 frame fade transitions (docs/FRAME_TRANSITIONS.md) ----
+// A black full-screen overlay whose alpha ramps 0..1 (fade-out) then 1..0
+// (fade-in), gated by per-state millisecond durations extracted from the
+// original's frame Transition blocks (STDT/FADE).
+struct ScreenFade {
+    int      phase;   // 0 = none, 1 = fade-out, 2 = fade-in
+    float    alpha;   // 0 clear .. 1 fully black
+    float    timer;   // seconds
+    float    dur;     // seconds
+    GameState target; // state to switch to after fade-out
+};
+static ScreenFade g_fade = { 0, 0.0f, 0.0f, 0.0f, GAME_STATE_MENU };
+static bool g_officeAmb = false;   // office ambience already started (edge guard)
+static bool g_menuAmb   = false;   // title ambience already started (edge guard)
+static bool g_nightBlip = false;   // "what day" card blip already played (edge guard)
+
+static int FadeOutMs(GameState s) {
+    switch (s) {
+        case GAME_STATE_DISCLAIMER:     return 1010;
+        case GAME_STATE_NIGHT_START:    return 1010;
+        case GAME_STATE_NIGHT_COMPLETE: return 900;
+        case GAME_STATE_INTRO_AD:       return 2000;
+        default: return 0;   // title / office / power-out / jumpscare: hard cut
+    }
+}
+static int FadeInMs(GameState s) {
+    switch (s) {
+        case GAME_STATE_DISCLAIMER:     return 1010;
+        case GAME_STATE_NIGHT_COMPLETE: return 1010;
+        case GAME_STATE_GAME_OVER:      return 1010;
+        case GAME_STATE_INTRO_AD:       return 2000;
+        default: return 0;
+    }
+}
+
+static void StartTransition(GameState& state, GameState to) {
+    if (g_fade.phase != 0) return;   // a transition is already running
+    int out = FadeOutMs(state);
+    int in  = FadeInMs(to);
+    if (out <= 0 && in <= 0) {
+        state = to;                 // hard cut
+        return;
+    }
+    if (out > 0) {
+        g_fade.phase  = 1;
+        g_fade.alpha  = 0.0f;
+        g_fade.timer  = 0.0f;
+        g_fade.dur    = (float)out / 1000.0f;
+        g_fade.target = to;         // `state` does NOT change yet
+    } else {
+        state         = to;         // no fade-out: switch now, then fade in
+        g_fade.phase  = 2;
+        g_fade.alpha  = 1.0f;
+        g_fade.timer  = 0.0f;
+        g_fade.dur    = (float)in / 1000.0f;
+        g_fade.target = to;
+    }
+}
+
+static void TickFade(GameState& state, float dt) {
+    if (g_fade.phase == 0) return;
+    g_fade.timer += dt;
+    if (g_fade.phase == 1) {                 // fading out
+        if (g_fade.timer >= g_fade.dur) {
+            state = g_fade.target;
+            int in = FadeInMs(state);
+            if (in > 0) {
+                g_fade.phase = 2;
+                g_fade.alpha = 1.0f;
+                g_fade.timer = 0.0f;
+                g_fade.dur   = (float)in / 1000.0f;
+            } else {
+                g_fade.phase = 0;
+                g_fade.alpha = 0.0f;
+            }
+        } else {
+            g_fade.alpha = g_fade.timer / g_fade.dur;   // 0 -> 1
+        }
+    } else {                                 // fading in
+        if (g_fade.timer >= g_fade.dur) {
+            g_fade.phase = 0;
+            g_fade.alpha = 0.0f;
+        } else {
+            g_fade.alpha = 1.0f - g_fade.timer / g_fade.dur;  // 1 -> 0
+        }
+    }
+}
+
+static void DrawFadeOverlay() {
+    if (g_fade.alpha > 0.0f) g_render.DrawFade(g_fade.alpha);
+}
 static void RefreshMenuFromProgress(MenuSystem& menu) {
     Progress::Load(g_prog);
     i32 un = g_prog.nextNight;           if (un < 1) un = 1;       if (un > 7) un = 7;
@@ -510,10 +602,13 @@ int main(int argc, char* argv[]){
 
     // Boot: disclaimer first (original title-frame String obj 0 flow)
     GameState state = GAME_STATE_DISCLAIMER;
-    if(cmdNight!=0){ game.Init(cmdNight); g_ach.BeginNight(cmdNight); state=GAME_STATE_NIGHT_START; }
+    // v2.15: boot fade-in for the disclaimer (1010 ms, FRAME_TRANSITIONS.md)
+    g_fade.phase = 2; g_fade.alpha = 1.0f; g_fade.timer = 0.0f; g_fade.dur = 1.010f;
+    if(cmdNight!=0){ game.Init(cmdNight); g_ach.BeginNight(cmdNight); state=GAME_STATE_NIGHT_START; g_fade.phase = 0; g_fade.alpha = 0.0f; }
 
     i32 tickCount=0;
     static int menuFrameCounter = 0;
+    static int adCounter = 0;         // v2.15: separate timer for the newspaper screen
     float accumulator=0.0f;
     const float tickDelta = 1.0f/30.0f; // logic 30Hz, render 60Hz
     s_phoneDelay = 2.5f;
@@ -548,8 +643,42 @@ int main(int argc, char* argv[]){
         g_render.Tick(1.0f/60.0f);
         g_audio.Tick();
         g_ach.Tick(1.0f/60.0f);     // v2.14: achievement toast timer
-        if(state!=GAME_STATE_MENU && state!=GAME_STATE_DISCLAIMER){
-            TickPhoneCall(game, 1.0f/60.0f);
+        TickFade(state, 1.0f/60.0f);  // v2.15: advance any running fade (may change `state`)
+
+        // v2.15: office ambience fires exactly once when we actually land in
+        // PLAYING (the fade-out of the "what day" card may delay the switch).
+        if (state == GAME_STATE_PLAYING && !g_officeAmb && g_fade.phase == 0) {
+            g_audio.Play(&g_pak, Snd::COLD_PRESC, true, 0.6f);
+            g_audio.Play(&g_pak, Snd::BUZZ_FAN, true, 0.6f);
+            g_audio.Play(&g_pak, Snd::BALLAST_HUM, true, 0.5f);
+            // NOTE: robotvoice (sample #40, ch21) is ALSO a start-of-frame loop
+            // in the original, but it starts MUTED (vol 0) and is raised only by
+            // proximity triggers (Active 21) — a sub-system not ported yet.
+            g_officeAmb = true;
+        }
+        if (state != GAME_STATE_PLAYING) g_officeAmb = false;
+
+        // v2.15: title ambience starts exactly when we LAND in MENU (i.e. after
+        // the fade-out of the disclaimer / "next day"), not during that fade.
+        if (state == GAME_STATE_MENU && !g_menuAmb) {
+            g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
+            g_audio.Play(&g_pak, Snd::STATIC2, true, 0.5f);
+            g_audio.Play(&g_pak, Snd::DARKNESS_MUSIC, true, 0.6f);
+            g_menuAmb = true;
+        }
+        if (state != GAME_STATE_MENU) g_menuAmb = false;
+
+        // v2.15: 1:1 with the original — the "what day" night-number card plays
+        // blip3 exactly when it appears (frame "what day", group 2: start of
+        // frame -> Speaker blip3, no fade-in on this card).
+        if (state == GAME_STATE_NIGHT_START && !g_nightBlip && g_fade.phase == 0) {
+            g_audio.Play(&g_pak, Snd::BLIP, false, 0.8f);
+            g_nightBlip = true;
+        }
+        if (state != GAME_STATE_NIGHT_START) g_nightBlip = false;
+
+        if(state==GAME_STATE_PLAYING){
+            TickPhoneCall(game, 1.0f/60.0f);   // phone call belongs to the office, not the ad/card
         }
 
         // ---------------- DEBUG SPRITE BROWSER ----------------
@@ -573,17 +702,19 @@ int main(int argc, char* argv[]){
         }
 
         // ---------------- DISCLAIMER ----------------
+        // v2.15: original auto-advances on a ~40 s timer (no Start) and fades
+        // out 1010 ms into the title; any button skips once the short lock ends.
         if(state==GAME_STATE_DISCLAIMER){
             menuFrameCounter++;
-            const bool bootLock = menuFrameCounter < 120;   // skip boot button bounce
+            const bool bootLock = menuFrameCounter < 30;   // short boot bounce lock
             if(FrameBegin(D3DCOLOR_XRGB(0,0,0))){
-                g_render.RenderDisclaimer(!bootLock && (((menuFrameCounter/30)%2)==0));
+                g_render.RenderDisclaimer(false);          // no "PRESS START" hint
+                DrawFadeOverlay();
                 FrameEnd();
             }
-            if(!bootLock && gi.pause){
-                state=GAME_STATE_MENU; menuFrameCounter=0;
-                g_audio.Play(&g_pak,Snd::STATIC2,true,0.5f);
-                g_audio.Play(&g_pak,Snd::DARKNESS_MUSIC,true,0.6f);
+            if(g_fade.phase == 0 && ((!bootLock && (gi.pause||gi.cameraToggle||gi.back)) || menuFrameCounter >= 2400)){
+                StartTransition(state, GAME_STATE_MENU);   // ambience starts after the fade-out
+                menuFrameCounter=0;
             }
             Sleep(16); tickCount++; continue;
         }
@@ -615,6 +746,7 @@ int main(int argc, char* argv[]){
                     g_render.RenderTitle(menu, menu.HasSave(), Progress::StarCount(g_prog));   // v2.7.13
                     if(menu.GetScreen()!=MENU_MAIN) menu.Render(&g_text, SCREEN_W, SCREEN_H);
                 }
+                DrawFadeOverlay();
                 FrameEnd();
             }
 
@@ -625,10 +757,10 @@ int main(int argc, char* argv[]){
                     game.Init(night);
                     g_ach.BeginNight(night);   // v2.14: reset per-night achievement flags
                     s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
-                    tickCount=0; accumulator=0; menuFrameCounter=0;
+                    tickCount=0; accumulator=0; menuFrameCounter=0; adCounter=0;
                     // v2.7.13: New Game shows the "HELP WANTED" newspaper first
-                    state = menu.LastStartWasNewGame() ? GAME_STATE_INTRO_AD
-                                                       : GAME_STATE_NIGHT_START;
+                    StartTransition(state, menu.LastStartWasNewGame() ? GAME_STATE_INTRO_AD
+                                                                      : GAME_STATE_NIGHT_START);
                 }
                 else if(act==MENU_ACTION_EXIT) break;
             }
@@ -639,19 +771,22 @@ int main(int argc, char* argv[]){
 
         // ---------------- INTRO AD ("HELP WANTED", v2.7.13) ----------------
         // New Game only: the newspaper (frame "ad", img_574) holds ~8 s,
-        // any button skips, then the night-1 card.
+        // any button skips, then the night-1 card. Uses its own counter:
+        // menuFrameCounter is reset every frame by the menu block above.
         if(state==GAME_STATE_INTRO_AD){
-            ++menuFrameCounter;
-            const bool adLock = menuFrameCounter < 30;   // skip boot bounce
+            ++adCounter;
+            const bool adLock = adCounter < 30;   // skip boot bounce
             if(FrameBegin(D3DCOLOR_XRGB(0,0,0))){
-                g_render.RenderIntroAd(!adLock && (((menuFrameCounter/30)%2)==0));
+                g_render.RenderIntroAd(!adLock && (((adCounter/30)%2)==0));
+                DrawFadeOverlay();
                 FrameEnd();
             }
-            const bool adTimeout = menuFrameCounter > 480;   // ~8 s
+            const bool adTimeout = adCounter > 480;   // ~8 s
             const bool adSkip = !adLock &&
                 (gi.cameraToggle||gi.pause||gi.back||gi.cameraUp||gi.cameraDown);
-            if(adTimeout || adSkip){
-                state=GAME_STATE_NIGHT_START; tickCount=0; accumulator=0;
+            if(g_fade.phase == 0 && (adTimeout || adSkip)){
+                StartTransition(state, GAME_STATE_NIGHT_START);
+                tickCount=0; accumulator=0;
             }
             Sleep(16); tickCount++; continue;
         }
@@ -660,24 +795,25 @@ int main(int argc, char* argv[]){
         if(state==GAME_STATE_NIGHT_START){
             if(FrameBegin(D3DCOLOR_XRGB(4,4,10))){
                 g_render.RenderNightStart(game.GetCurrentNight());
+                DrawFadeOverlay();
                 FrameEnd();
             }
             if(gi.back && s_phonePlaying){           // MUTE CALL
                 for(int v=0;v<5;++v) g_audio.Stop(Snd::VOICEOVER[v]);
                 s_phonePlaying=false; s_phoneMuted=true;
             }
-            // advance the card timer through the game's own state machine
-            accumulator += 1.0f/60.0f;
-            while(accumulator >= tickDelta){
-                state = game.Tick();
-                accumulator -= tickDelta;
-                if(state!=GAME_STATE_NIGHT_START) break;
-            }
-            if(state==GAME_STATE_PLAYING){
-                // office ambience (frame 3 group 14)
-                g_audio.Play(&g_pak,Snd::COLD_PRESC,true,0.6f);
-                g_audio.Play(&g_pak,Snd::BUZZ_FAN,true,0.6f);
-                g_audio.Play(&g_pak,Snd::BALLAST_HUM,true,0.5f);
+            // advance the card timer through the game's own state machine;
+            // freeze while a fade-out is running so game.Tick() isn't re-run.
+            if(g_fade.phase != 1){
+                accumulator += 1.0f/60.0f;
+                while(accumulator >= tickDelta){
+                    GameState ns = game.Tick();
+                    accumulator -= tickDelta;
+                    if(ns != GAME_STATE_NIGHT_START){
+                        StartTransition(state, ns);   // fade-out "what day" -> office
+                        break;
+                    }
+                }
             }
             Sleep(16); tickCount++; continue;
         }
@@ -716,9 +852,7 @@ int main(int argc, char* argv[]){
             }
             if(gi.pause){
                 if(s_phonePlaying){ for(int v=0;v<5;++v) g_audio.Stop(Snd::VOICEOVER[v]); s_phonePlaying=false; }
-                state=GAME_STATE_MENU; menu.Reset();
-                g_audio.Play(&g_pak,Snd::STATIC2,true,0.5f);
-                g_audio.Play(&g_pak,Snd::DARKNESS_MUSIC,true,0.6f);
+                StartTransition(state, GAME_STATE_MENU); menu.Reset();
                 continue;
             }
             if(gi.back && s_phonePlaying && !game.GetCameras().IsMonitorUp()){
@@ -729,12 +863,17 @@ int main(int argc, char* argv[]){
         }
 
         // ---------------- LOGIC TICK (30 Hz) ----------------
-        accumulator += 1.0f/60.0f;
-        while(accumulator >= tickDelta){
-            state = game.Tick();
-            accumulator -= tickDelta;
-            tickCount++;
-            if(state!=GAME_STATE_PLAYING) break;
+        if(g_fade.phase != 1){
+            accumulator += 1.0f/60.0f;
+            while(accumulator >= tickDelta){
+                GameState ns = game.Tick();
+                accumulator -= tickDelta;
+                tickCount++;
+                if(ns != GAME_STATE_PLAYING){
+                    if(ns != state) StartTransition(state, ns);   // fade-in next-day/game-over
+                    break;
+                }
+            }
         }
 
         // ---------------- RENDER 60 Hz ----------------
@@ -768,6 +907,7 @@ int main(int argc, char* argv[]){
             if(g_ach.HasToast()){
                 g_render.DrawAchievementToast(g_ach.ToastName(), g_ach.ToastGamerscore());
             }
+            DrawFadeOverlay();
             FrameEnd();
         }
 
@@ -777,7 +917,7 @@ int main(int argc, char* argv[]){
                 game.GetPower().GetUsageLevel(), tickCount);
         }
 
-        if(state==GAME_STATE_NIGHT_COMPLETE || state==GAME_STATE_GAME_OVER){
+        if(g_fade.phase != 1 && (state==GAME_STATE_NIGHT_COMPLETE || state==GAME_STATE_GAME_OVER)){
             // v2.7.13 night-flow routing (frames "next day" / "the end")
             ++endFrames;
             // kids cheer when the "6" lands on the clock (~1 s, nights 1-4)
@@ -802,7 +942,7 @@ int main(int argc, char* argv[]){
                     game.Init(game.GetCurrentNight()+1);
                     g_ach.BeginNight(game.GetCurrentNight()+1);   // v2.14
                     s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
-                    state=GAME_STATE_NIGHT_START; tickCount=0; accumulator=0;
+                    StartTransition(state, GAME_STATE_NIGHT_START); tickCount=0; accumulator=0;
                     continue;
                 }
                 // Update progress flags on night completion screens (original next day / the end timing)
@@ -828,9 +968,7 @@ int main(int argc, char* argv[]){
                 }
                 g_audio.StopAll();
                 RefreshMenuFromProgress(menu);   // unlocks + stars from the save
-                state=GAME_STATE_MENU; menu.Reset(); tickCount=0; accumulator=0;
-                g_audio.Play(&g_pak,Snd::STATIC2,true,0.5f);
-                g_audio.Play(&g_pak,Snd::DARKNESS_MUSIC,true,0.6f);
+                StartTransition(state, GAME_STATE_MENU); menu.Reset(); tickCount=0; accumulator=0;
                 continue;
             }
         }
