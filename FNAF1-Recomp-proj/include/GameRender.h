@@ -92,6 +92,13 @@ public:
     void RenderAchievements(const Achievements& a);
     void DrawAchievementToast(const char* name, int gamerscore);
 
+    // v2.17: DEBUG/DEV menu (god mode, night jump, 6AM/power-out/jumpscare
+    // triggers, sound test, achievement tools, console toggle, 17-frame list).
+    void RenderDevMenu(int sel, int night, const char* animName,
+                       const char* soundLabel, bool god, bool console);
+    // v2.17: Golden Freddy full-screen flash (yellow bear scare)
+    void RenderGoldenScare(float elapsed);
+
     // Debug sprite browser (LB+RB hold on menu/disclaimer): pages through
     // the pak's counter-font strips, label candidates and small sprites so
     // every UI text handle can be identified from one Xenia screenshot.

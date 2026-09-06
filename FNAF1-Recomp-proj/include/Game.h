@@ -57,6 +57,14 @@ public:
     void ToggleLight(DoorSide side);
     void SetLight(DoorSide side, bool on);
 
+    // v2.17 DEV: jump straight to the 6 AM completion (fires onNightComplete too)
+    void DebugForceNightComplete();
+    // v2.17 DEV: god mode (power never drains, animatronics never attack)
+    void SetDebugGodMode(bool on);
+    // v2.17 DEV: force the power-out sequence / a specific jumpscare
+    void DebugTriggerPowerOut();
+    void DebugTriggerJumpscare(AnimatronicId anim);
+
     // === State Queries ===
 
     GameState         GetState() const;
@@ -120,6 +128,7 @@ private:
     f64  m_faceLitTimer;        // 0.5 s re-roll accumulator
     bool m_powerOutBlinkOn;     // Phase 2: office visible or hidden
     bool m_musicBoxPlaying;     // callback bookkeeping
+    bool m_debugGodMode;        // v2.17 DEV: no power drain, no attacks
 
     // Night start display timer
     f32  m_nightStartTimer;

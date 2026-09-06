@@ -570,6 +570,52 @@ void GameRender::DrawAchievementToast(const char* name, int gamerscore) {
     m_text->DrawTextCenteredXY((i32)(SCREEN_W * 0.5f), 76, line, 0xFFFFFFFF);
 }
 
+// v2.17 DEBUG/DEV menu — text-only debug screen (font atlas).
+void GameRender::RenderDevMenu(int sel, int night, const char* animName,
+                               const char* soundLabel, bool god, bool console) {
+    if (!m_text) return;
+    m_text->DrawText(16, 10, "== DEV MENU ==  (Start+B close, DPad select, A run, L/R value)", 0xFFFFFF00);
+
+    char line[128];
+    int y = 38;
+    for (int i = 0; i < 9; ++i) {
+        const char* mark = (sel == i) ? "> " : "  ";
+        if (i == 0)      Snprintf(line, sizeof(line), "%sGod mode: %s", mark, god ? "ON" : "OFF");
+        else if (i == 1) Snprintf(line, sizeof(line), "%sJump to night [ %d ]", mark, night);
+        else if (i == 2) Snprintf(line, sizeof(line), "%sForce 6 AM", mark);
+        else if (i == 3) Snprintf(line, sizeof(line), "%sForce power out", mark);
+        else if (i == 4) Snprintf(line, sizeof(line), "%sTrigger jumpscare [ %s ]", mark, animName);
+        else if (i == 5) Snprintf(line, sizeof(line), "%sSound test [ %s ]", mark, soundLabel);
+        else if (i == 6) Snprintf(line, sizeof(line), "%sUnlock all achievements", mark);
+        else if (i == 7) Snprintf(line, sizeof(line), "%sReset achievements", mark);
+        else             Snprintf(line, sizeof(line), "%sConsole: %s", mark, console ? "ON" : "OFF");
+        m_text->DrawText(16, y, line, (sel == i) ? 0xFFFFFFFF : 0xFF9A9A9A);
+        y += 22;
+    }
+
+    m_text->DrawText(16, y + 4, "-- FRAMES (17) --", 0xFF88FF88);
+    y += 27;
+    static const char* FRAMES[17] = {
+        "0  Frame 17 (disclaimer)", "1  title", "2  what day", "3  Frame 1 (office)",
+        "4  died", "5  freddy", "6  next day", "7  wait", "8  gameover",
+        "9  the end", "10 ad", "11 the end 2", "12 customize", "13 the end 3",
+        "14 creepy start", "15 creepy end", "16 end of demo"
+    };
+    for (int i = 0; i < 17 && y < 700; ++i) {
+        m_text->DrawText(16, y, FRAMES[i], 0xFF808080);
+        y += 18;
+    }
+}
+
+void GameRender::RenderGoldenScare(float elapsed) {
+    if (!m_batch) return;
+    // Full-screen Golden Freddy (img_571 "yellow bear") with a quick jitter shake.
+    const int sh = ((int)(elapsed * 26.0f)) % 2;
+    const f32 ox = (sh ? 9.0f : -9.0f);
+    const f32 oy = (sh ? 5.0f : -5.0f);
+    DrawFrame(GOLDEN_FREDDY, ox, oy, SCREEN_W + 20.0f, SCREEN_H + 12.0f, 0xFFFFFFFF);
+}
+
 void GameRender::DrawStripCentered(const SpriteStrip& strip, float cx, float y,
                                    const char* text, u32 color, float scale) {
     const f32 w = MeasureStripText(strip, text, scale);
@@ -604,8 +650,9 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     // Background with rare lit-Freddy twitch ("Active 2" anims)
     int bg = IMG_MENU_BG;
     const int tw = (int)(m_time * 3.0f) % 23;   // ~every 7-8 s, 1-2 frames
-    if (tw == 7)  bg = IMG_MENU_FLICK1;
-    if (tw == 15) bg = IMG_MENU_FLICK2;
+    if (tw == 7)  bg = IMG_MENU_FLICK1;         // 440 lit Freddy
+    if (tw == 15) bg = IMG_MENU_FLICK2;         // 441 lit Freddy
+    if (tw == 3)  bg = IMG_MENU_FLICK3;         // 442 Freddy endo head (rare)
     DrawFrame(bg, 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
 
     // Logo + static labels (hotspot-corrected instance positions)
@@ -646,7 +693,7 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     else if (sel == 2 && menu.GetUnlockedNight() >= 6) ay = 571.0f;
     else if (sel >= 3 && menu.GetUnlockedNight() >= 7) ay = 639.0f;
     const bool blink = ((int)(m_time * 2.0f)) % 2 == 0;
-    if (blink) DrawInstance(IMG_MENU_ARROW, 132.0f, ay, 0xFFFFFFFF, false);
+    if (blink && sel != MENU_OPT_DEV) DrawInstance(IMG_MENU_ARROW, 132.0f, ay, 0xFFFFFFFF, false);
 
     // Rare white-noise blip (object "blip flash 2")
     if (((int)(m_time * 3.0f) % 29) == 5) {

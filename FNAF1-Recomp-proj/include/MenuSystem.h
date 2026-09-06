@@ -32,6 +32,7 @@ enum MainMenuOption {
     MENU_OPT_EXTRAS,
     MENU_OPT_OPTIONS,
     MENU_OPT_EXIT,
+    MENU_OPT_DEV,        // v2.17: hidden debug/dev entry (no text on screen)
     MENU_OPT_COUNT
 };
 
@@ -52,6 +53,7 @@ struct MenuInput {
 enum MenuAction {
     MENU_ACTION_NONE = 0,
     MENU_ACTION_START_NIGHT, // start selected night
+    MENU_ACTION_OPEN_DEV,    // v2.17: hidden debug/dev menu entry
     MENU_ACTION_EXIT
 };
 

@@ -89,6 +89,22 @@ void Achievements::OnJumpscare() {
     Unlock(10);
 }
 
+// v2.17 DEV helpers (no toast/system-write spam — just flip the bitmask).
+void Achievements::UnlockAll() {
+    m_unlocked = 0;
+    for (int i = 0; i < COUNT; ++i) m_unlocked |= (1u << i);
+    Save();
+    m_toastId = -1;
+    m_toastTime = 0.0f;
+}
+
+void Achievements::ClearAll() {
+    m_unlocked = 0;
+    Save();
+    m_toastId = -1;
+    m_toastTime = 0.0f;
+}
+
 void Achievements::Unlock(int id) {
     if (id < 1 || id > COUNT) return;
     if (IsUnlocked(id)) return;               // already earned: no rewrite/toast

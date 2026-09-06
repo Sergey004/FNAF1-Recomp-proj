@@ -3,6 +3,26 @@
 Заметки «что у нас уже есть» и «что осталось». Версии соответствуют тегам в
 комментариях кода (`v2.8`, `v2.14`, `v2.15`, `v2.16`) и историческим заметкам.
 
+## v2.17 — DEV/debug меню
+
+- **`Start + B`** открывает DEV-меню из любого состояния (B/Y закрывает):
+  - **God mode** (A) — без слива энергии и без атак (`Game::SetDebugGodMode`).
+  - **Jump to night N** — мгновенный старт любой ночи 1..7.
+  - **Force 6 AM** — завершение текущей ночи (`Game::DebugForceNightComplete`).
+  - **Force power out** (`Game::DebugTriggerPowerOut`).
+  - **Trigger jumpscare** — Freddy/Bonnie/Chica/Foxy + **Golden Freddy**
+    (отдельный звук-«хихиканье» `Laugh_Giggle_Girl_1` + полноэкранная вспышка 571).
+  - **Sound test** — 22 звука на прослушку (массив `DEV_SOUNDS` в main.cpp).
+  - **Unlock / Reset achievements** (`Achievements::UnlockAll/ClearAll`) + **Console ON/OFF**
+    (тогл on-screen лога; сообщения всегда дублируются в выход VS через `printf`).
+  - Список всех 17 кадров (стoриборд-раскадровка).
+- DEV-меню также доступно как **скрытый пункт титульного меню** (нажать Up на
+  титуле → скрытая позиция, A открывает; `MENU_OPT_DEV` без текста/стрелки).
+- **Фликер Фредди «эндо-голова»** (img_442) добавлен на титул (`IMG_MENU_FLICK3`).
+- Новые методы: `Game::SetDebugGodMode/DebugForceNightComplete/
+  DebugTriggerPowerOut/DebugTriggerJumpscare`, `Achievements::UnlockAll/ClearAll`,
+  `GameRender::RenderDevMenu`.
+
 ## v2.16 — аудио микшер (1:1)
 
 - **Канальная громкость** в `AudioSystem`: `PlayOnChannel` / `SetChannelVolume`

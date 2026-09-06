@@ -21,6 +21,7 @@ Game::Game()
     , m_faceLitTimer(0.0)
     , m_powerOutBlinkOn(false)
     , m_musicBoxPlaying(false)
+    , m_debugGodMode(false)
     , m_nightStartTimer(0.0f)
     , m_jumpscareTimer(0.0f)
     , m_jumpscareTriggered(false)
@@ -276,9 +277,12 @@ void Game::ProcessPlaying() {
     bool leftLight = m_doors.IsLightOn(DOOR_LEFT);
     bool rightLight = m_doors.IsLightOn(DOOR_RIGHT);
 
-    bool powerJustOut = m_power.Tick(cameraUp, leftDoor, rightDoor,
-                                         leftLight, rightLight);
-    NotifyPowerUpdate();
+    bool powerJustOut = false;
+    if (!m_debugGodMode) {
+        powerJustOut = m_power.Tick(cameraUp, leftDoor, rightDoor,
+                                    leftLight, rightLight);
+        NotifyPowerUpdate();
+    }
 
     if (powerJustOut) {
         // Power is out! The 4-phase dark-office sequence begins;
@@ -326,6 +330,7 @@ void Game::ProcessPlaying() {
 
         for (i32 i = 0; i < count; ++i) {
             if (results[i].event == AI_EVENT_ATTACK) {
+                if (m_debugGodMode) continue;   // god mode: ignore the kill (they keep moving)
                 // They pull the monitor down on entry (groups 321/322 and
                 // the got-you handlers); kill renders with the office view.
                 m_cameras.SetMonitorUp(false);
@@ -509,6 +514,46 @@ void Game::ProcessNightComplete() {
     if (m_nightCompleteTimer >= TimeConstants::NIGHT_COMPLETE_DISPLAY_SEC) {
         m_state = GAME_STATE_MENU;
     }
+}
+
+// v2.17 DEV: force the current night to finish as if 6 AM just hit. Fires the
+// onNightComplete callback so chimes/progress/achievements all happen normally.
+void Game::DebugForceNightComplete() {
+    m_state = GAME_STATE_NIGHT_COMPLETE;
+    m_nightCompleteTimer = 0.0f;
+    if (m_callbacks.onNightComplete) {
+        m_callbacks.onNightComplete(m_currentNight);
+    }
+}
+
+void Game::SetDebugGodMode(bool on) {
+    m_debugGodMode = on;
+    if (on) m_power.Reset(m_currentNight);   // top up power so the night can't end
+}
+
+void Game::DebugTriggerPowerOut() {
+    m_state = GAME_STATE_POWER_OUT;
+    m_powerOutTimer = 0.0f;
+    m_powerOutPhase = 0;
+    m_powerOutPhaseTimer = 0.0;
+    m_powerOutRollTimer = 0.0;
+    m_freddyFaceLit = false;
+    m_faceLitTimer = 0.0;
+    m_powerOutBlinkOn = false;
+    m_musicBoxPlaying = false;
+    m_doors.ForceDoorsOpen();
+    m_doors.ForceLightsOff();
+    m_cameras.SetMonitorUp(false);
+    if (m_callbacks.onPowerOut) m_callbacks.onPowerOut();
+}
+
+void Game::DebugTriggerJumpscare(AnimatronicId anim) {
+    m_cameras.SetMonitorUp(false);
+    m_state = GAME_STATE_JUMPSCARE;
+    m_jumpscareTimer = 0.0f;
+    m_jumpscareTriggered = true;
+    m_jumpscareAnimatronic = anim;
+    if (m_callbacks.onJumpscare) m_callbacks.onJumpscare(anim);
 }
 
 

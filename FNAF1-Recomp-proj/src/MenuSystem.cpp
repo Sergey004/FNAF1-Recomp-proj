@@ -53,6 +53,7 @@ const char* MenuSystem::GetMainOptionLabel(int idx) const
         case MENU_OPT_EXTRAS:       return "Extras";
         case MENU_OPT_OPTIONS:      return "Options";
         case MENU_OPT_EXIT:         return "Exit";
+        case MENU_OPT_DEV:          return "";        // v2.17: hidden (no text)
         default:                    return "???";
     }
 }
@@ -115,6 +116,8 @@ MenuAction MenuSystem::Update(const MenuInput& in)
                     break;
                 case MENU_OPT_EXIT:
                     return MENU_ACTION_EXIT;
+                case MENU_OPT_DEV:
+                    return MENU_ACTION_OPEN_DEV;   // v2.17: open the debug/dev menu
                 default: break;
             }
         }

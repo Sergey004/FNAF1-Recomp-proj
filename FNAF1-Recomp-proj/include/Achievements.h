@@ -62,6 +62,10 @@ public:
 
     void Unlock(int id);   // idempotent: mark + save + system write + toast
 
+    // v2.17 DEV: unlock/clear the whole set (no toast spam)
+    void UnlockAll();
+    void ClearAll();
+
     // ---- UI access ----
     const AchievementDef& Get(int i) const;   // 0..9
     int  UnlockedCount() const;

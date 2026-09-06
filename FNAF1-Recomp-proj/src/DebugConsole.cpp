@@ -62,7 +62,7 @@ void DebugConsole::Clear()
 
 void DebugConsole::Print(const char* fmt, ...)
 {
-    if (!m_renderer || !fmt) return;
+    if (!fmt) return;
 
     char buf[512];
     va_list args;
@@ -71,7 +71,11 @@ void DebugConsole::Print(const char* fmt, ...)
     va_end(args);
     buf[sizeof(buf)-1] = '\0';
 
-    PushLine(buf);
+    // v2.17: always mirror into the debug output (VS "Output" window / Xenia),
+    // so the logs survive when the on-screen console is toggled off.
+    printf("%s\n", buf);
+
+    if (m_renderer) PushLine(buf);
 }
 
 void DebugConsole::PushLine(const char* line)

@@ -44,6 +44,8 @@ static PakLoader         g_pak;
 static GameRender        g_render;
 static AudioSystem       g_audio;
 static bool              g_pakLoaded = false;
+static bool              g_showConsole = true;  // v2.17: DEV toggle for the on-screen debug console
+static f32               g_goldenScareT = -1.0f;// v2.17: Golden Freddy scare timer (-1 = off)
 
 // Game reference for callbacks needing state
 static Game* g_gameRef = nullptr;
@@ -169,7 +171,8 @@ static bool FrameBegin(u32 clearColor) {
 }
 static void FrameEnd() {
     if (!g_pd3dDevice) return;
-    g_debugConsole.Render(SCREEN_W, SCREEN_H);
+    if (g_showConsole) g_debugConsole.Render(SCREEN_W, SCREEN_H);   // v2.17: DEV toggle
+    if (g_goldenScareT >= 0.0f) g_render.RenderGoldenScare(g_goldenScareT);   // Golden Freddy flash
     // Flush ALL queued quads (sprites AND text) before ending the scene --
     // without this the last same-texture batch renders one frame late
     // (or not at all for static screens).
@@ -397,8 +400,8 @@ static void PollTitleKeyboardReset(MenuSystem& menu) {
 void OnTimeUpdate(i32 hour){
     if(hour!=s_lastHour){
         s_lastHour=hour;
-        // Freddy laughs on the hour move like the original's giggle hooks
-        if(hour>=1) g_audio.Play(&g_pak, Snd::FREDDY_LAUGH[hour%3], false, 0.9f);
+        // v2.17: no hourly laugh in the original — Freddy's giggle is tied to
+        // his "got in" entry, not the clock (the old FREDDY_LAUGH[hour%3] was wrong).
     }
 }
 void OnPowerUpdate(f32 power){ s_lastPower=power; }
@@ -494,9 +497,14 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
     const char* n[]={"Freddy","Bonnie","Chica","Foxy"};
     RoomInfo i=RoomSystem::GetRoomInfo(r);
     printf("[AI] %s -> %s\n",n[a],i.name);
-    // deep steps for Bonnie/Chica, giggle for Freddy (data: groups 198-243)
+    // v2.17: deep steps for Bonnie/Chica; Freddy's laugh is the _1d/_2d/_8d
+    // giggle family (#56/57/58), NOT Laugh_Giggle_Girl_1 (#38 = Golden Freddy).
+    static int s_freddyLaugh = 0;
     if(a==ANIM_BONNIE||a==ANIM_CHICA) g_audio.Play(&g_pak, Snd::DEEP_STEPS, false, 0.9f);
-    else if(a==ANIM_FREDDY)           g_audio.Play(&g_pak, Snd::FREDDY_LAUGH_LONG, false, 0.9f);
+    else if(a==ANIM_FREDDY) {
+        g_audio.Play(&g_pak, Snd::FREDDY_LAUGH[s_freddyLaugh % 3], false, 0.9f);
+        s_freddyLaugh++;
+    }
     // v2.14: "No Laughing" — Freddy steps into the East Hall on Night 5
     if(a==ANIM_FREDDY && r==ROOM_EAST_HALL) g_ach.OnFreddyEast();
 }
@@ -554,6 +562,43 @@ static int  g_browserHold = 0;
 // be baked into GameRender.cpp.
 static bool g_tunerMode = false;
 static i32  g_tunerSel  = 0;
+static bool g_devMode  = false;   // v2.17: DEV/debug menu (Start + B)
+static i32  g_devSel   = 0;
+static i32  g_devNight = 1;
+static i32  g_devAnim  = 0;       // 0 Freddy / 1 Bonnie / 2 Chica / 3 Foxy / 4 Golden Freddy
+static i32  g_devSound = 0;       // sound-test index
+static bool g_devGod   = false;   // god mode
+
+static const char* const DEV_ANIM_NAMES[5] = { "Freddy", "Bonnie", "Chica", "Foxy", "Golden Freddy" };
+static const AnimatronicId DEV_ANIMS[4]    = { ANIM_FREDDY, ANIM_BONNIE, ANIM_CHICA, ANIM_FOXY };
+
+struct DevSoundEntry { const char* label; const char* snd; };
+static const DevSoundEntry DEV_SOUNDS[] = {
+    { "blip3",       Snd::BLIP },
+    { "door slam",   Snd::DOOR_SLAM },
+    { "door error",  Snd::DOOR_ERROR },
+    { "camera sw",   Snd::CAMERA_SWITCH },
+    { "tape eject",  Snd::TAPE_EJECT },
+    { "static",      Snd::STATIC_LOOP },
+    { "deep steps",  Snd::DEEP_STEPS },
+    { "run",         Snd::RUN },
+    { "run fast",    Snd::RUNNING_FAST },
+    { "fred laugh",  Snd::FREDDY_LAUGH[1] },
+    { "golden freddy", Snd::FREDDY_LAUGH_LONG },
+    { "pirate song", Snd::PIRATE_SONG },
+    { "whispering",  Snd::WHISPERING },
+    { "windowscare", Snd::WINDOW_SCARE },
+    { "powerdown",   Snd::POWERDOWN },
+    { "circus",      Snd::CIRCUS },
+    { "music box",   Snd::MUSIC_BOX },
+    { "XSCREAM",     Snd::XSCREAM },
+    { "XSCREAM2",    Snd::XSCREAM2 },
+    { "chimes",      Snd::CHIMES },
+    { "crowd kids",  Snd::CROWD_KIDS },
+    { "knock",       Snd::KNOCK },
+    { "pounding",    Snd::DOOR_POUNDING },
+};
+static const int DEV_SOUND_COUNT = (int)(sizeof(DEV_SOUNDS)/sizeof(DEV_SOUNDS[0]));
 
 static void TickBrowserEntry(const GameInput& gi) {
     if (gi.leftShoulderHeld && gi.rightShoulderHeld) {
@@ -573,7 +618,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.7.13-nightflow built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.17 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -588,17 +633,17 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.7.13-nightflow (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.17 (%s %s)", __DATE__, __TIME__);
 
     // Try load pak from Xbox 360 canonical locations (game:\ is XEX directory;
     // e:\/hdd:\ are common on JTAG/RGH dashboards like FSD or Aurora)
     const char* pakPaths[] = {
         "game:\\fnaf1.pak",
-        "D:\\fnaf1.pak",
-        "e:\\fnaf1.pak",
-        "hdd:\\fnaf1.pak",
-        "fnaf1.pak",
-        "./fnaf1.pak"
+        // "D:\\fnaf1.pak",
+        // "e:\\fnaf1.pak",
+        // "hdd:\\fnaf1.pak",
+        // "fnaf1.pak",
+        // "./fnaf1.pak"
     };
     const int pakPathCount = (int)(sizeof(pakPaths)/sizeof(pakPaths[0]));
     for(int i=0;i<pakPathCount;++i){
@@ -666,6 +711,7 @@ int main(int argc, char* argv[]){
 
     while(true){
         GameInput gi; UpdateInput(gi);
+        bool devToggled = false;   // v2.17: Start+B fired this frame (swallow it)
 
         // ---------------- PERSPECTIVE TUNER (v2.7.11) ----------------
         // L3+R3 together toggles the tuner (works in every state -- the
@@ -685,11 +731,25 @@ int main(int argc, char* argv[]){
             }
         }
 
+        // ---------------- DEV MENU (v2.17) ----------------
+        // Start + B toggles it (works in every state). The toggle frame is
+        // swallowed in the DEV block below so Start never leaks into the
+        // pause handler (which was kicking the game back to the title).
+        if (gi.pause && gi.back) {
+            g_devMode  = !g_devMode;
+            devToggled = true;
+            if (g_devMode) g_debugConsole.Print("DEV menu ON");
+        }
+
         g_render.SetLookDir(gi.lookDir);   // office pan window (v2.5)
         g_render.Tick(1.0f/60.0f);
         g_audio.Tick();
         g_ach.Tick(1.0f/60.0f);     // v2.14: achievement toast timer
         TickFade(state, 1.0f/60.0f);  // v2.15: advance any running fade (may change `state`)
+        if (g_goldenScareT >= 0.0f) {          // v2.17: Golden Freddy flash timer
+            g_goldenScareT += 1.0f/60.0f;
+            if (g_goldenScareT > 1.3f) g_goldenScareT = -1.0f;
+        }
 
         // v2.16: office ambience starts once on landing in PLAYING, on mixer channels
         // (1:1 with office frame group 15), including the proximity loops that
@@ -748,6 +808,98 @@ int main(int argc, char* argv[]){
                 menuFrameCounter = 0;
             } else if(FrameBegin(D3DCOLOR_XRGB(24,24,28))){
                 g_render.RenderSpriteBrowser(g_browserPage);
+                FrameEnd();
+            }
+            Sleep(16); continue;
+        }
+
+        // ---------------- DEV MENU (v2.17) ----------------
+        // Swallow the toggle frame (Start+B) so Start never leaks into the
+        // pause handler and kicks the game back to the title.
+        if (devToggled) {
+            if (g_devMode) {   // just opened
+                if (FrameBegin(D3DCOLOR_XRGB(12,12,18))) {
+                    g_render.RenderDevMenu(g_devSel, g_devNight,
+                                           DEV_ANIM_NAMES[g_devAnim],
+                                           DEV_SOUNDS[g_devSound].label,
+                                           g_devGod, g_showConsole);
+                    FrameEnd();
+                }
+            }
+            Sleep(16); continue;
+        }
+        if(g_devMode){
+            if(gi.cameraUp)   { g_devSel = (g_devSel + 8) % 9; }
+            if(gi.cameraDown) { g_devSel = (g_devSel + 1) % 9; }
+            if(g_devSel == 1){
+                if(gi.cameraLeft)  { g_devNight--; if(g_devNight < 1) g_devNight = 1; }
+                if(gi.cameraRight) { g_devNight++; if(g_devNight > 7) g_devNight = 7; }
+            } else if(g_devSel == 4){
+                if(gi.cameraLeft)  g_devAnim = (g_devAnim + 4) % 5;
+                if(gi.cameraRight) g_devAnim = (g_devAnim + 1) % 5;
+            } else if(g_devSel == 5){
+                if(gi.cameraLeft)  g_devSound = (g_devSound + DEV_SOUND_COUNT - 1) % DEV_SOUND_COUNT;
+                if(gi.cameraRight) g_devSound = (g_devSound + 1) % DEV_SOUND_COUNT;
+            }
+            if(gi.cameraToggle){   // A = run the selected action
+                switch (g_devSel) {
+                    case 0:
+                        g_devGod = !g_devGod;
+                        game.SetDebugGodMode(g_devGod);
+                        g_debugConsole.Print(g_devGod ? "GOD MODE ON" : "GOD MODE OFF");
+                        break;
+                    case 1:
+                        g_audio.StopAll();
+                        game.Init(g_devNight);
+                        g_ach.BeginNight(g_devNight);
+                        s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
+                        tickCount=0; accumulator=0;
+                        StartTransition(state, GAME_STATE_NIGHT_START);
+                        g_devMode = false;
+                        break;
+                    case 2:
+                        game.DebugForceNightComplete();
+                        g_devMode = false;
+                        break;
+                    case 3:
+                        game.DebugTriggerPowerOut();
+                        g_devMode = false;
+                        break;
+                    case 4:
+                        if (g_devAnim == 4) {
+                            // Golden Freddy ("yellow bear"): distinct giggle + face flash
+                            g_audio.Play(&g_pak, Snd::FREDDY_LAUGH_LONG, false, 1.0f);
+                            g_goldenScareT = 0.0f;
+                        } else {
+                            game.DebugTriggerJumpscare(DEV_ANIMS[g_devAnim]);
+                            StartTransition(state, GAME_STATE_JUMPSCARE);   // actually render the scare
+                        }
+                        g_devMode = false;
+                        break;
+                    case 5:
+                        g_audio.Play(&g_pak, DEV_SOUNDS[g_devSound].snd, false, 0.8f);
+                        g_debugConsole.Print("play: %s", DEV_SOUNDS[g_devSound].label);
+                        break;
+                    case 6:
+                        g_ach.UnlockAll();
+                        g_debugConsole.Print("Achievements unlocked");
+                        break;
+                    case 7:
+                        g_ach.ClearAll();
+                        g_debugConsole.Print("Achievements cleared");
+                        break;
+                    case 8:
+                        g_showConsole = !g_showConsole;
+                        g_debugConsole.Print(g_showConsole ? "Console ON" : "Console OFF");
+                        break;
+                }
+            }
+
+            if(FrameBegin(D3DCOLOR_XRGB(12,12,18))){
+                g_render.RenderDevMenu(g_devSel, g_devNight,
+                                       DEV_ANIM_NAMES[g_devAnim],
+                                       DEV_SOUNDS[g_devSound].label,
+                                       g_devGod, g_showConsole);
                 FrameEnd();
             }
             Sleep(16); continue;
@@ -814,6 +966,7 @@ int main(int argc, char* argv[]){
                     StartTransition(state, menu.LastStartWasNewGame() ? GAME_STATE_INTRO_AD
                                                                       : GAME_STATE_NIGHT_START);
                 }
+                else if(act==MENU_ACTION_OPEN_DEV){ g_devMode = true; }   // v2.17: hidden title entry
                 else if(act==MENU_ACTION_EXIT) break;
             }
             Sleep(16); tickCount++; continue;
