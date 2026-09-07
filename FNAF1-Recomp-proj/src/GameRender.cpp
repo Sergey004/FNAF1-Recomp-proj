@@ -388,6 +388,7 @@ GameRender::GameRender()
     m_flashT = m_wipeT = -1.0f;
     m_raiseT = -1.0f;      // v2.7.9: tablet raise
     m_prevCam = -1;        // v2.7.9: no settled monitor cam yet
+    m_goldenRoll = -1;     // v2.17: no "random for pic" roll yet
     m_lastT = 0.0f;
 }
 
@@ -850,6 +851,10 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
         m_raiseT = -1.0f;                          // v2.7.9: cancel a half-finished raise
         m_flashT = -1.0f;
         m_prevCam = -1;                            // next arrival flashes (group 133)
+        // v2.17: group 348 rolls "random for pic" = random(1,100) every
+        // time viewing goes back to 0 (office view). Groups 41/42 read it
+        // when CAM 2B is watched: <2 -> Golden Freddy poster (anim 75).
+        m_goldenRoll = rand() % 100;
     }
     m_prevMonitor = monUp;
     if (lc != m_prevDoorL) { m_doorT[0] = 0.0f; m_doorClosing[0] = lc; m_prevDoorL = lc; }
@@ -1070,6 +1075,13 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
         feed = COVE[st];
     } else if (cam >= CAM_1A && cam <= CAM_7) {
         feed = CamFeedFor(game, cam);
+        // v2.17: Golden Freddy "LET'S PARTY!" poster easter egg. Groups 41/42:
+        // when CAM 2B shows the empty corner and this monitor session's
+        // "random for pic" roll hit (<2 of 1..100), swap the poster for
+        // Golden Freddy's face (anim 75, handle 571). Only when the corner
+        // is empty -- Bonnie/Chica presence wins (CAMFEED_2B_BONNIE/CHICA).
+        if (cam == CAM_2B && feed == CAMFEED_2B_EMPTY && m_goldenRoll == 0)
+            feed = CAMFEED_2B_GOLDENFREDDY;
     }
     // Authentic drift: in the original the office view pans with the
     // stick while camera feeds slowly wander left<->right on their own

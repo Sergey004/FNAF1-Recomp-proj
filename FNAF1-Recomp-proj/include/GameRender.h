@@ -183,6 +183,7 @@ private:
     f32  m_wipeT;         // -1 idle, else seconds since the wipe began
     f32  m_raiseT;        // v2.7.9: -1 idle, else seconds since the raise began
     int  m_prevCam;       // v2.7.9: cam of the last settled monitor frame (-1 none)
+    int  m_goldenRoll;    // v2.17: "random for pic" rolled on each monitor drop
     f32  m_lastT;};
 
 } // namespace fnaf
