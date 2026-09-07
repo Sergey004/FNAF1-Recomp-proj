@@ -20,6 +20,7 @@
 #define FNAF_AUDIO_SYSTEM_H
 
 #include "Types.h"
+#include <math.h>
 
 namespace fnaf {
 
@@ -90,6 +91,38 @@ namespace Snd {
     static const char* const COMPUTER_DIG   = "snd_COMPUTER_DIGITAL_L2076505";
 }
 
+// ------------------------------------------------------------
+// v2.19: dB-based volume layer (Clickteam / DirectSound semantics).
+//
+// The original Clickteam "Set channel volume" values are 0..100 — a LINEAR
+// amplitude percentage. Clickteam hands that to DirectSound where it is
+// expressed as attenuation in dB (0 = unity, negative = quieter, ~-100 dB =
+// silence). XAudio2 takes an amplitude multiplier (1.0 = unity), so we go
+//   Clickteam 0..100  ->  dB  ->  XAudio2 amplitude
+// via these two helpers. Keeping the mixer in dB (not amplitude) also lets a
+// later positional-attenuation / master chain ADD gains instead of fudging
+// multipliers.
+// ------------------------------------------------------------
+
+// Decibels -> amplitude multiplier (XAudio2 SetVolume convention).
+//   0 dB = 1.0, -6 dB ~= 0.5, -20 dB = 0.1, -100 dB ~= silence.
+// Uses the C89 double math functions to stay VS2010-safe (no C99 log10f/powf).
+static inline float DbToAmplitude(float db) {
+    return (float)pow(10.0, (double)db * 0.05);          // 10^(dB/20)
+}
+
+// Clickteam volume (0..100) -> dB. 100 = 0 dB (unity); 0 -> silence.
+static inline float CFVolumeToDb(int cfVolume) {
+    if (cfVolume <= 0) return -100.0f;       // Clickteam 0 = silence
+    return (float)(20.0 * log10((double)cfVolume / 100.0));
+}
+
+// Linear amplitude (0..1) -> dB (inverse of DbToAmplitude).
+static inline float AmplitudeToDb(float amp) {
+    if (amp <= 0.0f) return -100.0f;
+    return (float)(20.0 * log10((double)amp));
+}
+
 class AudioSystem {
 public:
     AudioSystem();
@@ -101,7 +134,8 @@ public:
     // Must be called once per frame to recycle finished voices
     void Tick();
 
-    // Play a pak sound. loop=true repeats until Stop(). volume 0.0..1.0.
+    // Play a pak sound. loop=true repeats until Stop(). volume is a LINEAR
+    // amplitude 0.0..1.0 (one-shot "juice" loudness; the mixer channels use dB).
     // Returns false if sound not found or no free voice.
     bool Play(PakLoader* pak, const char* sndName, bool loop, float volume);
 
@@ -110,10 +144,11 @@ public:
     // that events change (proximity, camera, doors). Returns false on failure.
     bool PlayOnChannel(PakLoader* pak, const char* sndName, bool loop, int channel);
 
-    // Set a channel's volume (0..1), applying it live to any voice already
-    // playing on that channel. channel 0..31.
-    void SetChannelVolume(int channel, float volume);
-    float GetChannelVolume(int channel) const;
+    // Set a channel's volume in DECIBELS (v2.19): 0 dB = unity, negative =
+    // quieter, ~-100 dB = silence. Use CFVolumeToDb() for original Clickteam
+    // 0..100 values. Re-applied live to any voice on that channel (0..31).
+    void SetChannelVolume(int channel, float volumeDb);
+    float GetChannelVolume(int channel) const;   // returns dB
 
     // Stop every voice currently playing the given sound
     void Stop(const char* sndName);
@@ -138,7 +173,7 @@ private:
     void* m_master;          // IXAudio2MasteringVoice*
     VoiceSlot m_slots[16];
     int   m_slotCount;
-    float m_channelVolume[32];   // v2.16: per-channel volume 0..1 (default 1.0)
+    float m_channelVolumeDb[32];   // v2.19: per-channel volume in dB (default 0.0 = unity)
     bool  m_ok;
 };
 

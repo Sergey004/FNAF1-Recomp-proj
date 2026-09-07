@@ -41,7 +41,7 @@ AudioSystem::AudioSystem()
     , m_slotCount(MAX_VOICES)
     , m_ok(false)
 {
-    for (int i = 0; i < 32; ++i) m_channelVolume[i] = 1.0f;
+    for (int i = 0; i < 32; ++i) m_channelVolumeDb[i] = 0.0f;   // v2.19: unity (0 dB)
     for (int i = 0; i < MAX_VOICES; ++i) {
         m_slots[i].voice = 0;
         m_slots[i].name[0] = '\0';
@@ -198,27 +198,28 @@ bool AudioSystem::Play(PakLoader* pak, const char* sndName, bool loop, float vol
 }
 
 bool AudioSystem::PlayOnChannel(PakLoader* pak, const char* sndName, bool loop, int channel) {
-    // Play at the channel's CURRENT volume; later SetChannelVolume re-applies
-    // the (possibly ramping) volume to this live voice.
-    return PlayInternal(pak, sndName, loop, GetChannelVolume(channel), channel);
+    // Play at the channel's CURRENT dB; later SetChannelVolume re-applies the
+    // (possibly ramping) volume to this live voice.
+    return PlayInternal(pak, sndName, loop, DbToAmplitude(GetChannelVolume(channel)), channel);
 }
 
-void AudioSystem::SetChannelVolume(int channel, float volume) {
+void AudioSystem::SetChannelVolume(int channel, float volumeDb) {
     if (channel < 0 || channel >= 32) return;
-    if (volume < 0.0f) volume = 0.0f;
-    if (volume > 1.0f) volume = 1.0f;
-    m_channelVolume[channel] = volume;
+    if (volumeDb < -100.0f) volumeDb = -100.0f;   // silence floor
+    if (volumeDb >    0.0f) volumeDb =    0.0f;   // unity ceiling (no gain boost)
+    m_channelVolumeDb[channel] = volumeDb;
+    const float amp = DbToAmplitude(volumeDb);
     // Re-apply to every live voice bound to this channel.
     for (int i = 0; i < m_slotCount; ++i) {
         if (m_slots[i].inUse && m_slots[i].channel == channel && m_slots[i].voice) {
-            reinterpret_cast<IXAudio2SourceVoice*>(m_slots[i].voice)->SetVolume(volume);
+            reinterpret_cast<IXAudio2SourceVoice*>(m_slots[i].voice)->SetVolume(amp);
         }
     }
 }
 
 float AudioSystem::GetChannelVolume(int channel) const {
-    if (channel < 0 || channel >= 32) return 1.0f;
-    return m_channelVolume[channel];
+    if (channel < 0 || channel >= 32) return 0.0f;
+    return m_channelVolumeDb[channel];
 }
 
 void AudioSystem::Stop(const char* sndName) {

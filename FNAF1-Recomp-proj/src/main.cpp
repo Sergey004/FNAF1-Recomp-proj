@@ -333,12 +333,26 @@ static void DrawFadeOverlay() {
 
 // ---- v2.16 audio mixer channels (match the original "Speaker" channels) ----
 enum {
-    CH_FAN        = 1,   // Buzz_Fan loop — base 25 (camera down) / 10 (camera up)
-    CH_COLDPRESC  = 2,   // ColdPresc B loop — base 50
-    CH_BALLAST    = 3,   // BallastHum loop — muted by camera-up / lights
-    CH_EERIE      = 18,  // EerieAmbience loop — proximity (muted at start)
-    CH_PHONE      = 19,  // voiceover phone — 100 office / 50 viewing / 0 mute
-    CH_ROBOTVOICE = 21   // robotvoice loop — proximity (muted at start)
+    CH_FAN          = 1,   // Buzz_Fan loop — base 25 (camera down) / 10 (camera up)
+    CH_COLDPRESC    = 2,   // ColdPresc B loop — base 50
+    CH_BALLAST      = 3,   // BallastHum loop — muted by camera-up / lights
+    CH_CAMCORDER    = 6,   // MiniDV_Tape_Eject — monitor-up (100/0)
+    CH_CAMWHIR      = 7,   // CAMERA_VIDEO_LOA — monitor flip-up
+    CH_DEEPSTEPS    = 8,   // deep steps — distance 10..40
+    CH_OVEN         = 10,  // kitchen oven drawer (Chica in kitchen)
+    CH_PIRATE       = 13,  // pirate song2 — 15 watching cove / 5 otherwise
+    CH_BREATHS      = 14,  // vocals breaths — base 50
+    CH_CIRCUS       = 15,  // circus — base 5
+    CH_FREDDY_LAUGH = 16,  // Freddy "got in" laugh — proximity ramp
+    CH_EERIE        = 18,  // EerieAmbience loop — proximity (muted at start)
+    CH_PHONE        = 19,  // voiceover phone — 100 office / 50 viewing / 0 mute
+    CH_POUNDING     = 20,  // door pounding
+    CH_ROBOTVOICE   = 21,  // robotvoice loop — proximity (muted at start)
+    CH_MUSICBOX     = 22,  // music box (Freddy in kitchen) — base 25
+    CH_RUNFAST      = 24,  // running fast3 — Freddy proximity ramp
+    CH_WHISPER      = 25,  // whispering2 — Freddy "got in"
+    CH_GF_GIGGLE    = 27,  // Golden Freddy laugh #38
+    CH_XSCREAM2     = 29   // creepy-end scream #46
 };
 
 // v2.16: per-frame dynamic channel volumes (the "1:1" mixer). Runs while the
@@ -351,11 +365,14 @@ static void TickAudioMixer(const Game& game) {
     const bool lightR = doors.IsLightOn(DOOR_RIGHT);
 
     // fan: 25 down / 10 up (groups 143/144)
-    g_audio.SetChannelVolume(CH_FAN, monUp ? 0.10f : 0.25f);
+    g_audio.SetChannelVolume(CH_FAN, CFVolumeToDb(monUp ? 10 : 25));
     // ballast hum: mute when camera up or a light is on (groups 114-129/326)
-    g_audio.SetChannelVolume(CH_BALLAST, (monUp || lightL || lightR) ? 0.0f : 0.50f);
+    g_audio.SetChannelVolume(CH_BALLAST, (monUp || lightL || lightR) ? -100.0f : CFVolumeToDb(50));
     // phone: 100 office / 50 viewing / 0 mute (groups 360/361/379)
-    g_audio.SetChannelVolume(CH_PHONE, s_phoneMuted ? 0.0f : (monUp ? 0.50f : 1.0f));
+    g_audio.SetChannelVolume(CH_PHONE, s_phoneMuted ? -100.0f : CFVolumeToDb(monUp ? 50 : 100));
+    // pirate song2: 15 watching the cove (CAM 1C), 5 otherwise (groups 274/275)
+    g_audio.SetChannelVolume(CH_PIRATE,
+        CFVolumeToDb((game.GetCameras().GetCurrentCamera() == CAM_1C) ? 15 : 5));
 
     // proximity ambience (robotvoice ch21, EerieAmbience ch18)
     const AnimatronicAI& ai = game.GetAI();
@@ -371,8 +388,48 @@ static void TickAudioMixer(const Game& game) {
     if (foxy   == ROOM_LEFT_DOOR || foxy == ROOM_OFFICE) watched = 1.0f;
     if (freddy == ROOM_OFFICE) watched = 1.0f;
 
-    g_audio.SetChannelVolume(CH_ROBOTVOICE, watched);
-    g_audio.SetChannelVolume(CH_EERIE,      watched * 0.6f);
+    g_audio.SetChannelVolume(CH_ROBOTVOICE, AmplitudeToDb(watched));
+    g_audio.SetChannelVolume(CH_EERIE,      AmplitudeToDb(watched * 0.6f));
+}
+
+// v2.18: periodic random one-shot ambience (the "1:1" random events).
+//   pirate song (group 269): every 80 s, 1/30, while Foxy is still in the cove;
+//   circus (group 270):      every 100 s, 1/30, unconditional;
+//   breaths (groups 276/278):every 100 s, 1/3, when Bonnie/Chica wait at a
+//                            door while you watch a camera.
+static void TickRandomEvents(const Game& game) {
+    static f32 s_pirateT = 0.0f, s_circusT = 0.0f, s_breathT = 0.0f;
+    const f32 dt = 1.0f/60.0f;
+    const AnimatronicAI& ai = game.GetAI();
+    const Animatronic& foxy   = ai.GetAnimatronic(ANIM_FOXY);
+    const Animatronic& bonnie = ai.GetAnimatronic(ANIM_BONNIE);
+    const Animatronic& chica  = ai.GetAnimatronic(ANIM_CHICA);
+    const bool monUp = game.GetCameras().IsMonitorUp();
+
+    s_pirateT += dt;
+    if (s_pirateT >= 80.0f) {
+        s_pirateT = 0.0f;
+        if (foxy.foxyStage <= FOXY_STAGE_2 && (rand() % 30) == 0)
+            g_audio.PlayOnChannel(&g_pak, Snd::PIRATE_SONG, false, CH_PIRATE);
+    }
+
+    s_circusT += dt;
+    if (s_circusT >= 100.0f) {
+        s_circusT = 0.0f;
+        if ((rand() % 30) == 0)
+            g_audio.PlayOnChannel(&g_pak, Snd::CIRCUS, false, CH_CIRCUS);
+    }
+
+    s_breathT += dt;
+    if (s_breathT >= 100.0f) {
+        s_breathT = 0.0f;
+        if (monUp) {
+            if (bonnie.currentRoom == ROOM_LEFT_DOOR  && (rand() % 3) == 0)
+                g_audio.PlayOnChannel(&g_pak, Snd::BREATHS[rand() % 4], false, CH_BREATHS);
+            if (chica.currentRoom  == ROOM_RIGHT_DOOR && (rand() % 3) == 0)
+                g_audio.PlayOnChannel(&g_pak, Snd::BREATHS[rand() % 4], false, CH_BREATHS);
+        }
+    }
 }
 
 static void RefreshMenuFromProgress(MenuSystem& menu) {
@@ -503,18 +560,33 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
     printf("[AI] %s -> %s\n",n[a],i.name);
     // v2.17: deep steps for Bonnie/Chica; Freddy's laugh is the _1d/_2d/_8d
     // giggle family (#56/57/58), NOT Laugh_Giggle_Girl_1 (#38 = Golden Freddy).
-    static int s_freddyLaugh = 0;
     if(a==ANIM_BONNIE||a==ANIM_CHICA) {
-        // v2.17: footsteps volume by distance (groups 198-244): far 10, mid 30, near 40
-        float v = 0.15f;
-        if (r==ROOM_WEST_HALL || r==ROOM_SUPPLY_CLOSET || r==ROOM_EAST_HALL) v = 0.30f;
+        // v2.19: footsteps volume by distance (groups 198-244), expressed as
+        // Clickteam values: far 10, mid 30, near 40 (muted when overlapping).
+        float v = CFVolumeToDb(10);
+        if (r==ROOM_WEST_HALL || r==ROOM_SUPPLY_CLOSET || r==ROOM_EAST_HALL) v = CFVolumeToDb(30);
         else if (r==ROOM_WEST_HALL_CORNER || r==ROOM_EAST_HALL_CORNER ||
-                 r==ROOM_LEFT_DOOR || r==ROOM_RIGHT_DOOR) v = 0.40f;
-        g_audio.Play(&g_pak, Snd::DEEP_STEPS, false, v);
+                 r==ROOM_LEFT_DOOR || r==ROOM_RIGHT_DOOR) v = CFVolumeToDb(40);
+        g_audio.SetChannelVolume(CH_DEEPSTEPS, v);
+        g_audio.PlayOnChannel(&g_pak, Snd::DEEP_STEPS, false, CH_DEEPSTEPS);
     }
     else if(a==ANIM_FREDDY) {
-        g_audio.Play(&g_pak, Snd::FREDDY_LAUGH[s_freddyLaugh % 3], false, 0.9f);
-        s_freddyLaugh++;
+        // v2.19: "got in" laugh (groups 390-405): a RANDOM giggle variant
+        // (#56/#57/#58 = random(1,3)) plus "running fast3" as Freddy closes
+        // in. Volume ramps with proximity (Clickteam values): bathrooms
+        // laugh 20/run 35, kitchen 30/40, E-hall 40/60, corner 60/75,
+        // right door 80/100.
+        float laughV = CFVolumeToDb(20), runV = CFVolumeToDb(35);
+        if      (r==ROOM_KITCHEN)          { laughV = CFVolumeToDb(30); runV = CFVolumeToDb(40); }
+        else if (r==ROOM_EAST_HALL)        { laughV = CFVolumeToDb(40); runV = CFVolumeToDb(60); }
+        else if (r==ROOM_EAST_HALL_CORNER) { laughV = CFVolumeToDb(60); runV = CFVolumeToDb(75); }
+        else if (r==ROOM_RIGHT_DOOR)       { laughV = CFVolumeToDb(80); runV = CFVolumeToDb(100); }
+        g_audio.SetChannelVolume(CH_FREDDY_LAUGH, laughV);
+        g_audio.SetChannelVolume(CH_RUNFAST, runV);
+        g_audio.PlayOnChannel(&g_pak, Snd::FREDDY_LAUGH[rand() % 3], false, CH_FREDDY_LAUGH);
+        g_audio.PlayOnChannel(&g_pak, Snd::RUNNING_FAST, false, CH_RUNFAST);
+        // music box while Freddy is in the kitchen (groups 399/400, ch22)
+        if (r==ROOM_KITCHEN) g_audio.PlayOnChannel(&g_pak, Snd::MUSIC_BOX, false, CH_MUSICBOX);
     }
     // v2.14: "No Laughing" — Freddy steps into the East Hall on Night 5
     if(a==ANIM_FREDDY && r==ROOM_EAST_HALL) g_ach.OnFreddyEast();
@@ -542,20 +614,19 @@ void OnFoxyDoorBang(f32 p){
 static void StartPhoneCall(i32 night) {
     if (night < 1 || night > 5) return;           // nights 6/7: no call
     if (s_phoneMuted) return;
-    g_audio.SetChannelVolume(CH_PHONE, 1.0f);     // office, monitor down
+    g_audio.SetChannelVolume(CH_PHONE, CFVolumeToDb(100));   // office, monitor down (100 = unity)
     g_audio.PlayOnChannel(&g_pak, Snd::VOICEOVER[night-1], false, CH_PHONE);
     s_phonePlaying = true;
 }
 
-// Phone Guy call scheduling (frame 3 groups 361-365): starts ~2.5 s
-// into the night, one voiceover per night, nights 6/7 have no call.
-static f32  s_phoneDelay = 2.5f;
+// Phone Guy call (frame 3 groups 361-365): the original plays AT OFFICE START
+// (night number == N, "play voice N" == 0) — no 2.5 s delay. Nights 6/7 silent.
+static bool s_phoneStarted = false;
 static void TickPhoneCall(Game& game, f32 dt) {
-    if (s_phoneDelay <= 0.0f) return;
-    s_phoneDelay -= dt;
-    if (s_phoneDelay <= 0.0f) {
-        StartPhoneCall(game.GetCurrentNight());
-    }
+    (void)dt;
+    if (s_phoneStarted) return;
+    s_phoneStarted = true;
+    StartPhoneCall(game.GetCurrentNight());
 }
 
 // ============================================================
@@ -717,7 +788,7 @@ int main(int argc, char* argv[]){
     static int adCounter = 0;         // v2.15: separate timer for the newspaper screen
     float accumulator=0.0f;
     const float tickDelta = 1.0f/30.0f; // logic 30Hz, render 60Hz
-    s_phoneDelay = 2.5f;
+    s_phoneStarted = false;
     f32 scareElapsed = 0.0f;
     i32 endFrames = 0;
 
@@ -774,19 +845,25 @@ int main(int argc, char* argv[]){
         // (1:1 with office frame group 15), including the proximity loops that
         // begin MUTED and are ramped by TickAudioMixer.
         if (state == GAME_STATE_PLAYING && !g_officeAmb && g_fade.phase == 0) {
-            g_audio.SetChannelVolume(CH_FAN,       0.25f);
-            g_audio.SetChannelVolume(CH_COLDPRESC, 0.50f);
-            g_audio.SetChannelVolume(CH_BALLAST,   0.50f);
+            g_audio.SetChannelVolume(CH_FAN,       CFVolumeToDb(25));
+            g_audio.SetChannelVolume(CH_COLDPRESC, CFVolumeToDb(50));
+            g_audio.SetChannelVolume(CH_BALLAST,   CFVolumeToDb(50));
             g_audio.PlayOnChannel(&g_pak, Snd::BUZZ_FAN,    true, CH_FAN);
             g_audio.PlayOnChannel(&g_pak, Snd::COLD_PRESC,  true, CH_COLDPRESC);
             g_audio.PlayOnChannel(&g_pak, Snd::BALLAST_HUM, true, CH_BALLAST);
-            g_audio.SetChannelVolume(CH_ROBOTVOICE, 0.0f);
+            g_audio.SetChannelVolume(CH_ROBOTVOICE, -100.0f);
             g_audio.PlayOnChannel(&g_pak, Snd::ROBOT_VOICE,    true, CH_ROBOTVOICE);
-            g_audio.SetChannelVolume(CH_EERIE, 0.0f);
+            g_audio.SetChannelVolume(CH_EERIE, -100.0f);
             g_audio.PlayOnChannel(&g_pak, Snd::EERIE_AMBIENCE, true, CH_EERIE);
+            // v2.18: one-shot ambience channel bases (group 284: ch14=50,
+            // ch15=5; group 15: ch22=25). One-shots ride their channel volume.
+            g_audio.SetChannelVolume(CH_BREATHS,  CFVolumeToDb(50));
+            g_audio.SetChannelVolume(CH_CIRCUS,   CFVolumeToDb(5));
+            g_audio.SetChannelVolume(CH_MUSICBOX, CFVolumeToDb(25));
+            g_audio.SetChannelVolume(CH_PIRATE,   CFVolumeToDb(5));
             g_officeAmb = true;
         }
-        if (state != GAME_STATE_PLAYING) g_officeAmb = false;
+        if (state != GAME_STATE_PLAYING) { g_officeAmb = false; s_phoneStarted = false; }
 
         // v2.15: title ambience starts exactly when we LAND in MENU (i.e. after
         // the fade-out of the disclaimer / "next day"), not during that fade.
@@ -810,6 +887,7 @@ int main(int argc, char* argv[]){
         if(state==GAME_STATE_PLAYING){
             TickPhoneCall(game, 1.0f/60.0f);   // phone call belongs to the office, not the ad/card
             TickAudioMixer(game);              // v2.16: dynamic channel volumes each frame
+            TickRandomEvents(game);            // v2.18: periodic pirate/breaths/circus one-shots
             // v2.17: rare "IT'S ME" Bonnie hallucination (obj "Active 21"):
             // 1/1000 chance every ~20 s (group 419), whisper + full-screen flicker.
             g_itsmeRollTimer += 1.0f/60.0f;
@@ -881,7 +959,7 @@ int main(int argc, char* argv[]){
                         g_audio.StopAll();
                         game.Init(g_devNight);
                         g_ach.BeginNight(g_devNight);
-                        s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
+                        s_phoneMuted=false; s_phonePlaying=false; s_phoneStarted=false;
                         tickCount=0; accumulator=0;
                         StartTransition(state, GAME_STATE_NIGHT_START);
                         g_devMode = false;
@@ -1009,7 +1087,7 @@ int main(int argc, char* argv[]){
                     g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
                     game.Init(night);
                     g_ach.BeginNight(night);   // v2.14: reset per-night achievement flags
-                    s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
+                    s_phoneMuted=false; s_phonePlaying=false; s_phoneStarted=false;
                     tickCount=0; accumulator=0; menuFrameCounter=0; adCounter=0;
                     // v2.7.13: New Game shows the "HELP WANTED" newspaper first
                     StartTransition(state, menu.LastStartWasNewGame() ? GAME_STATE_INTRO_AD
@@ -1136,11 +1214,11 @@ int main(int argc, char* argv[]){
         }
 
         // ---------------- RENDER 60 Hz ----------------
-        if(state==GAME_STATE_JUMPSCARE) scareElapsed += 1.0f/60.0f;
-        else scareElapsed = 0.0f;
+        if(state!=GAME_STATE_JUMPSCARE) scareElapsed = 0.0f;
         if(FrameBegin(ColorForState(state, game.GetPower().GetPower()))){
             if(state==GAME_STATE_JUMPSCARE){
                 g_render.RenderJumpscare(game.GetJumpscareAnimatronic(), scareElapsed);
+                scareElapsed += 1.0f/60.0f;   // v2.18: advance AFTER the first frame renders (start on frame 0)
             } else if(state==GAME_STATE_POWER_OUT){
                 g_render.RenderPowerOut(game);
             } else if(state==GAME_STATE_NIGHT_COMPLETE){
@@ -1200,7 +1278,7 @@ int main(int argc, char* argv[]){
                     // nights 1-4: straight into the next night card
                     game.Init(game.GetCurrentNight()+1);
                     g_ach.BeginNight(game.GetCurrentNight()+1);   // v2.14
-                    s_phoneMuted=false; s_phonePlaying=false; s_phoneDelay=2.5f;
+                    s_phoneMuted=false; s_phonePlaying=false; s_phoneStarted=false;
                     StartTransition(state, GAME_STATE_NIGHT_START); tickCount=0; accumulator=0;
                     continue;
                 }

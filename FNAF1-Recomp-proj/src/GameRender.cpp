@@ -610,11 +610,10 @@ void GameRender::RenderDevMenu(int sel, int night, const char* animName,
 
 void GameRender::RenderScareFlash(int imgHandle, float elapsed) {
     if (!m_batch || imgHandle < 0) return;
-    // Full-screen scare frame with a quick jitter shake.
-    const int sh = ((int)(elapsed * 26.0f)) % 2;
-    const f32 ox = (sh ? 9.0f : -9.0f);
-    const f32 oy = (sh ? 5.0f : -5.0f);
-    DrawFrame(imgHandle, ox, oy, SCREEN_W + 20.0f, SCREEN_H + 12.0f, 0xFFFFFFFF);
+    (void)elapsed;
+    // Static full-screen scare frame. The original has NO screen shake on
+    // these poses (Golden Freddy / door-window stares): just the image.
+    DrawFrame(imgHandle, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
 }
 
 // v2.17: the "IT'S ME" Bonnie hallucination — obj "Active 21" (frames
@@ -1200,11 +1199,6 @@ void GameRender::RenderPowerOut(const Game& game) {
 void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
     if (!m_batch) return;
 
-    // Shake like the original's alternating scare frames
-    const int sh = ((int)(elapsed * 30.0f)) % 2;
-    const f32 ox = (sh ? 10.0f : -10.0f);
-    const f32 oy = (sh ? 6.0f : -6.0f);
-
     int frame = 0;
     if (anim == ANIM_FREDDY) {
         // anim 65: 31 frames @ 30 FPS (speed 50), repeat 1
@@ -1225,19 +1219,14 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
         if (i > 15) i = 15;
         frame = SCARE_CHICA_KILL[i];
     }
-    // scare frames are 1600x720 room images on layer 0 -- v2.8: captured and
-    // warped with the same parabola; the shake offsets shift the source
-    // window like the original's Set position (+ox on screen).
+    // Scare frames are static 1600x720 room images on layer 0. The original
+    // has NO screen shake -- the apparent jitter is the animation's own frame
+    // changes. v2.18: removed the fake ox/oy shake and the stray IT'S ME
+    // overlay (IT'S ME only appears through its own rare hallucination).
     m_batch->BeginSceneCapture(0xFF000000u);
-    DrawFrame(frame, -160.0f + ox, oy, 1600.0f, 720.0f, 0xFFFFFFFF);
+    DrawFrame(frame, -160.0f, 0.0f, 1600.0f, 720.0f, 0xFFFFFFFF);
     m_batch->EndSceneCapture();
     m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
-
-    // IT'S ME hallucination flash (obj "Active 21")
-    const int fl = (int)(elapsed * 10.0f) % 4;
-    if (fl == 1 || fl == 3) {
-        DrawFrame(ITSME_FRAMES[fl], 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
-    }
 }
 
 // ------------------------------------------------------------
