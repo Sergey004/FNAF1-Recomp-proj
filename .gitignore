@@ -257,3 +257,15 @@ FNAF1-Recomp-proj/FNAF1-Recomp-proj/include/asset_mapping.hpp
 *pak
 FNAF1-Recomp-proj/FNAF1-Recomp-proj/Debug
 FNAF1-Recomp-proj/FNAF1-Recomp-proj/Release
+# Visual Studio junk
+*.sdf
+*.opensdf
+*.suo
+*.user
+*.db
+ipch/
+.vs/
+Debug/
+Release/
+x64/
+x86/
