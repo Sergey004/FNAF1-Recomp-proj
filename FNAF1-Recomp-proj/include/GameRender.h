@@ -96,8 +96,10 @@ public:
     // triggers, sound test, achievement tools, console toggle, 17-frame list).
     void RenderDevMenu(int sel, int night, const char* animName,
                        const char* soundLabel, bool god, bool console);
-    // v2.17: Golden Freddy full-screen flash (yellow bear scare)
-    void RenderGoldenScare(float elapsed);
+    // v2.17: full-screen scare flash (Golden Freddy / door window poses)
+    void RenderScareFlash(int imgHandle, float elapsed);
+    // v2.17: full-screen "IT'S ME" hallucination flicker (obj "Active 21")
+    void RenderItsmeFlash(float elapsed);
 
     // Debug sprite browser (LB+RB hold on menu/disclaimer): pages through
     // the pak's counter-font strips, label candidates and small sprites so

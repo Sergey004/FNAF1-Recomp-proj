@@ -45,7 +45,10 @@ static GameRender        g_render;
 static AudioSystem       g_audio;
 static bool              g_pakLoaded = false;
 static bool              g_showConsole = true;  // v2.17: DEV toggle for the on-screen debug console
-static f32               g_goldenScareT = -1.0f;// v2.17: Golden Freddy scare timer (-1 = off)
+static f32               g_goldenScareT = -1.0f;// v2.17: scare flash timer (-1 = off)
+static int               g_scareFlashImg = -1;   // v2.17: image handle for the scare flash
+static f32               g_itsmeT = -1.0f;       // v2.17: IT'S ME hallucination timer (-1 = off)
+static f32               g_itsmeRollTimer = 0.0f; // v2.17: 20 s accumulator for the rare IT'S ME roll
 
 // Game reference for callbacks needing state
 static Game* g_gameRef = nullptr;
@@ -172,7 +175,8 @@ static bool FrameBegin(u32 clearColor) {
 static void FrameEnd() {
     if (!g_pd3dDevice) return;
     if (g_showConsole) g_debugConsole.Render(SCREEN_W, SCREEN_H);   // v2.17: DEV toggle
-    if (g_goldenScareT >= 0.0f) g_render.RenderGoldenScare(g_goldenScareT);   // Golden Freddy flash
+    if (g_goldenScareT >= 0.0f) g_render.RenderScareFlash(g_scareFlashImg, g_goldenScareT);   // scare flash
+    if (g_itsmeT >= 0.0f) g_render.RenderItsmeFlash(g_itsmeT);   // IT'S ME hallucination
     // Flush ALL queued quads (sprites AND text) before ending the scene --
     // without this the last same-texture batch renders one frame late
     // (or not at all for static screens).
@@ -500,7 +504,14 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
     // v2.17: deep steps for Bonnie/Chica; Freddy's laugh is the _1d/_2d/_8d
     // giggle family (#56/57/58), NOT Laugh_Giggle_Girl_1 (#38 = Golden Freddy).
     static int s_freddyLaugh = 0;
-    if(a==ANIM_BONNIE||a==ANIM_CHICA) g_audio.Play(&g_pak, Snd::DEEP_STEPS, false, 0.9f);
+    if(a==ANIM_BONNIE||a==ANIM_CHICA) {
+        // v2.17: footsteps volume by distance (groups 198-244): far 10, mid 30, near 40
+        float v = 0.15f;
+        if (r==ROOM_WEST_HALL || r==ROOM_SUPPLY_CLOSET || r==ROOM_EAST_HALL) v = 0.30f;
+        else if (r==ROOM_WEST_HALL_CORNER || r==ROOM_EAST_HALL_CORNER ||
+                 r==ROOM_LEFT_DOOR || r==ROOM_RIGHT_DOOR) v = 0.40f;
+        g_audio.Play(&g_pak, Snd::DEEP_STEPS, false, v);
+    }
     else if(a==ANIM_FREDDY) {
         g_audio.Play(&g_pak, Snd::FREDDY_LAUGH[s_freddyLaugh % 3], false, 0.9f);
         s_freddyLaugh++;
@@ -569,8 +580,12 @@ static i32  g_devAnim  = 0;       // 0 Freddy / 1 Bonnie / 2 Chica / 3 Foxy / 4 
 static i32  g_devSound = 0;       // sound-test index
 static bool g_devGod   = false;   // god mode
 
-static const char* const DEV_ANIM_NAMES[5] = { "Freddy", "Bonnie", "Chica", "Foxy", "Golden Freddy" };
+static const char* const DEV_ANIM_NAMES[8] = { "Freddy", "Bonnie", "Chica", "Foxy", "Golden Freddy", "Bonnie (window)", "Chica (window)", "IT'S ME" };
 static const AnimatronicId DEV_ANIMS[4]    = { ANIM_FREDDY, ANIM_BONNIE, ANIM_CHICA, ANIM_FOXY };
+// Scare-flash image handles (pak): 571 Golden Freddy sitting, 225/227 door-window stares.
+static const int SCARE_IMG_GOLDEN   = 571;
+static const int SCARE_IMG_BONNIE_W = 225;
+static const int SCARE_IMG_CHICA_W  = 227;
 
 struct DevSoundEntry { const char* label; const char* snd; };
 static const DevSoundEntry DEV_SOUNDS[] = {
@@ -746,9 +761,13 @@ int main(int argc, char* argv[]){
         g_audio.Tick();
         g_ach.Tick(1.0f/60.0f);     // v2.14: achievement toast timer
         TickFade(state, 1.0f/60.0f);  // v2.15: advance any running fade (may change `state`)
-        if (g_goldenScareT >= 0.0f) {          // v2.17: Golden Freddy flash timer
+        if (g_goldenScareT >= 0.0f) {          // v2.17: scare flash timer
             g_goldenScareT += 1.0f/60.0f;
             if (g_goldenScareT > 1.3f) g_goldenScareT = -1.0f;
+        }
+        if (g_itsmeT >= 0.0f) {          // v2.17: IT'S ME hallucination timer
+            g_itsmeT += 1.0f/60.0f;
+            if (g_itsmeT > 1.5f) g_itsmeT = -1.0f;
         }
 
         // v2.16: office ambience starts once on landing in PLAYING, on mixer channels
@@ -791,6 +810,16 @@ int main(int argc, char* argv[]){
         if(state==GAME_STATE_PLAYING){
             TickPhoneCall(game, 1.0f/60.0f);   // phone call belongs to the office, not the ad/card
             TickAudioMixer(game);              // v2.16: dynamic channel volumes each frame
+            // v2.17: rare "IT'S ME" Bonnie hallucination (obj "Active 21"):
+            // 1/1000 chance every ~20 s (group 419), whisper + full-screen flicker.
+            g_itsmeRollTimer += 1.0f/60.0f;
+            if (g_itsmeRollTimer >= 20.0f) {
+                g_itsmeRollTimer = 0.0f;
+                if ((rand() % 1000) == 0) {
+                    g_audio.Play(&g_pak, Snd::WHISPERING, false, 0.9f);
+                    g_itsmeT = 0.0f;
+                }
+            }
         }
 
         // ---------------- DEBUG SPRITE BROWSER ----------------
@@ -835,8 +864,8 @@ int main(int argc, char* argv[]){
                 if(gi.cameraLeft)  { g_devNight--; if(g_devNight < 1) g_devNight = 1; }
                 if(gi.cameraRight) { g_devNight++; if(g_devNight > 7) g_devNight = 7; }
             } else if(g_devSel == 4){
-                if(gi.cameraLeft)  g_devAnim = (g_devAnim + 4) % 5;
-                if(gi.cameraRight) g_devAnim = (g_devAnim + 1) % 5;
+                if(gi.cameraLeft)  g_devAnim = (g_devAnim + 7) % 8;
+                if(gi.cameraRight) g_devAnim = (g_devAnim + 1) % 8;
             } else if(g_devSel == 5){
                 if(gi.cameraLeft)  g_devSound = (g_devSound + DEV_SOUND_COUNT - 1) % DEV_SOUND_COUNT;
                 if(gi.cameraRight) g_devSound = (g_devSound + 1) % DEV_SOUND_COUNT;
@@ -869,7 +898,22 @@ int main(int argc, char* argv[]){
                         if (g_devAnim == 4) {
                             // Golden Freddy ("yellow bear"): distinct giggle + face flash
                             g_audio.Play(&g_pak, Snd::FREDDY_LAUGH_LONG, false, 1.0f);
+                            g_scareFlashImg = SCARE_IMG_GOLDEN;
                             g_goldenScareT = 0.0f;
+                        } else if (g_devAnim == 5) {
+                            // Bonnie door-light stare + windowscare sting
+                            g_audio.Play(&g_pak, Snd::WINDOW_SCARE, false, 1.0f);
+                            g_scareFlashImg = SCARE_IMG_BONNIE_W;
+                            g_goldenScareT = 0.0f;
+                        } else if (g_devAnim == 6) {
+                            // Chica door-light stare + windowscare sting
+                            g_audio.Play(&g_pak, Snd::WINDOW_SCARE, false, 1.0f);
+                            g_scareFlashImg = SCARE_IMG_CHICA_W;
+                            g_goldenScareT = 0.0f;
+                        } else if (g_devAnim == 7) {
+                            // "IT'S ME" Bonnie hallucination (obj "Active 21")
+                            g_audio.Play(&g_pak, Snd::WHISPERING, false, 0.9f);
+                            g_itsmeT = 0.0f;
                         } else {
                             game.DebugTriggerJumpscare(DEV_ANIMS[g_devAnim]);
                             StartTransition(state, GAME_STATE_JUMPSCARE);   // actually render the scare
@@ -894,6 +938,11 @@ int main(int argc, char* argv[]){
                         break;
                 }
             }
+
+            // v2.17: B or Y closes the DEV menu. (This is safe on the open frame
+            // too -- the devToggled swallow above skips this block when Start+B
+            // just opened it, so the combo's B doesn't instantly close it.)
+            if(gi.back || gi.yToggle){ g_devMode = false; }
 
             if(FrameBegin(D3DCOLOR_XRGB(12,12,18))){
                 g_render.RenderDevMenu(g_devSel, g_devNight,

@@ -574,7 +574,7 @@ void GameRender::DrawAchievementToast(const char* name, int gamerscore) {
 void GameRender::RenderDevMenu(int sel, int night, const char* animName,
                                const char* soundLabel, bool god, bool console) {
     if (!m_text) return;
-    m_text->DrawText(16, 10, "== DEV MENU ==  (Start+B close, DPad select, A run, L/R value)", 0xFFFFFF00);
+    m_text->DrawText(16, 10, "== DEV MENU ==  (B/Y close, DPad select, A run, L/R value)", 0xFFFFFF00);
 
     char line[128];
     int y = 38;
@@ -607,13 +607,21 @@ void GameRender::RenderDevMenu(int sel, int night, const char* animName,
     }
 }
 
-void GameRender::RenderGoldenScare(float elapsed) {
-    if (!m_batch) return;
-    // Full-screen Golden Freddy (img_571 "yellow bear") with a quick jitter shake.
+void GameRender::RenderScareFlash(int imgHandle, float elapsed) {
+    if (!m_batch || imgHandle < 0) return;
+    // Full-screen scare frame with a quick jitter shake.
     const int sh = ((int)(elapsed * 26.0f)) % 2;
     const f32 ox = (sh ? 9.0f : -9.0f);
     const f32 oy = (sh ? 5.0f : -5.0f);
-    DrawFrame(GOLDEN_FREDDY, ox, oy, SCREEN_W + 20.0f, SCREEN_H + 12.0f, 0xFFFFFFFF);
+    DrawFrame(imgHandle, ox, oy, SCREEN_W + 20.0f, SCREEN_H + 12.0f, 0xFFFFFFFF);
+}
+
+// v2.17: the "IT'S ME" Bonnie hallucination — obj "Active 21" (frames
+// 525/543/520/544, 1280x720), flickering rapidly, rare in the original.
+void GameRender::RenderItsmeFlash(float elapsed) {
+    if (!m_batch) return;
+    const int idx = ((int)(elapsed * 12.0f)) % 4;
+    DrawFrame(ITSME_FRAMES[idx], 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
 }
 
 void GameRender::DrawStripCentered(const SpriteStrip& strip, float cx, float y,
