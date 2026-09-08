@@ -1,23 +1,26 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
- * Achievements.h: in-game achievement system (v2.14)
+ * Achievements.h: in-game achievement system (v2.14, v2.20 two-build)
  *
  * The original game is a retail title whose achievements (id, name,
  * description, gamerscore, icon) are baked into an Xbox LIVE SPA game-config
  * produced by the external "Game Configuration" tool; the runtime only calls
  * XUserWriteAchievements to mark an id as earned. This recomp cannot ship a
- * signed SPA, so achievements are implemented IN-GAME:
+ * signed SPA, so achievements are implemented IN-GAME, plus an optional system
+ * hook:
  *
  *   * a fixed table of 10 achievements (mirrors achievements.xml);
- *   * an unlock bitmask persisted to fnaf_save:\fnaf_ach.ini (separate from
- *     the night-flow save, so the Delete-key progress wipe never clears it);
- *   * an optional XUserWriteAchievements() write on unlock, gated by the
- *     FNAF_LIVE_SAFE build switch in Achievements.cpp (works on devkit/LIVE
- *     and on RGH/JTAG dashes); the achievement names/GS/icons shown by the
- *     Guide still come from the title's SPA config, so the in-game UI below
- *     is what this recomp uses to display them;
- *   * a transient on-screen "Achievement Unlocked" toast (drawn by
- *     GameRender) and a title-menu achievements screen.
+ *   * an unlock bitmask persisted (see Progress.h) -- to fnaf_save:\fnaf_ach.ini
+ *     in the system build, or save\fnaf_ach.ini in the Live Safe build;
+ *   * v2.20 TWO BUILD FLAVORS controlled by FNAF_LIVE_SAFE in Achievements.cpp
+ *     (also gating Progress.cpp's storage backend):
+ *       - default (no macro)  -> "обычная": touches the Xbox system --
+ *         XUserWriteAchievements on unlock + XShowAchievementsUI (system list)
+ *         on Y;
+ *       - FNAF_LIVE_SAFE      -> "Live Safe": no system calls; local files and
+ *         the in-game UI only.
+ *   * a transient on-screen "Achievement Unlocked" toast (drawn by GameRender)
+ *     and a title-menu achievements screen (kept as the in-game fallback);
  *
  * This class owns state and logic; rendering lives in GameRender.
  */
@@ -65,6 +68,11 @@ public:
     // v2.17 DEV: unlock/clear the whole set (no toast spam)
     void UnlockAll();
     void ClearAll();
+
+    // v2.20: open the SYSTEM achievements list (XShowAchievementsUI). Returns
+    // true if the system UI was invoked (system build); false in the Live Safe
+    // build -- the caller should show the in-game screen instead.
+    bool ShowSystemUI();
 
     // ---- UI access ----
     const AchievementDef& Get(int i) const;   // 0..9

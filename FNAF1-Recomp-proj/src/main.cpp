@@ -1057,11 +1057,13 @@ int main(int argc, char* argv[]){
             PollTitleKeyboardReset(menu);   // hidden Delete-key save wipe (original title events)
 
             MenuAction act = MENU_ACTION_NONE;
-            // v2.14: achievements screen — Y opens on the title, B/Y closes
+            // v2.14/v2.20: achievements — Y opens the SYSTEM list in the system build
+            // (XShowAchievementsUI); the in-game screen is the Live Safe fallback
+            // (ShowSystemUI() returns false there).
             if(g_achScreen){
                 if(gi.back || gi.yToggle) g_achScreen = false;
             } else {
-                if(gi.yToggle) g_achScreen = true;
+                if(gi.yToggle && !g_ach.ShowSystemUI()) g_achScreen = true;
                 MenuInput mi; mi.up=gi.cameraUp; mi.down=gi.cameraDown; mi.left=gi.cameraLeft; mi.right=gi.cameraRight;
                 mi.confirm=gi.cameraToggle; mi.back=gi.back;
                 if(gi.lookDir < -0.5f) mi.left=true;

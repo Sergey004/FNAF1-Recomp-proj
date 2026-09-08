@@ -11,19 +11,20 @@
 #include <cstdio>
 
 // ---------------------------------------------------------------------------
-// BUILD SWITCH — with / without XUserWriteAchievements
-//   FNAF_LIVE_SAFE defined    -> the game marks achievements on the signed-in
-//      profile via XUserWriteAchievements (works on devkit / LIVE and on
-//      RGH/JTAG dashes too).
-//   FNAF_LIVE_SAFE undefined  -> pure-local build: achievements live only in
-//      fnaf_ach.ini + the in-game UI; the Xbox LIVE achievement API is never
-//      touched (handy when you want zero LIVE dependency).
-// Toggle by (un)commenting the line below and rebuilding:
-#define FNAF_LIVE_SAFE
+// BUILD SWITCH — two flavors (v2.20, INVERTED from v2.14):
+//   default (no macro)      -> "обычная": touches the Xbox system. Saves/ach
+//      go to the signed-in profile (XContent + XUserWriteAchievements), and Y
+//      opens the SYSTEM achievements list (XShowAchievementsUI).
+//   FNAF_LIVE_SAFE defined  -> "Live Safe": does NOT touch the system. Local
+//      files under "save\" next to the .xex; the in-game UI (toast + screen)
+//      is the whole experience.
+// Toggle the local build by defining FNAF_LIVE_SAFE below (or via /D on the
+// compiler command line). Leave it out for the default system build:
+// #define FNAF_LIVE_SAFE
 // ---------------------------------------------------------------------------
 
-#if defined(FNAF_LIVE_SAFE)
-#include <xtl.h>      // XUserWriteAchievements / XUSER_ACHIEVEMENT (xbox.h)
+#if !defined(FNAF_LIVE_SAFE)
+#include <xtl.h>      // XUserWriteAchievements / XShowAchievementsUI (xbox.h)
 #endif
 
 namespace fnaf {
@@ -158,20 +159,31 @@ void Achievements::Save() {
 }
 
 void Achievements::SystemWrite(int id) {
-#if defined(FNAF_LIVE_SAFE)
-    // Mark the achievement earned on the signed-in profile. The name/GS/icon
-    // shown by the Guide come from the title's SPA config, but the earned flag
-    // is written by this call and works on devkit/LIVE and RGH/JTAG dashes.
+#if !defined(FNAF_LIVE_SAFE)
+    // System build: mark the achievement earned on the signed-in profile. The
+    // name/GS/icon shown by the Guide come from the title's SPA config, but the
+    // earned flag is written by this call (works on devkit/LIVE and RGH/JTAG).
     XUSER_ACHIEVEMENT a;
     a.dwUserIndex     = 0;             // first controller (single-profile console)
     a.dwAchievementId = (DWORD)id;
     DWORD res = XUserWriteAchievements(1, &a, NULL);
     printf("ACH %d -> 0x%08X\n", id, (unsigned)res);
 #else
-    // Pure-local build: no Xbox LIVE dependency; fnaf_ach.ini + in-game UI are
-    // the entire record.
+    // Live Safe build: no Xbox profile write; the local save\fnaf_ach.ini +
+    // in-game UI are the entire record.
     (void)id;
     printf("ACH %d (local only)\n", id);
+#endif
+}
+
+bool Achievements::ShowSystemUI() {
+#if !defined(FNAF_LIVE_SAFE)
+    // System build: open the Xbox Guide "Achievements" list for this title.
+    XShowAchievementsUI(0);
+    return true;
+#else
+    // Live Safe build: no system UI — caller falls back to the in-game screen.
+    return false;
 #endif
 }
 

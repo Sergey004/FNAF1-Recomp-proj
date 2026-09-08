@@ -10,7 +10,11 @@
  *   beat6   — Night 6 cleared  -> title star 2 + "custom night" button
  *   beat7   — Night 7 (custom) cleared -> title star 3
  *
- * Storage: INI file via XContent on Xbox 360, [freddy] section
+ * Storage (v2.20 two backends, gated by FNAF_LIVE_SAFE in Progress.cpp):
+ *   default (no macro)  -> Xbox system XContent (fnaf_save:\fnaf_save.ini +
+ *                          device selector);
+ *   FNAF_LIVE_SAFE      -> local "save\" folder next to the .xex.
+ *   INI [freddy] section, values:
  *   level=...
  *   beatgame=...
  *   beat6=...
@@ -41,19 +45,20 @@ public:
     // Fill defaults: night 1, nothing beaten.
     static void Reset(GameProgress& p);
 
-    // Load save from XContent; true if a valid save was read into p.
+    // Load save; true if a valid save was read into p.
     static bool Load(GameProgress& p);
 
-    // Write save via XContent. True on success.
+    // Write save. True on success.
     static bool Save(const GameProgress& p);
 
     // Number of title-screen stars (0..3) implied by the flags.
     static i32 StarCount(const GameProgress& p);
 
-    // ---- v2.14 achievements (separate file, same XContent root) ----
+    // ---- v2.14 achievements (separate file, same storage root) ----
     // The achievement-unlock bitmask is kept OUT of GameProgress so the
     // Delete-key progress wipe never clears it. Stored as fnaf_ach.ini
-    // (key `unlocked=N`, bit i-1 = achievement id i unlocked).
+    // (key `unlocked=N`, bit i-1 = achievement id i unlocked). Backend follows
+    // the same FNAF_LIVE_SAFE switch as Load/Save.
     static bool LoadAchieve(u32* bits);
     static bool SaveAchieve(u32 bits);
 };

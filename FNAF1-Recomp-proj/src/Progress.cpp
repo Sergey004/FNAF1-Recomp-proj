@@ -17,7 +17,10 @@
 #include <cstdio>
 #include <cstring>
 #include <cstddef>   // offsetof
+#include <direct.h>   // _mkdir (v2.20 local "Live Safe" backend)
+#if !defined(FNAF_LIVE_SAFE)
 #include <xtl.h>
+#endif
 #include "XdkCompat.h"
 
 namespace fnaf {
@@ -25,9 +28,23 @@ namespace fnaf {
 static const u32 PROGRESS_MAGIC   = 0x31464E46u;  // 'FNF1' little-endian
 static const u32 PROGRESS_VERSION = 1;
 
+// Shared file names (the XContent root mounts them as a drive, the local
+// backend writes them under "save\" next to the .xex).
 static const char* kXContentRoot = "fnaf_save";
-static const char* kXContentFile = "fnaf_save.ini";
+static const char* kXContentFile = "freddy";
 static const char* kAchFile = "fnaf_ach.ini";
+
+// ---------------------------------------------------------------------------
+// v2.20 storage backend switch (inverted from v2.14):
+//   default (no macro)   -> Xbox SYSTEM: XContent profile save + device
+//                           selector. "обычная" build.
+//   FNAF_LIVE_SAFE       -> LOCAL files under "save\" next to the .xex; no
+//                           Xbox content/profile APIs are touched.
+// Load/Save/LoadAchieve/SaveAchieve are written against StorageOpen/Close so
+// the two backends share the INI logic.
+// ---------------------------------------------------------------------------
+#if !defined(FNAF_LIVE_SAFE)
+
 static const WCHAR kXContentDisplayName[] = L"Five Nights at Freddy's 1 Save";
 static XCONTENTDEVICEID g_saveDevice = XCONTENTDEVICE_ANY;
 static bool g_deviceChosen = false;
@@ -77,6 +94,30 @@ static bool XContentMount(bool create)
     return res == ERROR_SUCCESS;
 }
 
+// `file` is the short name ("fnaf_save.ini" / "fnaf_ach.ini"); `create`
+// selects XCONTENTFLAG_CREATEALWAYS (save) vs OPENEXISTING (load).
+static FILE* StorageOpen(const char* file, const char* mode, bool create) {
+    if (!XContentMount(create)) return NULL;
+    char path[128];
+    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, file);
+    return fopen(path, mode);
+}
+static void StorageClose() { XContentClose(kXContentRoot, NULL); }
+
+#else  // FNAF_LIVE_SAFE — local "save\" folder, no Xbox system APIs
+
+static void EnsureLocalDir() { _mkdir("save"); }   // EEXIST/any error ignored
+
+static FILE* StorageOpen(const char* file, const char* mode, bool /*create*/) {
+    EnsureLocalDir();
+    char path[128];
+    fnaf::Snprintf(path, sizeof(path), "save\\%s", file);
+    return fopen(path, mode);
+}
+static void StorageClose() { /* nothing mounted to close */ }
+
+#endif // FNAF_LIVE_SAFE
+
 void Progress::Reset(GameProgress& p) {
     memset(&p, 0, sizeof(p));
     p.magic     = PROGRESS_MAGIC;
@@ -120,49 +161,37 @@ bool Progress::Load(GameProgress& p) {
     int val = 0;
     bool inFreddy = false;
 
-    if (!XContentMount(false)) {
-        return false;
-    }
-    char path[128];
-    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, kXContentFile);
-    FILE* f = fopen(path, "rb");
-    if (f) {
-        char buf[256];
-        while (fgets(buf, sizeof(buf), f)) {
-            char* eol = strchr(buf, '\r');
-            if (eol) *eol = '\0';
-            eol = strchr(buf, '\n');
-            if (eol) *eol = '\0';
-            char* s = buf;
-            while (*s && (*s == ' ' || *s == '\t')) ++s;
-            if (*s == '\0' || *s == ';' || *s == '#') continue;
-            if (*s == '[') {
-                inFreddy = (strcmp(s, "[freddy]") == 0);
-                continue;
-            }
-            if (!inFreddy) continue;
-            if (ParseIniLine(s, key, &val)) {
-                if (strcmp(key, "level") == 0) p.nextNight = val;
-                else if (strcmp(key, "beatgame") == 0) p.beat5 = (val != 0);
-                else if (strcmp(key, "beat6") == 0) p.beat6 = (val != 0);
-                else if (strcmp(key, "beat7") == 0) p.beat7 = (val != 0);
-                else if (strcmp(key, "lives") == 0) p.lives = val;
-            }
+    FILE* f = StorageOpen(kXContentFile, "rb", false);
+    if (!f) return false;
+    char buf[256];
+    while (fgets(buf, sizeof(buf), f)) {
+        char* eol = strchr(buf, '\r');
+        if (eol) *eol = '\0';
+        eol = strchr(buf, '\n');
+        if (eol) *eol = '\0';
+        char* s = buf;
+        while (*s && (*s == ' ' || *s == '\t')) ++s;
+        if (*s == '\0' || *s == ';' || *s == '#') continue;
+        if (*s == '[') {
+            inFreddy = (strcmp(s, "[freddy]") == 0);
+            continue;
         }
-        fclose(f);
-        XContentClose(kXContentRoot, NULL);
-        if (p.nextNight >= 1 && p.nextNight <= 7) {
-            if (p.nextNight < 1) p.nextNight = 1;
-            if (p.nextNight > 7) p.nextNight = 7;
-            p.magic = PROGRESS_MAGIC;
-            p.version = PROGRESS_VERSION;
-            p.checksum = ComputeChecksum(p);
-            return true;
+        if (!inFreddy) continue;
+        if (ParseIniLine(s, key, &val)) {
+            if (strcmp(key, "level") == 0) p.nextNight = val;
+            else if (strcmp(key, "beatgame") == 0) p.beat5 = (val != 0);
+            else if (strcmp(key, "beat6") == 0) p.beat6 = (val != 0);
+            else if (strcmp(key, "beat7") == 0) p.beat7 = (val != 0);
+            else if (strcmp(key, "lives") == 0) p.lives = val;
         }
-    } else {
-        XContentClose(kXContentRoot, NULL);
     }
-    return false;
+    fclose(f);
+    StorageClose();
+    if (p.nextNight < 1 || p.nextNight > 7) return false;
+    p.magic = PROGRESS_MAGIC;
+    p.version = PROGRESS_VERSION;
+    p.checksum = ComputeChecksum(p);
+    return true;
 }
 
 bool Progress::Save(const GameProgress& pIn) {
@@ -179,20 +208,12 @@ bool Progress::Save(const GameProgress& pIn) {
         out.beat7 ? 1 : 0,
         out.lives);
 
-    if (!XContentMount(true)) {
-        return false;
-    }
-    char path[128];
-    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, kXContentFile);
-    FILE* f = fopen(path, "wb");
-    if (f) {
-        size_t put = fwrite(iniBuf, 1, (size_t)len, f);
-        fclose(f);
-        XContentClose(kXContentRoot, NULL);
-        return put == (size_t)len;
-    }
-    XContentClose(kXContentRoot, NULL);
-    return false;
+    FILE* f = StorageOpen(kXContentFile, "wb", true);
+    if (!f) return false;
+    size_t put = fwrite(iniBuf, 1, (size_t)len, f);
+    fclose(f);
+    StorageClose();
+    return put == (size_t)len;
 }
 
 i32 Progress::StarCount(const GameProgress& p) {
@@ -212,44 +233,34 @@ i32 Progress::StarCount(const GameProgress& p) {
 bool Progress::LoadAchieve(u32* bits) {
     if (!bits) return false;
     *bits = 0;
-    if (!XContentMount(false)) return false;
-    char path[128];
-    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, kAchFile);
-    FILE* f = fopen(path, "rb");
+    FILE* f = StorageOpen(kAchFile, "rb", false);
+    if (!f) return false;
     bool ok = false;
-    if (f) {
-        char buf[128];
-        while (fgets(buf, sizeof(buf), f)) {
-            char* eol = strchr(buf, '\r'); if (eol) *eol = '\0';
-            eol = strchr(buf, '\n'); if (eol) *eol = '\0';
-            char* s = buf;
-            while (*s && (*s == ' ' || *s == '\t')) ++s;
-            if (strncmp(s, "unlocked=", 9) == 0) {
-                *bits = (u32)atoi(s + 9);
-                ok = true;
-            }
+    char buf[128];
+    while (fgets(buf, sizeof(buf), f)) {
+        char* eol = strchr(buf, '\r'); if (eol) *eol = '\0';
+        eol = strchr(buf, '\n'); if (eol) *eol = '\0';
+        char* s = buf;
+        while (*s && (*s == ' ' || *s == '\t')) ++s;
+        if (strncmp(s, "unlocked=", 9) == 0) {
+            *bits = (u32)atoi(s + 9);
+            ok = true;
         }
-        fclose(f);
     }
-    XContentClose(kXContentRoot, NULL);
+    fclose(f);
+    StorageClose();
     return ok;
 }
 
 bool Progress::SaveAchieve(u32 bits) {
     char buf[64];
     int len = fnaf::Snprintf(buf, sizeof(buf), "unlocked=%u\n", (unsigned)bits);
-    if (!XContentMount(true)) return false;
-    char path[128];
-    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, kAchFile);
-    FILE* f = fopen(path, "wb");
-    if (f) {
-        size_t put = fwrite(buf, 1, (size_t)len, f);
-        fclose(f);
-        XContentClose(kXContentRoot, NULL);
-        return put == (size_t)len;
-    }
-    XContentClose(kXContentRoot, NULL);
-    return false;
+    FILE* f = StorageOpen(kAchFile, "wb", true);
+    if (!f) return false;
+    size_t put = fwrite(buf, 1, (size_t)len, f);
+    fclose(f);
+    StorageClose();
+    return put == (size_t)len;
 }
 
 } // namespace fnaf

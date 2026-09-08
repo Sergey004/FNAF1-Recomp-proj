@@ -3,6 +3,25 @@
 Заметки «что у нас уже есть» и «что осталось». Версии соответствуют тегам в
 комментариях кода (`v2.8`, `v2.14`, `v2.15`, `v2.16`) и историческим заметкам.
 
+## v2.20 — сохранения и достижения: две сборки (система / локально)
+
+- **Инвертирована семантика `FNAF_LIVE_SAFE`** (она управляет и
+  `Progress.cpp`, и `Achievements.cpp`):
+  - **по умолчанию (без макроса) = «обычная»** — трогает систему Xbox:
+    сохранение через XContent (`XShowDeviceSelectorUI` + `XContentCreateEx`),
+    достижения через `XUserWriteAchievements`, Y открывает **системный** список
+    (`XShowAchievementsUI`).
+  - **`FNAF_LIVE_SAFE` = «Live Safe»** — систему НЕ трогает: сохранение и
+    достижения в локальный файл `save\fnaf_save.ini` / `save\fnaf_ach.ini`
+    рядом с .xex, без XUserWriteAchievements/XShowAchievementsUI/XContent.
+- **Хранилище в `Progress.cpp`** вынесено за хелперы `StorageOpen`/`StorageClose`
+  (XContent-ветка и локальная `save\`-ветка с `_mkdir("save")`); `Load`/`Save`/
+  `LoadAchieve`/`SaveAchieve` общие для обеих веток.
+- **Достижения**: добавлен `Achievements::ShowSystemUI()` (системная сборка →
+  `XShowAchievementsUI(0)`; Live Safe → false). В `main.cpp` Y на титуле:
+  `if (gi.yToggle && !g_ach.ShowSystemUI()) g_achScreen = true;`
+- Внутриигровые тост и экран достижений оставлены как fallback в обеих сборках.
+
 ## v2.19 — dB-микшер + фиксы скримеров
 
 ### Аудио: dB-прослойка (Clickteam/DirectSound → XAudio2)
@@ -121,8 +140,9 @@
 - **Внутриигровые достижения** (`Achievements.h/.cpp`): 10 ачивок из
   `achievements.xml`, разблокировка по триггерам, прогресс в `fnaf_save:\fnaf_ach.ini`,
   экран на титуле (Y) + toast.
-- **Две сборки** через `#define FNAF_LIVE_SAFE` в `Achievements.cpp`:
-  c `XUserWriteAchievements` (работает и на RGH/JTAG) / чисто локальная.
+- **Две сборки** через `#define FNAF_LIVE_SAFE` в `Achievements.cpp` (v2.20
+  инвертирована): по умолчанию — система (`XUserWriteAchievements`, работает и
+  на RGH/JTAG), с макросом — чисто локальная (`save\` рядом с .xex).
 - **Звук в меню восстановлен** (потерянные `g_audio.Play` на переходе
   дисклеймер → меню).
 
