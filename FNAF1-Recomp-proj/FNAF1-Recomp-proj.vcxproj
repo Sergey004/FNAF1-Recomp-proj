@@ -126,6 +126,7 @@
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
       <TitleID>0x464E4131</TitleID>
+      <AdditionalSections>464E4131=$(ProjectDir)fnaf1.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
       <DeploymentType>CopyToHardDrive</DeploymentType>
@@ -154,6 +155,7 @@
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
+      <AdditionalSections>464E4131=$(ProjectDir)fnaf1.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
       <DeploymentType>CopyToHardDrive</DeploymentType>
@@ -187,6 +189,7 @@
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
+      <AdditionalSections>464E4131=$(ProjectDir)fnaf1.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
       <DeploymentType>CopyToHardDrive</DeploymentType>
@@ -219,6 +222,7 @@
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
+      <AdditionalSections>464E4131=$(ProjectDir)fnaf1.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
       <DeploymentType>CopyToHardDrive</DeploymentType>
@@ -252,6 +256,7 @@
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
+      <AdditionalSections>464E4131=$(ProjectDir)fnaf1.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
       <DeploymentType>CopyToHardDrive</DeploymentType>
@@ -283,6 +288,7 @@
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
       <RequireFullExperience>true</RequireFullExperience>
+      <AdditionalSections>464E4131=$(ProjectDir)fnaf1.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
       <DeploymentType>CopyToHardDrive</DeploymentType>
@@ -302,6 +308,7 @@
     <None Include="achievements_pics\ach_night5.png" />
     <None Include="achievements_pics\ach_night6.png" />
     <None Include="achievements_pics\аch_jumpscare.png" />
+    <None Include="fnaf1.spa" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Achievements.h" />

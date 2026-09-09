@@ -33,6 +33,9 @@
     <ClInclude Include="include\Progress.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\Achievements.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="achievements.xml" />
@@ -66,6 +69,7 @@
     <None Include="achievements_pics\аch_jumpscare.png">
       <Filter>achievements_pics</Filter>
     </None>
+    <None Include="fnaf1.spa" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Animatronic.h">
@@ -176,6 +180,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Progress.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Achievements.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
