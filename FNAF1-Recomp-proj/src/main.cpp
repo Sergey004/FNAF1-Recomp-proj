@@ -650,6 +650,8 @@ static i32  g_devNight = 1;
 static i32  g_devAnim  = 0;       // 0 Freddy / 1 Bonnie / 2 Chica / 3 Foxy / 4 Golden Freddy
 static i32  g_devSound = 0;       // sound-test index
 static bool g_devGod   = false;   // god mode
+static bool g_devAnalogDoor = false;   // v2.21: analog-door test feature (DEV toggle)
+static bool g_devHoldLights = false;   // v2.21: lights as hold-button (DEV toggle)
 
 static const char* const DEV_ANIM_NAMES[8] = { "Freddy", "Bonnie", "Chica", "Foxy", "Golden Freddy", "Bonnie (window)", "Chica (window)", "IT'S ME" };
 static const AnimatronicId DEV_ANIMS[4]    = { ANIM_FREDDY, ANIM_BONNIE, ANIM_CHICA, ANIM_FOXY };
@@ -929,15 +931,15 @@ int main(int argc, char* argv[]){
                     g_render.RenderDevMenu(g_devSel, g_devNight,
                                            DEV_ANIM_NAMES[g_devAnim],
                                            DEV_SOUNDS[g_devSound].label,
-                                           g_devGod, g_showConsole);
+                                           g_devGod, g_showConsole, g_devAnalogDoor, g_devHoldLights);
                     FrameEnd();
                 }
             }
             Sleep(16); continue;
         }
         if(g_devMode){
-            if(gi.cameraUp)   { g_devSel = (g_devSel + 8) % 9; }
-            if(gi.cameraDown) { g_devSel = (g_devSel + 1) % 9; }
+            if(gi.cameraUp)   { g_devSel = (g_devSel + 10) % 11; }
+            if(gi.cameraDown) { g_devSel = (g_devSel + 1) % 11; }
             if(g_devSel == 1){
                 if(gi.cameraLeft)  { g_devNight--; if(g_devNight < 1) g_devNight = 1; }
                 if(gi.cameraRight) { g_devNight++; if(g_devNight > 7) g_devNight = 7; }
@@ -1014,6 +1016,14 @@ int main(int argc, char* argv[]){
                         g_showConsole = !g_showConsole;
                         g_debugConsole.Print(g_showConsole ? "Console ON" : "Console OFF");
                         break;
+                    case 9:
+                        g_devAnalogDoor = !g_devAnalogDoor;
+                        g_debugConsole.Print(g_devAnalogDoor ? "ANALOG DOOR ON" : "ANALOG DOOR OFF");
+                        break;
+                    case 10:
+                        g_devHoldLights = !g_devHoldLights;
+                        g_debugConsole.Print(g_devHoldLights ? "HOLD LIGHTS ON" : "HOLD LIGHTS OFF");
+                        break;
                 }
             }
 
@@ -1026,7 +1036,7 @@ int main(int argc, char* argv[]){
                 g_render.RenderDevMenu(g_devSel, g_devNight,
                                        DEV_ANIM_NAMES[g_devAnim],
                                        DEV_SOUNDS[g_devSound].label,
-                                       g_devGod, g_showConsole);
+                                       g_devGod, g_showConsole, g_devAnalogDoor, g_devHoldLights);
                 FrameEnd();
             }
             Sleep(16); continue;
@@ -1167,10 +1177,26 @@ int main(int argc, char* argv[]){
             if(gi.yToggle)     g_render.PerspTunerReset(g_tunerSel);
         }
         else if(state==GAME_STATE_PLAYING){
-            if(gi.leftDoorToggle) game.ToggleDoor(DOOR_LEFT);
-            if(gi.rightDoorToggle) game.ToggleDoor(DOOR_RIGHT);
-            if(gi.leftLightToggle) game.ToggleLight(DOOR_LEFT);
-            if(gi.rightLightToggle) game.ToggleLight(DOOR_RIGHT);
+            // v2.21 analog-door test (DEV toggle). When ON, the door position
+            // follows the trigger level (0 open .. 1 closed); the logical
+            // "closed" (AI block) = amount >= 0.5, so gameplay rules hold.
+            // When OFF, the original LT/RT toggle behaviour is used.
+            if (g_devAnalogDoor) {
+                game.SetDoorAmount(DOOR_LEFT,  gi.leftDoorAxis);
+                game.SetDoorAmount(DOOR_RIGHT, gi.rightDoorAxis);
+            } else {
+                if(gi.leftDoorToggle) game.ToggleDoor(DOOR_LEFT);
+                if(gi.rightDoorToggle) game.ToggleDoor(DOOR_RIGHT);
+            }
+            // v2.21 hold-lights test (DEV toggle). When ON, the light stays on only
+            // while its bumper (LB/RB) is held; when OFF, the original toggle.
+            if (g_devHoldLights) {
+                game.SetLight(DOOR_LEFT,  gi.leftShoulderHeld);
+                game.SetLight(DOOR_RIGHT, gi.rightShoulderHeld);
+            } else {
+                if(gi.leftLightToggle) game.ToggleLight(DOOR_LEFT);
+                if(gi.rightLightToggle) game.ToggleLight(DOOR_RIGHT);
+            }
             if(gi.cameraToggle || gi.back){
                 if(game.GetCameras().IsMonitorUp() && gi.back) game.SetCameraUp(false);
                 else game.ToggleCamera();

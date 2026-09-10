@@ -19,6 +19,8 @@ struct GameInput {
     bool rightLightToggle;  // RB toggle
     bool leftDoorToggle;    // LT toggle (>128)
     bool rightDoorToggle;   // RT toggle (>128)
+    float leftDoorAxis;     // v2.21: LT analog (0..1) — "analog door" test feature
+    float rightDoorAxis;    // v2.21: RT analog (0..1)
     bool cameraToggle;      // A toggle
     bool cameraUp;
     bool cameraDown;
@@ -33,6 +35,7 @@ struct GameInput {
 
     GameInput() : lookDir(0), leftLightToggle(false), rightLightToggle(false),
                   leftDoorToggle(false), rightDoorToggle(false),
+                  leftDoorAxis(0), rightDoorAxis(0),
                   cameraToggle(false), cameraUp(false), cameraDown(false),
                   cameraLeft(false), cameraRight(false), pause(false), back(false),
                   leftShoulderHeld(false), rightShoulderHeld(false),

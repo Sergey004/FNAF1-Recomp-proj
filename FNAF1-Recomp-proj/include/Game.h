@@ -52,6 +52,7 @@ public:
     // Toggle a door
     void ToggleDoor(DoorSide side);
     void SetDoor(DoorSide side, bool closed);
+    void SetDoorAmount(DoorSide side, float amount);   // v2.21 analog-door test
 
     // Toggle a hallway light
     void ToggleLight(DoorSide side);

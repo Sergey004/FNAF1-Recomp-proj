@@ -16,6 +16,8 @@ void UpdateInput(GameInput& out)
     out.rightLightToggle = false;
     out.leftDoorToggle = false;
     out.rightDoorToggle = false;
+    out.leftDoorAxis = 0.0f;
+    out.rightDoorAxis = 0.0f;
     out.cameraToggle = false;
     out.cameraUp = false;
     out.cameraDown = false;
@@ -58,6 +60,8 @@ void UpdateInput(GameInput& out)
     bool rtNow = state.Gamepad.bRightTrigger > 128;
     out.leftDoorToggle = ltNow && !ltPrev;
     out.rightDoorToggle = rtNow && !rtPrev;
+    out.leftDoorAxis  = (float)state.Gamepad.bLeftTrigger  / 255.0f;   // v2.21 analog
+    out.rightDoorAxis = (float)state.Gamepad.bRightTrigger / 255.0f;
     ltPrev = ltNow; rtPrev = rtNow;
 
     bool aNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0;

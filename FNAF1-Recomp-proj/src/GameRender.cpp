@@ -169,18 +169,18 @@ static const int DOOR_L_CLOSE[16] = {103, 88,105, 89, 91, 92, 93, 94, 95, 96, 97
 static const int DOOR_L_OPEN[16]  = {102,101,100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 89,105, 88,103};
 static const int DOOR_R_CLOSE[16] = {119,104,121,106,107,108,109,110,111,112,113,114,115,116,117,118};
 static const int DOOR_R_OPEN[16]  = {118,117,116,115,114,113,112,111,110,109,108,107,106,121,104,119};
-static const f32 DOOR_FRAME_T = 0.040f;
+static const f32 DOOR_FRAME_T = 1.0f/30.0f;   // speed 50 = 30 FPS (was 0.040 = 25)
 // Foxy sprint frames live in FOXY_RUN[33] below (Active 3 anim 51,
 // verified: 33 frames @ speed 65, backTo 31). The old 25-frame table
 // here was actually anim 52 (the kill) -- v2.7.12 fix.
 // obj 46 "Active 5": white flash while the tablet goes up (blip==1,
 // event group 16); one-shot, destroyed on end (group 17).
 static const int FLASH_SEQ[9] = {23,4,25,6,8,9,10,21,22};
-static const f32 FLASH_FRAME_T = 0.02857f;   // speed 70
+static const f32 FLASH_FRAME_T = 1.0f/42.0f;   // speed 70 = 42 FPS (was 0.02857 = 35)
 // obj 73 "flip down 2": dark uncover wipe when the tablet drops
 // (put down==1, event group 322); starts black, dissolves clear.
 static const int WIPE_SEQ[11] = {141,140,139,138,137,136,133,132,144,46,142};
-static const f32 WIPE_FRAME_T = 0.040f;
+static const f32 WIPE_FRAME_T = 1.0f/30.0f;   // speed 50 = 30 FPS (was 0.040 = 25)
 
 // obj 68 "panel": the tablet RAISE animation. Event group 130 creates
 // the object the moment the flip bar is clicked (with the
@@ -193,7 +193,7 @@ static const f32 WIPE_FRAME_T = 0.040f;
 // frames are native 1280x720 window-space art (straight edges baked
 // in) -> drawn FLAT like the wipe, not through the panorama curve.
 static const int RAISE_SEQ[11] = {142,46,144,132,133,136,137,138,139,140,141};
-static const f32 RAISE_FRAME_T = 0.040f;   // speed 50
+static const f32 RAISE_FRAME_T = 1.0f/30.0f;   // speed 50 = 30 FPS (was 0.040 = 25)
 
 // v2.7.4: the ORIGINAL grain alpha comes from the object data, not guesswork.
 // Every fullscreen static object in the game carries inkEffect=1 (semi-
@@ -422,9 +422,10 @@ void GameRender::SetLookDir(f32 dir) {
 void GameRender::Tick(f32 dt) {
     m_time += dt;
     m_staticTime += dt;
-    // static cycle ~12 fps like the original's 8-frame animation
-    if (m_staticTime >= 1.0f / 12.0f) {
-        m_staticTime -= 1.0f / 12.0f;
+    // static cycle: 8 frames. 60 FPS looked like a strobe; 24 FPS reads as
+    // "noise" flicker (tunable here). Object "static" anim 0 frames 18/20/12..
+    if (m_staticTime >= 1.0f / 24.0f) {
+        m_staticTime -= 1.0f / 24.0f;
         m_staticIndex = (m_staticIndex + 1) % 8;
     }
     // office pan window: stick right -> look right (scene moves left)
@@ -591,13 +592,14 @@ void GameRender::DrawAchievementToast(const char* name, int gamerscore) {
 
 // v2.17 DEBUG/DEV menu — text-only debug screen (font atlas).
 void GameRender::RenderDevMenu(int sel, int night, const char* animName,
-                               const char* soundLabel, bool god, bool console) {
+                               const char* soundLabel, bool god, bool console,
+                               bool analogDoor, bool holdLights) {
     if (!m_text) return;
     m_text->DrawText(16, 10, "== DEV MENU ==  (B/Y close, DPad select, A run, L/R value)", 0xFFFFFF00);
 
     char line[128];
     int y = 38;
-    for (int i = 0; i < 9; ++i) {
+    for (int i = 0; i < 11; ++i) {
         const char* mark = (sel == i) ? "> " : "  ";
         if (i == 0)      Snprintf(line, sizeof(line), "%sGod mode: %s", mark, god ? "ON" : "OFF");
         else if (i == 1) Snprintf(line, sizeof(line), "%sJump to night [ %d ]", mark, night);
@@ -607,7 +609,9 @@ void GameRender::RenderDevMenu(int sel, int night, const char* animName,
         else if (i == 5) Snprintf(line, sizeof(line), "%sSound test [ %s ]", mark, soundLabel);
         else if (i == 6) Snprintf(line, sizeof(line), "%sUnlock all achievements", mark);
         else if (i == 7) Snprintf(line, sizeof(line), "%sReset achievements", mark);
-        else             Snprintf(line, sizeof(line), "%sConsole: %s", mark, console ? "ON" : "OFF");
+        else if (i == 8) Snprintf(line, sizeof(line), "%sConsole: %s", mark, console ? "ON" : "OFF");
+        else if (i == 9) Snprintf(line, sizeof(line), "%sAnalog doors: %s", mark, analogDoor ? "ON" : "OFF");
+        else             Snprintf(line, sizeof(line), "%sHold lights: %s", mark, holdLights ? "ON" : "OFF");
         m_text->DrawText(16, y, line, (sel == i) ? 0xFFFFFFFF : 0xFF9A9A9A);
         y += 22;
     }
@@ -635,10 +639,10 @@ void GameRender::RenderScareFlash(int imgHandle, float elapsed) {
 }
 
 // v2.17: the "IT'S ME" Bonnie hallucination — obj "Active 21" (frames
-// 525/543/520/544, 1280x720), flickering rapidly, rare in the original.
+// 525/543/520/544, 1280x720), speed 75 = 45 FPS, rare in the original.
 void GameRender::RenderItsmeFlash(float elapsed) {
     if (!m_batch) return;
-    const int idx = ((int)(elapsed * 12.0f)) % 4;
+    const int idx = ((int)(elapsed * 45.0f)) % 4;
     DrawFrame(ITSME_FRAMES[idx], 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
 }
 
@@ -919,18 +923,18 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
         }
     }
 
-    // door slide anims: obj 59/60 anims a12 (close) / a14 (open)
-    int lImg = lc ? IMG_DOOR_L_CLOSED : IMG_DOOR_L_OPEN;
-    int rImg = rc ? IMG_DOOR_R_CLOSED : IMG_DOOR_R_OPEN;
-    if (m_doorT[0] >= 0.0f) {
-        int idx = (int)(m_doorT[0] / DOOR_FRAME_T);
-        if (idx > 15) idx = 15;
-        lImg = m_doorClosing[0] ? DOOR_L_CLOSE[idx] : DOOR_L_OPEN[idx];
-    }
-    if (m_doorT[1] >= 0.0f) {
-        int idx = (int)(m_doorT[1] / DOOR_FRAME_T);
-        if (idx > 15) idx = 15;
-        rImg = m_doorClosing[1] ? DOOR_R_CLOSE[idx] : DOOR_R_OPEN[idx];
+    // v2.21 analog-door test: the door frame follows the continuous amount
+    // (0 = open, 1 = closed). DOOR_L_CLOSE/R_CLOSE are Scott's 16-frame slide
+    // (open -> closed), so they double as the "position -> frame" table.
+    // The logical closed flag (AI block) is amount >= 0.5, set in DoorSystem.
+    int lImg, rImg;
+    {
+        const float la = doors.GetDoorAmount(DOOR_LEFT);
+        const float ra = doors.GetDoorAmount(DOOR_RIGHT);
+        int li = (int)(la * 15.0f + 0.5f); if (li < 0) li = 0; if (li > 15) li = 15;
+        int ri = (int)(ra * 15.0f + 0.5f); if (ri < 0) ri = 0; if (ri > 15) ri = 15;
+        lImg = DOOR_L_CLOSE[li];
+        rImg = DOOR_R_CLOSE[ri];
     }
 
     // capture the flat layer 0 into the panorama target...
@@ -1228,12 +1232,14 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
 
     int frame = 0;
     if (anim == ANIM_FREDDY) {
-        // anim 65: 31 frames @ 30 FPS (speed 50), repeat 1
-        const int i = (int)(elapsed * 30.0f) % 31;
+        // anim 65: 31 frames @ 30 FPS (speed 50), repeat 1 -> play once, hold
+        int i = (int)(elapsed * 30.0f);
+        if (i > 30) i = 30;
         frame = SCARE_FREDDY[i];
     } else if (anim == ANIM_FOXY) {
-        // anim 52: 25 frames @ 30 FPS (speed 50), repeat 1
-        const int i = (int)(elapsed * 30.0f) % 25;
+        // anim 52: 25 frames @ 30 FPS (speed 50), repeat 1 -> play once, hold
+        int i = (int)(elapsed * 30.0f);
+        if (i > 24) i = 24;
         frame = SCARE_FOXY[i];
     } else if (anim == ANIM_BONNIE) {
         // anim 35: 11 frames @ 45 FPS (speed 75), play once, hold last

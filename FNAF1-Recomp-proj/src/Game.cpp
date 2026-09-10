@@ -171,6 +171,17 @@ void Game::SetDoor(DoorSide side, bool closed) {
     }
 }
 
+void Game::SetDoorAmount(DoorSide side, float amount) {
+    if (m_state != GAME_STATE_PLAYING) return;
+    if (m_power.IsPowerOut()) return;
+
+    const bool wasClosed = m_doors.IsDoorClosed(side);
+    m_doors.SetDoorAmount(side, amount);
+    if (m_callbacks.onDoorChange && wasClosed != m_doors.IsDoorClosed(side)) {
+        m_callbacks.onDoorChange(side, m_doors.IsDoorClosed(side));
+    }
+}
+
 void Game::ToggleLight(DoorSide side) {
     if (m_state != GAME_STATE_PLAYING) return;
     if (m_power.IsPowerOut()) return;

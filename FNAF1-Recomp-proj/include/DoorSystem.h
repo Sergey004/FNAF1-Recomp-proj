@@ -24,6 +24,12 @@ public:
     // Set door state directly
     void SetDoor(DoorSide side, bool closed);
 
+    // v2.21 analog-door test: continuous position (0 = open, 1 = closed).
+    // Drives the door's RENDER frame; the logical "closed" flag (AI/entry)
+    // follows as amount >= 0.5, so gameplay rules stay intact.
+    void SetDoorAmount(DoorSide side, float amount);
+    float GetDoorAmount(DoorSide side) const;
+
     // Is the specified door closed?
     bool IsDoorClosed(DoorSide side) const;
 
@@ -45,6 +51,7 @@ public:
 
 private:
     bool m_doorClosed[DOOR_COUNT];
+    float m_doorAmount[DOOR_COUNT];   // v2.21 analog position 0(open)..1(closed)
     bool m_lightOn[DOOR_COUNT];
 };
 

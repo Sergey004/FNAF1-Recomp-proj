@@ -95,7 +95,7 @@ public:
     // v2.17: DEBUG/DEV menu (god mode, night jump, 6AM/power-out/jumpscare
     // triggers, sound test, achievement tools, console toggle, 17-frame list).
     void RenderDevMenu(int sel, int night, const char* animName,
-                       const char* soundLabel, bool god, bool console);
+                       const char* soundLabel, bool god, bool console, bool analogDoor, bool holdLights);
     // v2.17: full-screen scare flash (Golden Freddy / door window poses)
     void RenderScareFlash(int imgHandle, float elapsed);
     // v2.17: full-screen "IT'S ME" hallucination flicker (obj "Active 21")
