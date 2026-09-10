@@ -280,6 +280,24 @@ static const int CAM_LABELS[11] = {
     IMG_LOC_KITCHEN,   IMG_LOC_RESTROOMS
 };
 
+// v2.21: the small room/camera name markers drawn ON the cam map. The obj dump
+// lists 11 "Active" label objects (img 165-177, 31x25) at fixed instance
+// positions over the map (img 164); the recomp previously omitted them.
+struct CamMapLabel { int img; f32 x, y; };
+static const CamMapLabel CAM_MAP_LABELS[11] = {
+    { 170, 961.0f, 341.0f }, // CAM 1A Show Stage
+    { 171, 939.0f, 397.0f }, // CAM 1B Dining Area
+    { 177, 908.0f, 475.0f }, // CAM 1C Pirate Cove
+    { 172, 960.0f, 590.0f }, // CAM 2A West Hall
+    { 165, 960.0f, 630.0f }, // CAM 2B W. Hall Corner
+    { 168, 877.0f, 574.0f }, // CAM 3 Supply Closet
+    { 169, 1066.0f, 592.0f },// CAM 4A East Hall
+    { 173, 1066.0f, 632.0f },// CAM 4B E. Hall Corner
+    { 174, 834.0f, 424.0f }, // CAM 5 Backstage
+    { 175, 1163.0f, 556.0f },// CAM 6 Kitchen
+    { 176, 1172.0f, 424.0f }, // CAM 7 Restrooms
+};
+
 // ------------------------------------------------------------
 //  Counter-font sprite strips (the game's real digit fonts)
 //  Verified glyph order: 0 1 2 3 4 5 6 7 8 9 - + . e
@@ -663,6 +681,18 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     if (tw == 3)  bg = IMG_MENU_FLICK3;         // 442 Freddy endo head (rare)
     DrawFrame(bg, 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
 
+    // Animated static overlay ("static" obj) — z-order index [01] in the frame
+    // dump, i.e. drawn directly OVER the background and UNDER the logo/menu/
+    // labels (the dump lists it before "Active"/"new game"/…).
+    DrawStaticOverlay(STATIC_ALPHA);
+
+    // Rare white-noise blip (object "blip flash 2", dump z-order [02] — over
+    // the static, under the logo/menu).
+    if (((int)(m_time * 3.0f) % 29) == 5) {
+        const int f = MENU_BLIP[((int)(m_time * 15.0f)) % 7];
+        DrawFrame(f, 0, 0, SCREEN_W, SCREEN_H, 0x5AFFFFFF);
+    }
+
     // Logo + static labels (hotspot-corrected instance positions)
     // v2.7.4 VERDICT CORRECTION: the source exe is the FULL Steam game
     // (ContentBuilder targetFilename, DEMO? counter never set -> stays 0),
@@ -702,16 +732,6 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     else if (sel >= 3 && menu.GetUnlockedNight() >= 7) ay = 639.0f;
     const bool blink = ((int)(m_time * 2.0f)) % 2 == 0;
     if (blink && sel != MENU_OPT_DEV) DrawInstance(IMG_MENU_ARROW, 132.0f, ay, 0xFFFFFFFF, false);
-
-    // Rare white-noise blip (object "blip flash 2")
-    if (((int)(m_time * 3.0f) % 29) == 5) {
-        const int f = MENU_BLIP[((int)(m_time * 15.0f)) % 7];
-        DrawFrame(f, 0, 0, SCREEN_W, SCREEN_H, 0x5AFFFFFF);
-    }
-
-    // Animated static overlay (object "static" on top in the original,
-    // semi-transparency coeff 100 -> alpha 155/255, see STATIC_ALPHA above)
-    DrawStaticOverlay(STATIC_ALPHA);
 }
 
 // ------------------------------------------------------------
@@ -1128,8 +1148,15 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
         DrawInstance(CAM_LABELS[(int)cam], 832.0f, 292.0f, 0xFFFFFFFF, false);
     }
 
-    // Cam map (img_164 @ (848,313)) + blinking selected-cam button
-    DrawFrame(IMG_CAM_MAP, 848.0f, 313.0f, 400.0f, 400.0f, 0xFFFFFFFF);
+    // Cam map (Active 9): 2-frame anim [164,145] at speed 2 -- the subtle
+    // "you are here" blink. Reuses the REC-light cadence (speed 2 -> 1.25 Hz).
+    const int mf = ((int)(m_time * 1.25f)) % 2;
+    DrawFrame(mf ? 145 : 164, 848.0f, 313.0f, 400.0f, 400.0f, 0xFFFFFFFF);
+    // v2.21: room/camera name markers drawn ON the map (obj "Active" labels)
+    for (int i = 0; i < 11; ++i) {
+        const CamMapLabel& lb = CAM_MAP_LABELS[i];
+        DrawInstance(lb.img, lb.x, lb.y, 0xFFFFFFFF, false);
+    }
     if (cam >= CAM_1A && cam <= CAM_7) {
         const PakMapBtn mb = PakMapButtonOf((int)cam);
         const bool on = ((int)(m_time * 2.0f)) % 2 == 0;
