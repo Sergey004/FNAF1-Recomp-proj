@@ -1,19 +1,8 @@
 # Changelog — FNAF1 Recomp (Xbox 360)
 
 Notes on what is done and what is left. Versions match the code
-comment tags (`v2.8`, `v2.14`, …, `v2.24`) and the historical notes.
+comment tags (`v2.8`, `v2.14`, …, `v2.23`) and the historical notes.
 
-
----
-
-## v2.24 — animation speeds pinned to the PC dump
-
-- Confirmed the animation formula `fps = speed × 0.6` (÷60) against the original PC `application.json` (`frameRate: 60`), cross-checked with FNaF64 (which uses the same `speed_fps`). Fixed the approximations that were guessing instead of reading the dump:
-  - **Desk fan** ("Active 6" anim 0, 3 frames): was a guessed ~8 FPS; now speed 99 = 59.4 FPS.
-  - **REC light** ("Active 2" anim 0, `[7,5]`) and **cam-map blink** ("Active 9" anim 0, `[164,145]`): were ~1.25 Hz; now `speed 2` = 1.2 FPS via `CfAnimFrame`.
-  - **Foxy sprint** ("Active 3" anim 51, 33 frames, speed 65 = 39 FPS): was stretched linearly over the 1.67 s run; now plays at 39 FPS and holds the last frame (~0.85 s in), as the original freeze.
-- Re-verified (already correct, no change): jumpscares (Freddy 65@50×31, Foxy 52@50×25, Bonnie 35@75×11, Chica 44@99×16), doors (50→30 FPS, 16 frames), IT'S ME (75→45 FPS, 4 frames), static frames.
-- Static kept at **24 FPS** (deliberate user tune; dump is speed 99 = 59.4 FPS).
 
 ---
 

@@ -55,7 +55,7 @@ public:
 
     // v2.7.13: "HELP WANTED" newspaper (frame "ad", img_574 full screen).
     // New Game intro; any button skips, ~8 s timeout in main.
-    void RenderIntroAd(bool blinkOn);
+    void RenderIntroAd();
 
     // Full title menu, drawn with the original button art and static overlay
     void RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars);

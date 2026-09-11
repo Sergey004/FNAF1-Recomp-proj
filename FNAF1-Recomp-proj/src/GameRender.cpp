@@ -1280,13 +1280,10 @@ void GameRender::RenderNightComplete(i32 night, f32 elapsed) {
 }
 
 // v2.7.13: "HELP WANTED" newspaper (frame "ad", img_574 full screen).
-void GameRender::RenderIntroAd(bool blinkOn) {
-    if (!m_batch || !m_text) return;
+// v2.23: no "PRESS A" overlay — the original shows only the paper; any button skips.
+void GameRender::RenderIntroAd() {
+    if (!m_batch) return;
     DrawFrame(IMG_INTRO_AD, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
-    if (blinkOn) {
-        m_text->DrawTextCenteredXY((i32)(SCREEN_W * 0.5f), (i32)(SCREEN_H - 60.0f),
-                                   "PRESS  A", 0xFFB0B0B0);
-    }
 }
 
 void GameRender::RenderGameOver() {

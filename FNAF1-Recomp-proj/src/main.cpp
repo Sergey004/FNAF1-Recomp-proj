@@ -234,7 +234,7 @@ static bool ShowImportSavePrompt(){
     LPCWSTR awszButtons[] = { L"No", L"Yes" };
     DWORD cButtons = 2;
     DWORD dwFocusButton = 1;               // default highlight "Yes"
-    DWORD dwFlags = XMB_QUESTIONICON;
+    DWORD dwFlags = XMB_WARNINGICON;
     MESSAGEBOX_RESULT result;
     XOVERLAPPED overlapped;
     ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
@@ -1269,7 +1269,7 @@ int main(int argc, char* argv[]){
             ++adCounter;
             const bool adLock = adCounter < 30;   // skip boot bounce
             if(FrameBegin(D3DCOLOR_XRGB(0,0,0))){
-                g_render.RenderIntroAd(!adLock && (((adCounter/30)%2)==0));
+                g_render.RenderIntroAd();
                 DrawFadeOverlay();
                 FrameEnd();
             }
