@@ -402,6 +402,7 @@ GameRender::GameRender()
     m_prevMonitor = false;
     m_prevCam = -1;        // v2.7.9: no settled monitor cam yet
     m_goldenRoll = -1;     // v2.17: no "random for pic" roll yet
+    m_goldFredInOffice = false;   // v2.22: Golden Freddy not in the office
     m_lastT = 0.0f;
 }
 
@@ -636,6 +637,9 @@ void GameRender::RenderItsmeFlash(float elapsed) {
     const int idx = CfAnimFrame(75, elapsed, 4, true);   // speed 75 = 45 FPS
     DrawFrame(ITSME_FRAMES[idx], 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
 }
+
+int  GameRender::GetGoldenRoll() const { return m_goldenRoll; }
+void GameRender::SetGoldenFreddyInOffice(bool on) { m_goldFredInOffice = on; }
 
 void GameRender::DrawStripCentered(const SpriteStrip& strip, float cx, float y,
                                    const char* text, u32 color, float scale) {
@@ -932,6 +936,10 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     DrawInstance(rImg, 1270.0f, -2.0f, 0xFFFFFFFF, true);
     DrawInstance(lp,  48.0f, 390.0f, 0xFFFFFFFF, true);
     DrawInstance(rp, 1546.0f, 400.0f, 0xFFFFFFFF, true);
+    // v2.22: Golden Freddy (img 573) slumped in the office — "yellow bear"
+    // object at instance (660,478), layer 0.
+    if (m_goldFredInOffice)
+        DrawInstance(IMG_GOLDEN_FREDDY, 660.0f, 478.0f, 0xFFFFFFFF, true);
     m_batch->EndSceneCapture();
 
     // ...then warp the whole composed scene through the parabola shader.
@@ -1209,6 +1217,14 @@ void GameRender::RenderPowerOut(const Game& game) {
 
 void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
     if (!m_batch) return;
+
+    // v2.22: Golden Freddy uses ANIM_COUNT as a sentinel. His "creepy start"
+    // is a flat full-screen 1280x720 face (img 571), not a 1600x720 scene,
+    // and has no panorama bend or frame animation.
+    if (anim == ANIM_COUNT) {
+        DrawFrame(GOLDEN_FREDDY, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+        return;
+    }
 
     int frame = 0;
     if (anim == ANIM_FREDDY) {

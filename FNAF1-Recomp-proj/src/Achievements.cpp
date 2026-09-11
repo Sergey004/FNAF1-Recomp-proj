@@ -169,7 +169,7 @@ void Achievements::SystemWrite(int id) {
     DWORD res = XUserWriteAchievements(1, &a, NULL);
     printf("ACH %d -> 0x%08X\n", id, (unsigned)res);
 #else
-    // Live Safe build: no Xbox profile write; the local save\fnaf_ach.ini +
+    // Live Safe build: no Xbox profile write; the local game:\save\fnaf_ach.ini +
     // in-game UI are the entire record.
     (void)id;
     printf("ACH %d (local only)\n", id);

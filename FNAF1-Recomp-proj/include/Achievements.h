@@ -11,7 +11,7 @@
  *
  *   * a fixed table of 10 achievements (mirrors achievements.xml);
  *   * an unlock bitmask persisted (see Progress.h) -- to fnaf_save:\fnaf_ach.ini
- *     in the system build, or save\fnaf_ach.ini in the Live Safe build;
+ *     in the system build, or game:\save\fnaf_ach.ini in the Live Safe build;
  *   * v2.20 TWO BUILD FLAVORS controlled by FNAF_LIVE_SAFE in Achievements.cpp
  *     (also gating Progress.cpp's storage backend):
  *       - default (no macro)  -> "обычная": touches the Xbox system --

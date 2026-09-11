@@ -10,12 +10,14 @@
  *  - title groups 33/34/35/36: New Game starts "night number" 1, Continue
  *    starts Ini("level"), 6th night -> 6, custom -> 7.
  *
- * Storage: XContent INI file fnaf_save.ini with [freddy] section on Xbox 360.
+ * Storage: XContent content "freddy" (system build) or
+ * game:\save\freddy (Live Safe build) — the original's extension-less INI file.
  */
 
 #include "Progress.h"
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>    // atoi
 #include <cstddef>   // offsetof
 #include <direct.h>   // _mkdir (v2.20 local "Live Safe" backend)
 #if !defined(FNAF_LIVE_SAFE)
@@ -29,8 +31,12 @@ static const u32 PROGRESS_MAGIC   = 0x31464E46u;  // 'FNF1' little-endian
 static const u32 PROGRESS_VERSION = 1;
 
 // Shared file names (the XContent root mounts them as a drive, the local
-// backend writes them under "save\" next to the .xex).
+// backend writes them under "game:\save\" next to the .xex).
 static const char* kXContentRoot = "fnaf_save";
+// The ORIGINAL save file is literally named "freddy" (no extension); its
+// contents are INI ([freddy] section). Both backends keep that exact name —
+// the system build stores it as the XContent content "freddy", the Live Safe
+// build as a plain file game:\save\freddy.
 static const char* kXContentFile = "freddy";
 static const char* kAchFile = "fnaf_ach.ini";
 
@@ -94,7 +100,7 @@ static bool XContentMount(bool create)
     return res == ERROR_SUCCESS;
 }
 
-// `file` is the short name ("fnaf_save.ini" / "fnaf_ach.ini"); `create`
+// `file` is the short name ("freddy" / "fnaf_ach.ini"); `create`
 // selects XCONTENTFLAG_CREATEALWAYS (save) vs OPENEXISTING (load).
 static FILE* StorageOpen(const char* file, const char* mode, bool create) {
     if (!XContentMount(create)) return NULL;
@@ -104,14 +110,14 @@ static FILE* StorageOpen(const char* file, const char* mode, bool create) {
 }
 static void StorageClose() { XContentClose(kXContentRoot, NULL); }
 
-#else  // FNAF_LIVE_SAFE — local "save\" folder, no Xbox system APIs
+#else  // FNAF_LIVE_SAFE — local "game:\save\" folder, no Xbox system APIs
 
-static void EnsureLocalDir() { _mkdir("save"); }   // EEXIST/any error ignored
+static void EnsureLocalDir() { _mkdir("game:\\save"); }   // EEXIST/any error ignored
 
 static FILE* StorageOpen(const char* file, const char* mode, bool /*create*/) {
     EnsureLocalDir();
-    char path[128];
-    fnaf::Snprintf(path, sizeof(path), "save\\%s", file);
+    char path[160];
+    fnaf::Snprintf(path, sizeof(path), "game:\\save\\%s", file);
     return fopen(path, mode);
 }
 static void StorageClose() { /* nothing mounted to close */ }
@@ -126,7 +132,6 @@ void Progress::Reset(GameProgress& p) {
     p.beat5     = false;
     p.beat6     = false;
     p.beat7     = false;
-    p.lives    = 0;
     p.checksum  = 0;
 }
 
@@ -182,7 +187,6 @@ bool Progress::Load(GameProgress& p) {
             else if (strcmp(key, "beatgame") == 0) p.beat5 = (val != 0);
             else if (strcmp(key, "beat6") == 0) p.beat6 = (val != 0);
             else if (strcmp(key, "beat7") == 0) p.beat7 = (val != 0);
-            else if (strcmp(key, "lives") == 0) p.lives = val;
         }
     }
     fclose(f);
@@ -201,12 +205,11 @@ bool Progress::Save(const GameProgress& pIn) {
 
     char iniBuf[256];
     int len = fnaf::Snprintf(iniBuf, sizeof(iniBuf),
-        "[freddy]\nlevel=%d\nbeatgame=%d\nbeat6=%d\nbeat7=%d\nlives=%d\n",
+        "[freddy]\nlevel=%d\nbeatgame=%d\nbeat6=%d\nbeat7=%d\n",
         out.nextNight,
         out.beat5 ? 1 : 0,
         out.beat6 ? 1 : 0,
-        out.beat7 ? 1 : 0,
-        out.lives);
+        out.beat7 ? 1 : 0);
 
     FILE* f = StorageOpen(kXContentFile, "wb", true);
     if (!f) return false;
@@ -222,6 +225,69 @@ i32 Progress::StarCount(const GameProgress& p) {
     if (p.beat6) ++stars;
     if (p.beat7) ++stars;
     return stars;
+}
+
+// v2.23: a valid loose "freddy" save to import (game:\save\freddy or
+// game:\freddy), or NULL when none. System build only.
+#if !defined(FNAF_LIVE_SAFE)
+static const char* FindLooseSavePath() {
+    static const char* kCandidates[2] = { "game:\\save\\freddy", "game:\\freddy" };
+    for (int i = 0; i < 2; ++i) {
+        FILE* f = fopen(kCandidates[i], "rb");
+        if (!f) continue;
+
+        char buffer[512];
+        size_t n = fread(buffer, 1, sizeof(buffer) - 1, f);
+        buffer[n] = '\0';
+        fclose(f);
+
+        // sanity: must be a [freddy] INI with a valid level 1..7
+        char* lvl = strstr(buffer, "level=");
+        if (n == 0 || !strstr(buffer, "[freddy]") || !lvl) continue;
+        int v = atoi(lvl + 6);
+        if (v < 1 || v > 7) continue;
+        return kCandidates[i];
+    }
+    return NULL;
+}
+#endif
+
+bool Progress::HasLooseSave() {
+#if defined(FNAF_LIVE_SAFE)
+    return false;
+#else
+    return FindLooseSavePath() != NULL;
+#endif
+}
+
+// v2.23: bring a loose "freddy" save into the XContent container. This is how
+// a Live Safe save (game:\save\freddy) or a manually-dropped original save
+// (game:\freddy) is imported into the system build. No-op in Live Safe.
+bool Progress::ImportSave() {
+#if defined(FNAF_LIVE_SAFE)
+    return false;
+#else
+    const char* srcPath = FindLooseSavePath();
+    if (!srcPath) return false;
+
+    FILE* src = fopen(srcPath, "rb");
+    if (!src) return false;
+    char buffer[512];
+    size_t got = fread(buffer, 1, sizeof(buffer) - 1, src);
+    buffer[got] = '\0';
+    fclose(src);
+
+    FILE* dst = StorageOpen(kXContentFile, "wb", true);
+    if (!dst) return false;
+    size_t put = fwrite(buffer, 1, got, dst);
+    fclose(dst);
+    StorageClose();
+    if (put == got) {
+        printf("SAVE imported: %s -> fnaf_save:\\freddy\n", srcPath);
+        return true;
+    }
+    return false;
+#endif
 }
 
 // ---------------------------------------------------------------------------

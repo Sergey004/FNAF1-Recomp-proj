@@ -69,6 +69,9 @@ public:
     // v2.17 DEV: force the power-out sequence / a specific jumpscare
     void DebugTriggerPowerOut();
     void DebugTriggerJumpscare(AnimatronicId anim);
+    // v2.22: Golden Freddy kills the player (reroute through the jumpscare
+    // state with ANIM_COUNT as the sentinel; plays onJumpscare + XSCREAM).
+    void DebugTriggerGoldenFreddy();
 
     // === State Queries ===
 

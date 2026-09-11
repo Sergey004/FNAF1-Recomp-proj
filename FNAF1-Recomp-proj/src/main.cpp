@@ -225,6 +225,58 @@ static bool ShowPakErrorScreen(){
     return false;
 }
 
+// v2.23: ask whether to import a loose "freddy" save found next to the game
+// into the XContent save container. Same async pattern as ShowPakErrorScreen.
+static bool ShowImportSavePrompt(){
+    DWORD dwUserIndex = XUSER_INDEX_ANY;
+    LPCWSTR wszTitle = L"Import save";
+    LPCWSTR wszText  = L"Do you want to import the save found in the game folder?";
+    LPCWSTR awszButtons[] = { L"No", L"Yes" };
+    DWORD cButtons = 2;
+    DWORD dwFocusButton = 1;               // default highlight "Yes"
+    DWORD dwFlags = XMB_QUESTIONICON;
+    MESSAGEBOX_RESULT result;
+    XOVERLAPPED overlapped;
+    ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
+
+    DWORD dwRet = XShowMessageBoxUI(
+        dwUserIndex, wszTitle, wszText, cButtons, awszButtons,
+        dwFocusButton, dwFlags, &result, &overlapped);
+
+    if (dwRet == ERROR_IO_PENDING) {
+        while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
+        DWORD dwRes = XGetOverlappedResult(&overlapped, NULL, TRUE);
+        if (dwRes != ERROR_SUCCESS) return false;
+    } else if (dwRet != ERROR_SUCCESS) {
+        return false;
+    }
+    return result.dwButtonPressed == 1;    // 1 == "Yes"
+}
+
+// v2.23: informational box after a successful import — tell the player to
+// restart so the imported save is picked up fresh.
+static void ShowImportDonePrompt(){
+    DWORD dwUserIndex = XUSER_INDEX_ANY;
+    LPCWSTR wszTitle = L"Import complete";
+    LPCWSTR wszText  = L"Import complete. Please restart the game.";
+    LPCWSTR awszButtons[] = { L"OK" };
+    DWORD cButtons = 1;
+    DWORD dwFocusButton = 0;
+    DWORD dwFlags = XMB_NOICON;
+    MESSAGEBOX_RESULT result;
+    XOVERLAPPED overlapped;
+    ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
+
+    DWORD dwRet = XShowMessageBoxUI(
+        dwUserIndex, wszTitle, wszText, cButtons, awszButtons,
+        dwFocusButton, dwFlags, &result, &overlapped);
+
+    if (dwRet == ERROR_IO_PENDING) {
+        while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
+        XGetOverlappedResult(&overlapped, NULL, TRUE);
+    }
+}
+
 // ============================================================
 //  Game -> platform callbacks (sound + state hooks)
 // ============================================================
@@ -442,6 +494,64 @@ static void TickRandomEvents(const Game& game) {
     }
 }
 
+// v2.22: "Active 2" power-out face sounds (groups 219-222). During power-out
+// phase 1, each NEW lit face flash advances the face state 1..4 and plays its
+// distinct sound: computer-digital (1), garble1/2/3 (2/3/4).
+static int  s_faceStatePrev = 0;
+static void TickPowerOutFaceSound(const Game& game) {
+    const i32 fs = game.GetPowerOutFaceState();
+    if (fs != 0 && fs != s_faceStatePrev) {
+        switch (fs) {
+            case 1: g_audio.Play(&g_pak, Snd::COMPUTER_DIG, false, 0.8f); break;
+            case 2: g_audio.Play(&g_pak, Snd::GARBLE[0], false, 0.8f); break;
+            case 3: g_audio.Play(&g_pak, Snd::GARBLE[1], false, 0.8f); break;
+            case 4: g_audio.Play(&g_pak, Snd::GARBLE[2], false, 0.8f); break;
+        }
+    }
+    s_faceStatePrev = fs;
+}
+
+// v2.22: Golden Freddy ("yellow bear") state machine.
+//   0 idle -> 1 poster rolled (1/100 on monitor drop) -> 2 giggle #38 played
+//   (on viewing CAM 2B) -> appears in the office when the monitor drops ->
+//   ~5 s to raise the monitor or he kills you (creepy start).
+static int   s_goldState = 0;
+static bool  s_goldInOffice = false;
+static f32   s_goldTimer = 0.0f;
+
+static void TickGoldenFreddy(Game& game, GameRender& render) {
+    const bool monUp = game.GetCameras().IsMonitorUp();
+    const CameraId cam = game.GetCameras().GetCurrentCamera();
+
+    // 1. summon when the 1/100 "random for pic" roll hits (rolled on drop)
+    if (s_goldState == 0 && render.GetGoldenRoll() == 0) s_goldState = 1;
+
+    // 2. giggle #38 (Laugh_Giggle_Girl_1) when viewing CAM 2B poster once
+    if (monUp && cam == CAM_2B && s_goldState == 1) {
+        g_audio.Play(&g_pak, Snd::FREDDY_LAUGH_LONG, false, 0.9f);
+        s_goldState = 2;
+    }
+
+    // 3. appear when the monitor drops back down
+    if (!monUp && s_goldState == 2 && !s_goldInOffice) {
+        s_goldInOffice = true;
+        s_goldTimer = 0.0f;
+    }
+
+    // 4. hold: raising the monitor despawns him; ~5 s -> the kill
+    if (s_goldInOffice) {
+        s_goldTimer += 1.0f / 60.0f;
+        if (monUp) {
+            s_goldInOffice = false; s_goldState = 0; s_goldTimer = 0.0f;
+        } else if (s_goldTimer >= 5.0f) {
+            s_goldInOffice = false; s_goldState = 0; s_goldTimer = 0.0f;
+            game.DebugTriggerGoldenFreddy();
+        }
+    }
+
+    render.SetGoldenFreddyInOffice(s_goldInOffice);
+}
+
 static void RefreshMenuFromProgress(MenuSystem& menu) {
     Progress::Load(g_prog);
     i32 un = g_prog.nextNight;           if (un < 1) un = 1;       if (un > 7) un = 7;
@@ -479,7 +589,8 @@ void OnPowerUpdate(f32 power){ s_lastPower=power; }
 
 void OnJumpscare(AnimatronicId anim){
     const char* n[]={"Freddy","Bonnie","Chica","Foxy"};
-    printf("*** JUMP SCARE by %s! ***\n",n[anim]);
+    const char* nm = (anim >= ANIM_FREDDY && anim < ANIM_COUNT) ? n[anim] : "Golden Freddy";
+    printf("*** JUMP SCARE by %s! ***\n", nm);
     // group 228/322/408: XSCREAM (voiceover/garble stop too)
     g_audio.Stop(Snd::VOICEOVER[0]); g_audio.Stop(Snd::VOICEOVER[1]);
     g_audio.Stop(Snd::VOICEOVER[2]); g_audio.Stop(Snd::VOICEOVER[3]);
@@ -487,16 +598,9 @@ void OnJumpscare(AnimatronicId anim){
     g_audio.Stop(Snd::AMBIENCE2); g_audio.Stop(Snd::CIRCUS);
     s_phonePlaying=false;
     g_audio.Play(&g_pak, Snd::XSCREAM, false, 1.0f);
-    // lives decrement on jumpscare (original Ini "lives")
-    Progress::Load(g_prog);
-    if (g_prog.lives > 0) g_prog.lives--;
-    if (g_prog.lives <= 0) {
-        g_prog.nextNight = 1;
-        g_prog.beat5 = false;
-        g_prog.beat6 = false;
-        g_prog.beat7 = false;
-    }
-    Progress::Save(g_prog);
+    // v2.23: no "lives" system — the original has none. A death just returns
+    // to the title and Continue retries the same (unlocked) night; progress is
+    // only written on a 6 AM screen, never on a jumpscare.
     g_ach.OnJumpscare();   // v2.14: "No Hiding"
 }
 void OnPowerOut(){
@@ -509,6 +613,7 @@ void OnPowerOut(){
     g_audio.Play(&g_pak, Snd::POWERDOWN, false, 1.0f);
     // group 271/286: dark ambient drone (ambience2) alongside the music box
     g_audio.Play(&g_pak, Snd::AMBIENCE2, true, 0.5f);
+    s_faceStatePrev = 0;   // v2.22: reset the "Active 2" face-sound cycle
 }
 void OnMusicBoxStart(){
     printf("(Music box starts...)\n");
@@ -735,7 +840,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.17 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.23 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -750,7 +855,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.17 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.23 (%s %s)", __DATE__, __TIME__);
 
     // Try load pak from Xbox 360 canonical locations (game:\ is XEX directory;
     // e:\/hdd:\ are common on JTAG/RGH dashboards like FSD or Aurora)
@@ -805,6 +910,14 @@ int main(int argc, char* argv[]){
     g_render.Init(&g_batch,&g_text,&g_pak);
 
     MenuSystem menu;
+    // v2.23: if a loose "freddy" save is found next to the game, ask before
+    // importing it into the XContent container.
+    if (Progress::HasLooseSave() && ShowImportSavePrompt()) {
+        if (Progress::ImportSave()) {
+            ShowImportDonePrompt();
+            exit(0);   // v2.23: close so the player restarts fresh with the imported save
+        }
+    }
     RefreshMenuFromProgress(menu);   // v2.7.13: boot from fnaf_save.bin
     g_ach.Init();                     // v2.14: load achievements (device already chosen)
 
@@ -921,6 +1034,7 @@ int main(int argc, char* argv[]){
             TickPhoneCall(game, 1.0f/60.0f);   // phone call belongs to the office, not the ad/card
             TickAudioMixer(game);              // v2.16: dynamic channel volumes each frame
             TickRandomEvents(game);            // v2.18: periodic pirate/breaths/circus one-shots
+            TickGoldenFreddy(game, g_render);  // v2.22: Golden Freddy summon/appear/kill
             // v2.17: rare "IT'S ME" Bonnie hallucination (obj "Active 21"):
             // 1/1000 chance every ~20 s (group 419), whisper + full-screen flicker.
             g_itsmeRollTimer += 1.0f/60.0f;
@@ -932,6 +1046,7 @@ int main(int argc, char* argv[]){
                 }
             }
         }
+        if(state==GAME_STATE_POWER_OUT) TickPowerOutFaceSound(game);   // v2.22 garble/digital
 
         // ---------------- DEBUG SPRITE BROWSER ----------------
         // LB+RB hold enters from menu/disclaimer; DPAD pages; A/B exits.
@@ -993,6 +1108,7 @@ int main(int argc, char* argv[]){
                         game.Init(g_devNight);
                         g_ach.BeginNight(g_devNight);
                         s_phoneMuted=false; s_phonePlaying=false; s_phoneStarted=false;
+                        s_goldState=0; s_goldInOffice=false; s_goldTimer=0.0f; g_render.SetGoldenFreddyInOffice(false);
                         tickCount=0; accumulator=0;
                         StartTransition(state, GAME_STATE_NIGHT_START);
                         g_devMode = false;
@@ -1131,6 +1247,7 @@ int main(int argc, char* argv[]){
                     game.Init(night);
                     g_ach.BeginNight(night);   // v2.14: reset per-night achievement flags
                     s_phoneMuted=false; s_phonePlaying=false; s_phoneStarted=false;
+                        s_goldState=0; s_goldInOffice=false; s_goldTimer=0.0f; g_render.SetGoldenFreddyInOffice(false);
                     tickCount=0; accumulator=0; menuFrameCounter=0; adCounter=0;
                     // v2.7.13: New Game shows the "HELP WANTED" newspaper first
                     StartTransition(state, menu.LastStartWasNewGame() ? GAME_STATE_INTRO_AD
@@ -1241,6 +1358,11 @@ int main(int argc, char* argv[]){
                     game.SwitchCamera(cameraSequence[idx]);
                 }
             }
+            // v2.22: Freddy nose honk easter egg (group 349, click "Active 26").
+            // The official console maps it to Y; gated to the office (monitor down)
+            // since the poster/nose is an office object.
+            if(gi.yToggle && !game.GetCameras().IsMonitorUp())
+                g_audio.Play(&g_pak, Snd::PARTY_FAVOR, false, 0.9f);
             if(gi.pause){
                 if(s_phonePlaying){ for(int v=0;v<5;++v) g_audio.Stop(Snd::VOICEOVER[v]); s_phonePlaying=false; }
                 // stop the office ambience when leaving to the menu, else it keeps
@@ -1338,10 +1460,14 @@ int main(int argc, char* argv[]){
                     game.Init(game.GetCurrentNight()+1);
                     g_ach.BeginNight(game.GetCurrentNight()+1);   // v2.14
                     s_phoneMuted=false; s_phonePlaying=false; s_phoneStarted=false;
+                        s_goldState=0; s_goldInOffice=false; s_goldTimer=0.0f; g_render.SetGoldenFreddyInOffice(false);
                     StartTransition(state, GAME_STATE_NIGHT_START); tickCount=0; accumulator=0;
                     continue;
                 }
-                // Update progress flags on night completion screens (original next day / the end timing)
+                // v2.23: progress flags ONLY on a 6 AM screen (NIGHT_COMPLETE).
+                // A game-over previously fell through here and wrongly awarded
+                // the night-5/6/7 star on death.
+                if(state==GAME_STATE_NIGHT_COMPLETE)
                 {
                     i32 night = game.GetCurrentNight();
                     Progress::Load(g_prog);

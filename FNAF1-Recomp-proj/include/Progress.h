@@ -10,16 +10,16 @@
  *   beat6   — Night 6 cleared  -> title star 2 + "custom night" button
  *   beat7   — Night 7 (custom) cleared -> title star 3
  *
- * Storage (v2.20 two backends, gated by FNAF_LIVE_SAFE in Progress.cpp):
- *   default (no macro)  -> Xbox system XContent (fnaf_save:\fnaf_save.ini +
- *                          device selector);
- *   FNAF_LIVE_SAFE      -> local "save\" folder next to the .xex.
+ * Storage (v2.20/v2.23 two backends, gated by FNAF_LIVE_SAFE in Progress.cpp):
+ *   default (no macro)  -> Xbox system XContent (content "freddy" + device
+ *                          selector);
+ *   FNAF_LIVE_SAFE      -> local "game:\save\freddy" next to the .xex.
  *   INI [freddy] section, values:
  *   level=...
  *   beatgame=...
  *   beat6=...
  *   beat7=...
- * File name: fnaf_save.ini
+ * File name: "freddy" (the original save name, NO extension) in both builds.
  */
 
 #ifndef FNAF_PROGRESS_H
@@ -36,7 +36,6 @@ struct GameProgress {
     bool beat5;       // Night 5 complete  (star 1 + 6th night button)
     bool beat6;       // Night 6 complete  (star 2 + custom night button)
     bool beat7;       // Night 7 complete  (star 3)
-    i32 lives;        // original Ini "lives" value, persisted per save
     u32 checksum;     // sum of everything above (xor 0x5A5A5A5A)
 };
 
@@ -50,6 +49,16 @@ public:
 
     // Write save. True on success.
     static bool Save(const GameProgress& p);
+
+    // v2.23: import a loose "freddy" save (game:\freddy or game:\save\freddy)
+    // into the XContent save container. Called once at boot in the system
+    // build; a no-op in the Live Safe build (which reads the loose file
+    // directly and has no XContent). Returns true if a file was found+imported.
+    static bool ImportSave();
+
+    // v2.23: true when a valid loose "freddy" save exists to import (so the
+    // front-end can prompt first). No-op/false in the Live Safe build.
+    static bool HasLooseSave();
 
     // Number of title-screen stars (0..3) implied by the flags.
     static i32 StarCount(const GameProgress& p);

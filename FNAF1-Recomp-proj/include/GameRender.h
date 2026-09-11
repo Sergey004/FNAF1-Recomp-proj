@@ -102,6 +102,10 @@ public:
     // v2.17: full-screen "IT'S ME" hallucination flicker (obj "Active 21")
     void RenderItsmeFlash(float elapsed);
 
+    // v2.22: Golden Freddy ("yellow bear") support
+    int  GetGoldenRoll() const;            // this session's 1/100 poster roll (-1 unrolled)
+    void SetGoldenFreddyInOffice(bool on); // slumped Golden Freddy (img 573) in the office
+
     // Debug sprite browser (LB+RB hold on menu/disclaimer): pages through
     // the pak's counter-font strips, label candidates and small sprites so
     // every UI text handle can be identified from one Xenia screenshot.
@@ -181,6 +185,7 @@ private:
     CfAnimTimer m_raise;    // v2.7.9: tablet raise (obj 68, 11 frames)
     int  m_prevCam;       // v2.7.9: cam of the last settled monitor frame (-1 none)
     int  m_goldenRoll;    // v2.17: "random for pic" rolled on each monitor drop
+    bool m_goldFredInOffice; // v2.22: Golden Freddy slumped in the office
     f32  m_lastT;};
 
 } // namespace fnaf

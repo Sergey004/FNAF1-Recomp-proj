@@ -244,6 +244,7 @@ f64 Game::GetJumpscareDurationSec() const {
         case ANIM_FOXY:   return 2.3;   // 25 frames @ 30 FPS, repeat 1 + hold
         case ANIM_BONNIE: return 1.1;   // 11 frames @ 45 FPS + hold
         case ANIM_CHICA:  return 1.1;   // 16 frames @ 60 FPS + hold
+        case ANIM_COUNT:  return 2.5;   // v2.22: Golden Freddy creepy start
         default:          return 1.5;
     }
 }
@@ -583,6 +584,17 @@ void Game::DebugTriggerJumpscare(AnimatronicId anim) {
     m_jumpscareTriggered = true;
     m_jumpscareAnimatronic = anim;
     if (m_callbacks.onJumpscare) m_callbacks.onJumpscare(anim);
+}
+
+void Game::DebugTriggerGoldenFreddy() {
+    // v2.22: Golden Freddy's kill reuses the jumpscare state with ANIM_COUNT
+    // as the sentinel. The renderer draws img 571 (flat full-screen) for it.
+    m_cameras.SetMonitorUp(false);
+    m_state = GAME_STATE_JUMPSCARE;
+    m_jumpscareTimer = 0.0f;
+    m_jumpscareTriggered = true;
+    m_jumpscareAnimatronic = ANIM_COUNT;
+    if (m_callbacks.onJumpscare) m_callbacks.onJumpscare(ANIM_COUNT);
 }
 
 
