@@ -140,16 +140,19 @@ report: `Pak sounds: riff=N swapped=N 8bit=N`.
 
 ## Jump scare rendering (GameRender, real frame tables)
 
-Fullscreen 1600x720 sequences from object **Active 3** (office frame):
+Fullscreen 1600x720 sequences from object **Active 3** (office frame). v2.24:
+speeds/counts re-verified against `application.json` (÷60 → `fps = speed×0.6`).
 
 | Animatronic | Animation | Frames (img handles) |
 |---|---|---|
-| Freddy | anim 65 | 519,485,521,489,490..518 (31 frames @25fps + shake) |
-| Foxy | anim 52 | 413,242,415,243,396..412 (25 frames) |
-| Bonnie | anim 34 | 225 (fullscreen scare) |
-| Chica | anim 43 | 227 (fullscreen scare) |
-| Power-out flicker | anim 51 | 241x3,340,244..250,280,282 |
-| IT'S ME flash | obj "Active 21" | 525,543,520,544 |
+| Freddy | anim 65 @ speed 50 (30 FPS) | 519,485,521,489,490..518 (31 frames) |
+| Foxy | anim 52 @ speed 50 (30 FPS) | 413,242,415,243,396..412 (25 frames) |
+| Bonnie | anim 35 @ speed 75 (45 FPS) | 301,291,303,293,294..300 (11 frames) |
+| Chica | anim 44 @ speed 99 (~60 FPS) | 279,65,281,69,216,228.. (16 frames) |
+| Foxy sprint | anim 51 @ speed 65 (39 FPS) | 241x3,340,244..250,280,282 (33 frames) |
+| IT'S ME flash | obj "Active 21" @ speed 75 | 525,543,520,544 (4 frames) |
+
+No screen shake — the scare "jitter" is the animation's own frame changes.
 
 ## Menu rendering (exact data coordinates, 1280x720 title frame)
 

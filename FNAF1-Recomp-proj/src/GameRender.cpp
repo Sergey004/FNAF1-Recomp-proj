@@ -394,7 +394,7 @@ GameRender::GameRender()
     , m_cacheCount(0)
 {
     // v2.7.8 office FX state + Clickteam animation timers (CfAnimTimer.h).
-    m_static.Configure(1.0f / 24.0f, 8, true);  // 24 FPS noise flicker (tunable)
+    m_static.Configure(1.0f / 24.0f, 8, true);  // 24 FPS noise flicker (tunable; dump speed 99 = 59.4 FPS)
     m_static.Start();
     m_flash.SetSpeed(70, 9, false);   // obj 46 white flash
     m_wipe.SetSpeed(50, 11, false);   // obj 73 dark uncover wipe
@@ -837,13 +837,14 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     // layer 0 into a capture target, then DrawPerspective warps the whole
     // composed scene. HUD/overlays (layers 2/3) draw flat afterward.
 
-    // desk fan (3 blade frames, ~8 fps). v2.7.1: the desk pumpkin
+    // desk fan (3 blade frames). v2.24: dump "Active 6" anim 0 = speed 99 =
+    // 59.4 FPS (was a guessed ~8 fps). v2.7.1: the desk pumpkin
     // (img_628..635) is NOT drawn — in the frame data it is gated by the
     // 'Date & Time'/'month'/'day' objects (Halloween easter egg), and the
     // real full game has no pumpkin on the desk on regular days (confirmed
     // against a real-game reference screenshot). Keep the frames here for a
     // future date check.
-    const int fan = (m_time < 9999.0f) ? (int)(m_time * 8.0f) % 3 : 0;
+    const int fan = (m_time < 9999.0f) ? CfAnimFrame(99, m_time, 3, true) : 0;
     static const int FAN[3] = { IMG_FAN_0, IMG_FAN_1, IMG_FAN_2 };
 
     // doors: open doorway vs closed slab
@@ -885,8 +886,10 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
         const AnimatronicAI& ai = game.GetAI();
         const Animatronic& foxy = ai.GetAnimatronic(ANIM_FOXY);
         if (foxy.foxyRunning && !foxy.foxyAtDoor) {
-            int idx = foxy.foxyRunTimer * 33 / 100;  // 60 Hz -> 33 frames / 1.67 s
-            if (idx > 32) idx = 32;
+            // v2.24: dump "Active 3" anim 51 = 33 frames @ speed 65 = 39 FPS,
+            // repeat 0 (backTo 31) — plays through ~0.85 s then holds the last
+            // frame for the rest of the sprint, as the original freeze.
+            int idx = CfAnimFrame(65, (f32)foxy.foxyRunTimer / 60.0f, 33, false);
             bg = FOXY_RUN[idx];
         } else {
             const bool ll = doors.IsLightOn(DOOR_LEFT);
@@ -1119,11 +1122,11 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     DrawStaticOverlay(STATIC_ALPHA);
 
     // v2.7.5: the monitor's blinking red REC light -- obj "Active 2",
-    // anim [img_7 red 50x50, img_5 fully transparent] at speed 2
-    // (~0.8 s per phase), instance (92,76) hotspot (24,24) -> draw
+    // anim [img_7 red 50x50, img_5 fully transparent] at speed 2 (1.2 FPS,
+    // v2.24 dump-verified), instance (92,76) hotspot (24,24) -> draw
     // (68,52). Layer 2 over the static, under bezel/labels/HUD --
     // the original instance order is 42 < 43 < 50.
-    if (((int)(m_time * 1.25f)) % 2 == 0)
+    if (CfAnimFrame(2, m_time, 2, true) == 0)
         DrawFrame(7, 68.0f, 52.0f, 50.0f, 50.0f, 0xFFFFFFFF);
 
     // v2.7.8: white flash, layer 2 -- above static/REC (obj 42/43),
@@ -1140,9 +1143,9 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
         DrawInstance(CAM_LABELS[(int)cam], 832.0f, 292.0f, 0xFFFFFFFF, false);
     }
 
-    // Cam map (Active 9): 2-frame anim [164,145] at speed 2 -- the subtle
-    // "you are here" blink. Reuses the REC-light cadence (speed 2 -> 1.25 Hz).
-    const int mf = ((int)(m_time * 1.25f)) % 2;
+    // Cam map (Active 9): 2-frame anim [164,145] at speed 2 (1.2 FPS, v2.24
+    // dump-verified) -- the subtle "you are here" blink.
+    const int mf = CfAnimFrame(2, m_time, 2, true);
     DrawFrame(mf ? 145 : 164, 848.0f, 313.0f, 400.0f, 400.0f, 0xFFFFFFFF);
     // v2.21: room/camera name markers drawn ON the map (obj "Active" labels)
     for (int i = 0; i < 11; ++i) {

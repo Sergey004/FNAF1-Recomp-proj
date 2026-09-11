@@ -8,6 +8,26 @@ Notes on what's done and what's left. Versions match the code comment tags
 
 ---
 
+## v2.24 — animation speeds pinned to the PC dump / скорости анимаций выверены по PC-дампу
+
+### English
+- Confirmed the animation formula `fps = speed × 0.6` (÷60) against the original PC `application.json` (`frameRate: 60`), cross-checked with FNaF64 (which uses the same `speed_fps`). Fixed the approximations that were guessing instead of reading the dump:
+  - **Desk fan** ("Active 6" anim 0, 3 frames): was a guessed ~8 FPS; now speed 99 = 59.4 FPS.
+  - **REC light** ("Active 2" anim 0, `[7,5]`) and **cam-map blink** ("Active 9" anim 0, `[164,145]`): were ~1.25 Hz; now `speed 2` = 1.2 FPS via `CfAnimFrame`.
+  - **Foxy sprint** ("Active 3" anim 51, 33 frames, speed 65 = 39 FPS): was stretched linearly over the 1.67 s run; now plays at 39 FPS and holds the last frame (~0.85 s in), as the original freeze.
+- Re-verified (already correct, no change): jumpscares (Freddy 65@50×31, Foxy 52@50×25, Bonnie 35@75×11, Chica 44@99×16), doors (50→30 FPS, 16 frames), IT'S ME (75→45 FPS, 4 frames), static frames.
+- Static kept at **24 FPS** (deliberate user tune; dump is speed 99 = 59.4 FPS).
+
+### Русский
+- Подтверждена формула `fps = speed × 0.6` (÷60) по оригинальному PC-дампу `application.json` (`frameRate: 60`), перекрёстно — с FNaF64 (там та же `speed_fps`). Убраны приближения, которые были «на глаз», а не из дампа:
+  - **Вентилятор** («Active 6» anim 0, 3 кадра): было ~8 FPS наугад; теперь speed 99 = 59.4 FPS.
+  - **REC** («Active 2» anim 0, `[7,5]`) и **blink точки на карте** («Active 9» anim 0, `[164,145]`): было ~1.25 Гц; теперь `speed 2` = 1.2 FPS через `CfAnimFrame`.
+  - **Foxy sprint** («Active 3» anim 51, 33 кадра, speed 65 = 39 FPS): было линейно растянуто на 1.67 с бега; теперь 39 FPS с удержанием последнего кадра (~0.85 с), как замирание в оригинале.
+- Перепроверено (уже верно, без изменений): скримеры (Freddy 65@50×31, Foxy 52@50×25, Bonnie 35@75×11, Chica 44@99×16), двери (50→30 FPS, 16 кадров), IT'S ME (75→45 FPS, 4 кадра), кадры static.
+- Static оставлен на **24 FPS** (осознанный тюн пользователя; в дампе speed 99 = 59.4 FPS).
+
+---
+
 ## v2.23 — original lives/save system fix / правка жизней и сохранений как в оригинале
 
 ### English
