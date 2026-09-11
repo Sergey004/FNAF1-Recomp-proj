@@ -54,6 +54,10 @@ public:
     void SetDoor(DoorSide side, bool closed);
     void SetDoorAmount(DoorSide side, float amount);   // v2.21 analog-door test
 
+    // v2.22: advance the visual door slide (real-time dt). Called each render
+    // frame so the non-analog door animates at the original 16-frame @30 FPS.
+    void TickDoors(f32 dt);
+
     // Toggle a hallway light
     void ToggleLight(DoorSide side);
     void SetLight(DoorSide side, bool on);
@@ -85,6 +89,10 @@ public:
     i32  GetPowerOutPhase() const;
     // Phase 1: is Freddy's lit face showing right now (25% re-roll / 0.5 s)
     bool IsFreddyFaceLit() const;
+    // v2.22: "Active 2" face state 0..4 — the distinct power-out face sounds
+    // (state 1 = computer-digital, 2/3/4 = garble1/2/3). Advances on each new
+    // face flash during phase 1.
+    i32  GetPowerOutFaceState() const;
     // Phase 2: buzz blink — office visible for the whole 20 ticks or not
     bool IsPowerOutBlinkOn() const;
     
@@ -127,6 +135,7 @@ private:
     f64  m_powerOutRollTimer;   // Sub-timer for the phase rolls
     bool m_freddyFaceLit;       // Phase 1 flicker state
     f64  m_faceLitTimer;        // 0.5 s re-roll accumulator
+    i32  m_facePhase;           // v2.22: "Active 2" face state 0..4 (sound index)
     bool m_powerOutBlinkOn;     // Phase 2: office visible or hidden
     bool m_musicBoxPlaying;     // callback bookkeeping
     bool m_debugGodMode;        // v2.17 DEV: no power drain, no attacks

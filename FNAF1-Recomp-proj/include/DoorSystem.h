@@ -30,6 +30,13 @@ public:
     void SetDoorAmount(DoorSide side, float amount);
     float GetDoorAmount(DoorSide side) const;
 
+    // v2.22: animate the visual door slide. ToggleDoor/SetDoor flip the
+    // logical "closed" (AI) instantly but slide the visual amount toward the
+    // target over DOOR_SLIDE_SEC (the original 16-frame @30 FPS slide), so
+    // the non-analog door animates instead of snapping. Analog mode calls
+    // SetDoorAmount every frame, which disables the slide for that door.
+    void Tick(f32 dt);
+
     // Is the specified door closed?
     bool IsDoorClosed(DoorSide side) const;
 
@@ -52,6 +59,8 @@ public:
 private:
     bool m_doorClosed[DOOR_COUNT];
     float m_doorAmount[DOOR_COUNT];   // v2.21 analog position 0(open)..1(closed)
+    float m_doorTarget[DOOR_COUNT];   // v2.22 visual slide target (0 open / 1 closed)
+    bool  m_doorAnimating[DOOR_COUNT];// v2.22 slide in progress (analog clears it)
     bool m_lightOn[DOOR_COUNT];
 };
 

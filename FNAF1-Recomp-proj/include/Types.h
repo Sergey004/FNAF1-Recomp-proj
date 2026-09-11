@@ -213,6 +213,14 @@ static const i32 NIGHT_COUNT = 7; // Nights 1-7
 //  about events without coupling to any specific platform.
 // ============================================================
 
+// v2.22: why a camera transition fired — lets the audio layer play the right
+// 1:1 sound (flip-up whir vs. camera-switch blip vs. put-down).
+enum CameraChangeReason {
+    CAM_REASON_DOWN   = 0,   // monitor flipped down (or forced off)
+    CAM_REASON_UP     = 1,   // monitor flipped up
+    CAM_REASON_SWITCH = 2    // switched between cameras while up
+};
+
 struct GameCallbacks {
     // Called when the player should see a jump scare.
     // Parameter: which animatronic is jump-scaring.
@@ -235,8 +243,9 @@ struct GameCallbacks {
     void (*onGameOver)();
     
     // Called when camera view changes.
-    // Parameter: which camera is now active (CAM_OFF if monitor is down).
-    void (*onCameraChange)(CameraId camera);
+    // Parameters: which camera is now active (CAM_OFF if monitor is down),
+    // and the reason (CAM_REASON_*).
+    void (*onCameraChange)(CameraId camera, int reason);
     
     // Called when an animatronic moves to a new room.
     // Parameters: animatronic ID, new room ID.

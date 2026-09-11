@@ -21,6 +21,7 @@
 #define FNAF_GAME_RENDER_H
 
 #include "Types.h"
+#include "CfAnimTimer.h"
 
 namespace fnaf {
 
@@ -162,8 +163,7 @@ private:
     PakLoader*        m_pak;
 
     f32  m_time;            // total render time
-    f32  m_staticTime;      // static cycle clock
-    int  m_staticIndex;     // current static frame
+    CfAnimTimer m_static;   // static noise cycle (loop, 8 frames)
     f32  m_lookDir;         // left stick X (-1..1)
     f32  m_panX;            // office pan window offset 0..320
 
@@ -176,12 +176,9 @@ private:
     // tablet-open white flash (obj 46), tablet-close dark wipe (obj 73),
     // monitor/door edge detection. Evidence: docs/OFFICE_FX.md.
     bool m_prevMonitor;
-    bool m_prevDoorL, m_prevDoorR;
-    f32  m_doorT[2];      // -1 idle, else seconds since the slide began
-    bool m_doorClosing[2];
-    f32  m_flashT;        // -1 idle, else seconds since the flash began
-    f32  m_wipeT;         // -1 idle, else seconds since the wipe began
-    f32  m_raiseT;        // v2.7.9: -1 idle, else seconds since the raise began
+    CfAnimTimer m_flash;    // tablet-open white flash (obj 46, 9 frames)
+    CfAnimTimer m_wipe;     // tablet-close dark wipe (obj 73, 11 frames)
+    CfAnimTimer m_raise;    // v2.7.9: tablet raise (obj 68, 11 frames)
     int  m_prevCam;       // v2.7.9: cam of the last settled monitor frame (-1 none)
     int  m_goldenRoll;    // v2.17: "random for pic" rolled on each monitor drop
     f32  m_lastT;};

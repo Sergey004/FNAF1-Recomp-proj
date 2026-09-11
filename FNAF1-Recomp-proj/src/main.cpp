@@ -430,6 +430,16 @@ static void TickRandomEvents(const Game& game) {
                 g_audio.PlayOnChannel(&g_pak, Snd::BREATHS[rand() % 4], false, CH_BREATHS);
         }
     }
+
+    // v2.22 kitchen oven (groups 245-250): Chica in the kitchen rattles the
+    // oven drawer every ~80 s (random 1..10 gate -> 4 OVEN-DRA variants).
+    static f32 s_ovenT = 0.0f;
+    s_ovenT += dt;
+    if (s_ovenT >= 80.0f) {
+        s_ovenT = 0.0f;
+        if (chica.currentRoom == ROOM_KITCHEN && (rand() % 10) < 5)
+            g_audio.PlayOnChannel(&g_pak, Snd::OVEN_DRAW[rand() % 4], false, CH_OVEN);
+    }
 }
 
 static void RefreshMenuFromProgress(MenuSystem& menu) {
@@ -474,6 +484,7 @@ void OnJumpscare(AnimatronicId anim){
     g_audio.Stop(Snd::VOICEOVER[0]); g_audio.Stop(Snd::VOICEOVER[1]);
     g_audio.Stop(Snd::VOICEOVER[2]); g_audio.Stop(Snd::VOICEOVER[3]);
     g_audio.Stop(Snd::VOICEOVER[4]);
+    g_audio.Stop(Snd::AMBIENCE2); g_audio.Stop(Snd::CIRCUS);
     s_phonePlaying=false;
     g_audio.Play(&g_pak, Snd::XSCREAM, false, 1.0f);
     // lives decrement on jumpscare (original Ini "lives")
@@ -496,6 +507,8 @@ void OnPowerOut(){
     g_audio.Stop(Snd::EERIE_AMBIENCE); g_audio.Stop(Snd::STATIC_LOOP); g_audio.Stop(Snd::STATIC2);
     s_phonePlaying=false;
     g_audio.Play(&g_pak, Snd::POWERDOWN, false, 1.0f);
+    // group 271/286: dark ambient drone (ambience2) alongside the music box
+    g_audio.Play(&g_pak, Snd::AMBIENCE2, true, 0.5f);
 }
 void OnMusicBoxStart(){
     printf("(Music box starts...)\n");
@@ -537,13 +550,29 @@ void OnGameOver(){
     g_audio.StopAll();
     g_audio.Play(&g_pak, Snd::STATIC2, true, 0.6f);
 }
-void OnCameraChange(CameraId cam){
-    if(cam==CAM_OFF){ printf("[Camera DOWN]\n"); g_audio.Stop(Snd::STATIC_LOOP); }
-    else {
-        printf("[Camera: %s]\n",CameraSystem::GetCameraName(cam));
-        // group 129/143: camera switch blip + static while up
+void OnCameraChange(CameraId cam, int reason){
+    // v2.22: 1:1 camera audio — the flip-up whir (CAMERA_VIDEO_LOA), the
+    // camera-switch blip (blip3), and the flip-down "put down" are DISTINCT
+    // sounds. The old code replayed the whir on EVERY cond → the "extra
+    // sound" the user heard when switching cameras.
+    if(reason==CAM_REASON_DOWN){
+        printf("[Camera DOWN]\n");
+        g_audio.Stop(Snd::STATIC_LOOP);
+        g_audio.Play(&g_pak, Snd::PUT_DOWN, false, 0.9f);   // group 322 flip-down
+    }
+    else if(reason==CAM_REASON_UP){
+        printf("[Camera UP: %s]\n",CameraSystem::GetCameraName(cam));
+        // group 130: monitor flip-up whir + static while up
         g_audio.Play(&g_pak, Snd::CAMERA_SWITCH, false, 0.8f);
         g_audio.Play(&g_pak, Snd::STATIC_LOOP, true, 0.5f);
+        // group 144: camcorder tape-eject (ch6) when the feed commits
+        g_audio.Play(&g_pak, Snd::TAPE_EJECT, false, 0.8f);
+    }
+    else { // CAM_REASON_SWITCH
+        printf("[Camera: %s]\n",CameraSystem::GetCameraName(cam));
+        // group 16: camera-switch blip3 (static is already looping while up —
+        // don't restart it).
+        g_audio.Play(&g_pak, Snd::BLIP, false, 0.8f);
     }
 }
 void OnDoorChange(DoorSide s,bool c){
@@ -831,6 +860,7 @@ int main(int argc, char* argv[]){
 
         g_render.SetLookDir(gi.lookDir);   // office pan window (v2.5)
         g_render.Tick(1.0f/60.0f);
+        game.TickDoors(1.0f/60.0f);   // v2.22: door slide (visual, 60 Hz)
         g_audio.Tick();
         g_ach.Tick(1.0f/60.0f);     // v2.14: achievement toast timer
         TickFade(state, 1.0f/60.0f);  // v2.15: advance any running fade (may change `state`)
@@ -863,6 +893,7 @@ int main(int argc, char* argv[]){
             g_audio.SetChannelVolume(CH_CIRCUS,   CFVolumeToDb(5));
             g_audio.SetChannelVolume(CH_MUSICBOX, CFVolumeToDb(25));
             g_audio.SetChannelVolume(CH_PIRATE,   CFVolumeToDb(5));
+            g_audio.SetChannelVolume(CH_OVEN,     CFVolumeToDb(30));   // v2.22 kitchen oven
             g_officeAmb = true;
         }
         if (state != GAME_STATE_PLAYING) { g_officeAmb = false; s_phoneStarted = false; }

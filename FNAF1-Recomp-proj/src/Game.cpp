@@ -19,6 +19,7 @@ Game::Game()
     , m_powerOutRollTimer(0.0)
     , m_freddyFaceLit(false)
     , m_faceLitTimer(0.0)
+    , m_facePhase(0)
     , m_powerOutBlinkOn(false)
     , m_musicBoxPlaying(false)
     , m_debugGodMode(false)
@@ -68,6 +69,7 @@ void Game::Init(i32 night) {
     m_powerOutRollTimer = 0.0;
     m_freddyFaceLit = false;
     m_faceLitTimer = 0.0;
+    m_facePhase = 0;
     m_powerOutBlinkOn = false;
     m_musicBoxPlaying = false;
     m_nightStartTimer = 0.0f;
@@ -116,7 +118,8 @@ void Game::ToggleCamera() {
     bool nowUp = m_cameras.ToggleMonitor();
 
     if (m_callbacks.onCameraChange) {
-        m_callbacks.onCameraChange(m_cameras.GetCurrentCamera());
+        m_callbacks.onCameraChange(m_cameras.GetCurrentCamera(),
+                                   nowUp ? CAM_REASON_UP : CAM_REASON_DOWN);
     }
 }
 
@@ -127,7 +130,8 @@ void Game::SetCameraUp(bool up) {
     m_cameras.SetMonitorUp(up);
 
     if (m_callbacks.onCameraChange) {
-        m_callbacks.onCameraChange(m_cameras.GetCurrentCamera());
+        m_callbacks.onCameraChange(m_cameras.GetCurrentCamera(),
+                                   up ? CAM_REASON_UP : CAM_REASON_DOWN);
     }
 }
 
@@ -144,7 +148,7 @@ void Game::SwitchCamera(CameraId cam) {
     }
 
     if (m_callbacks.onCameraChange) {
-        m_callbacks.onCameraChange(m_cameras.GetCurrentCamera());
+        m_callbacks.onCameraChange(m_cameras.GetCurrentCamera(), CAM_REASON_SWITCH);
     }
 }
 
@@ -180,6 +184,12 @@ void Game::SetDoorAmount(DoorSide side, float amount) {
     if (m_callbacks.onDoorChange && wasClosed != m_doors.IsDoorClosed(side)) {
         m_callbacks.onDoorChange(side, m_doors.IsDoorClosed(side));
     }
+}
+
+void Game::TickDoors(f32 dt) {
+    // v2.22: visual slide only; the AI reads IsDoorClosed() (flipped instantly
+    // on toggle), so advancing the position here can't affect gameplay.
+    m_doors.Tick(dt);
 }
 
 void Game::ToggleLight(DoorSide side) {
@@ -221,6 +231,7 @@ bool Game::IsPowerOut() const { return m_state == GAME_STATE_POWER_OUT; }
 f32  Game::GetPowerOutTimer() const { return m_powerOutTimer; }
 i32  Game::GetPowerOutPhase() const { return m_powerOutPhase; }
 bool Game::IsFreddyFaceLit() const { return m_freddyFaceLit; }
+i32  Game::GetPowerOutFaceState() const { return m_facePhase; }
 bool Game::IsPowerOutBlinkOn() const { return m_powerOutBlinkOn; }
 AnimatronicId Game::GetJumpscareAnimatronic() const { return m_jumpscareAnimatronic; }
 bool Game::HasJumpscareTriggered() const { return m_jumpscareTriggered; }
@@ -325,9 +336,10 @@ void Game::ProcessPlaying() {
             m_callbacks.onLightChange(DOOR_LEFT, false);
             m_callbacks.onLightChange(DOOR_RIGHT, false);
         }
-        if (m_callbacks.onCameraChange) {
-            m_callbacks.onCameraChange(CAM_OFF);
-        }
+        // v2.22: no onCameraChange(CAM_OFF) here — power-out is a FORCED drop
+        // (not a player flip-down), so it must not fire the "put down" sound.
+        // OnPowerOut() already stops the static loop, which is all the old
+        // CAM_OFF callback did for this path.
         return;
     }
 
@@ -422,7 +434,12 @@ void Game::ProcessPowerOut() {
                 m_faceLitTimer += dt;
                 if (m_faceLitTimer >= 0.5) {
                     m_faceLitTimer -= 0.5;
-                    m_freddyFaceLit = (SimpleRandom(1, 4) == 1);
+                    bool lit = (SimpleRandom(1, 4) == 1);
+                    // v2.22: advance the "Active 2" face state on each NEW flash
+                    // so the four garble/digital sounds cycle one-per-flash
+                    // (groups 219-222).
+                    if (lit && !m_freddyFaceLit) m_facePhase = (m_facePhase % 4) + 1;
+                    m_freddyFaceLit = lit;
                 }
             }
 
@@ -550,6 +567,7 @@ void Game::DebugTriggerPowerOut() {
     m_powerOutRollTimer = 0.0;
     m_freddyFaceLit = false;
     m_faceLitTimer = 0.0;
+    m_facePhase = 0;
     m_powerOutBlinkOn = false;
     m_musicBoxPlaying = false;
     m_doors.ForceDoorsOpen();

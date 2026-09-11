@@ -160,27 +160,22 @@ static const int NIGHT_CARDS[8] = { 0, 453, 454, 472, 473, 474, 446, 538 };
 
 // ---- v2.7.8 OFFICE_FX_TABLES -- dug out of the original's Frame Items
 // animation table + event script (full evidence: docs/OFFICE_FX.md).
-// CF2.5 frame duration = (100 / animSpeed) / 50 seconds:
-// speed 50 -> 0.040 s/frame, speed 70 -> 0.0286 s/frame.
-// obj 59/60 "left/right door" anims a12 (closing) / a14 (opening), 16
-// frames each; the events cut the close at frame 12 -> static a13, the
-// tail frames are the same slab, so playing the full table lands on it.
+// CF2.5 frame duration = (100 / animSpeed) / 60 seconds (= 1/(speed*0.6)):
+// speed 50 -> 0.0333 s/frame (30 FPS), speed 70 -> 0.0238 s/frame (42 FPS).
+// See CfAnimTimer.h — CfFramePeriod/CfAnimFrame now own this conversion.
+// obj 59/60 "left/right door" anims a12 (closing) — 16 frames; the CLOSE
+// table also doubles as the analog "position -> frame" slider (v2.21).
 static const int DOOR_L_CLOSE[16] = {103, 88,105, 89, 91, 92, 93, 94, 95, 96, 97, 98, 99,100,101,102};
-static const int DOOR_L_OPEN[16]  = {102,101,100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 89,105, 88,103};
 static const int DOOR_R_CLOSE[16] = {119,104,121,106,107,108,109,110,111,112,113,114,115,116,117,118};
-static const int DOOR_R_OPEN[16]  = {118,117,116,115,114,113,112,111,110,109,108,107,106,121,104,119};
-static const f32 DOOR_FRAME_T = 1.0f/30.0f;   // speed 50 = 30 FPS (was 0.040 = 25)
 // Foxy sprint frames live in FOXY_RUN[33] below (Active 3 anim 51,
 // verified: 33 frames @ speed 65, backTo 31). The old 25-frame table
 // here was actually anim 52 (the kill) -- v2.7.12 fix.
 // obj 46 "Active 5": white flash while the tablet goes up (blip==1,
 // event group 16); one-shot, destroyed on end (group 17).
-static const int FLASH_SEQ[9] = {23,4,25,6,8,9,10,21,22};
-static const f32 FLASH_FRAME_T = 1.0f/42.0f;   // speed 70 = 42 FPS (was 0.02857 = 35)
+static const int FLASH_SEQ[9] = {23,4,25,6,8,9,10,21,22};   // speed 70
 // obj 73 "flip down 2": dark uncover wipe when the tablet drops
 // (put down==1, event group 322); starts black, dissolves clear.
-static const int WIPE_SEQ[11] = {141,140,139,138,137,136,133,132,144,46,142};
-static const f32 WIPE_FRAME_T = 1.0f/30.0f;   // speed 50 = 30 FPS (was 0.040 = 25)
+static const int WIPE_SEQ[11] = {141,140,139,138,137,136,133,132,144,46,142};   // speed 50
 
 // obj 68 "panel": the tablet RAISE animation. Event group 130 creates
 // the object the moment the flip bar is clicked (with the
@@ -192,8 +187,7 @@ static const f32 WIPE_FRAME_T = 1.0f/30.0f;   // speed 50 = 30 FPS (was 0.040 = 
 // the desk (bottom edge + red/green LEDs), 141 = fully risen. All
 // frames are native 1280x720 window-space art (straight edges baked
 // in) -> drawn FLAT like the wipe, not through the panorama curve.
-static const int RAISE_SEQ[11] = {142,46,144,132,133,136,137,138,139,140,141};
-static const f32 RAISE_FRAME_T = 1.0f/30.0f;   // speed 50 = 30 FPS (was 0.040 = 25)
+static const int RAISE_SEQ[11] = {142,46,144,132,133,136,137,138,139,140,141};   // speed 50
 
 // v2.7.4: the ORIGINAL grain alpha comes from the object data, not guesswork.
 // Every fullscreen static object in the game carries inkEffect=1 (semi-
@@ -395,16 +389,17 @@ f32 GameRender::MeasureStripText(const SpriteStrip& strip, const char* text, flo
 
 GameRender::GameRender()
     : m_batch(0), m_text(0), m_pak(0)
-    , m_time(0.0f), m_staticTime(0.0f), m_staticIndex(0)
+    , m_time(0.0f)
     , m_lookDir(0.0f), m_panX(160.0f)
     , m_cacheCount(0)
 {
-    // v2.7.8 office FX state
-    m_prevMonitor = m_prevDoorL = m_prevDoorR = false;
-    m_doorT[0] = m_doorT[1] = -1.0f;
-    m_doorClosing[0] = m_doorClosing[1] = false;
-    m_flashT = m_wipeT = -1.0f;
-    m_raiseT = -1.0f;      // v2.7.9: tablet raise
+    // v2.7.8 office FX state + Clickteam animation timers (CfAnimTimer.h).
+    m_static.Configure(1.0f / 24.0f, 8, true);  // 24 FPS noise flicker (tunable)
+    m_static.Start();
+    m_flash.SetSpeed(70, 9, false);   // obj 46 white flash
+    m_wipe.SetSpeed(50, 11, false);   // obj 73 dark uncover wipe
+    m_raise.SetSpeed(50, 11, false);  // obj 68 tablet raise
+    m_prevMonitor = false;
     m_prevCam = -1;        // v2.7.9: no settled monitor cam yet
     m_goldenRoll = -1;     // v2.17: no "random for pic" roll yet
     m_lastT = 0.0f;
@@ -421,13 +416,9 @@ void GameRender::SetLookDir(f32 dir) {
 
 void GameRender::Tick(f32 dt) {
     m_time += dt;
-    m_staticTime += dt;
-    // static cycle: 8 frames. 60 FPS looked like a strobe; 24 FPS reads as
-    // "noise" flicker (tunable here). Object "static" anim 0 frames 18/20/12..
-    if (m_staticTime >= 1.0f / 24.0f) {
-        m_staticTime -= 1.0f / 24.0f;
-        m_staticIndex = (m_staticIndex + 1) % 8;
-    }
+    // static cycle: 8 frames (configured at 24 FPS in the ctor). 60 FPS looked
+    // like a strobe; 24 FPS reads as "noise" flicker (tunable in the ctor).
+    m_static.Tick(dt);
     // office pan window: stick right -> look right (scene moves left)
     m_panX += m_lookDir * 480.0f * dt;
     if (m_panX < 0.0f)          m_panX = 0.0f;
@@ -530,7 +521,7 @@ void GameRender::DrawSolidRect(float x, float y, float w, float h, u32 color) {
 }
 
 void GameRender::StaticFrame(char out[32]) {
-    Snprintf(out, 32, "img_%d", STATIC_FRAMES[m_staticIndex]);
+    Snprintf(out, 32, "img_%d", STATIC_FRAMES[m_static.Frame()]);
 }
 
 void GameRender::DrawStaticOverlay(float alpha) {
@@ -642,7 +633,7 @@ void GameRender::RenderScareFlash(int imgHandle, float elapsed) {
 // 525/543/520/544, 1280x720), speed 75 = 45 FPS, rare in the original.
 void GameRender::RenderItsmeFlash(float elapsed) {
     if (!m_batch) return;
-    const int idx = ((int)(elapsed * 45.0f)) % 4;
+    const int idx = CfAnimFrame(75, elapsed, 4, true);   // speed 75 = 45 FPS
     DrawFrame(ITSME_FRAMES[idx], 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
 }
 
@@ -870,9 +861,9 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     m_lastT = m_time;
     const bool monUp = game.GetCameras().IsMonitorUp();
     if (m_prevMonitor && !monUp) {                 // tablet just dropped
-        m_wipeT  = 0.0f;                           // dark uncover wipe (group 322)
-        m_raiseT = -1.0f;                          // v2.7.9: cancel a half-finished raise
-        m_flashT = -1.0f;
+        m_wipe.Start();                            // dark uncover wipe (group 322)
+        m_raise.Stop();                            // v2.7.9: cancel a half-finished raise
+        m_flash.Stop();
         m_prevCam = -1;                            // next arrival flashes (group 133)
         // v2.17: group 348 rolls "random for pic" = random(1,100) every
         // time viewing goes back to 0 (office view). Groups 41/42 read it
@@ -880,12 +871,8 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
         m_goldenRoll = rand() % 100;
     }
     m_prevMonitor = monUp;
-    if (lc != m_prevDoorL) { m_doorT[0] = 0.0f; m_doorClosing[0] = lc; m_prevDoorL = lc; }
-    if (rc != m_prevDoorR) { m_doorT[1] = 0.0f; m_doorClosing[1] = rc; m_prevDoorR = rc; }
-    if (m_doorT[0] >= 0.0f && (m_doorT[0] += dt) >= 16.0f * DOOR_FRAME_T) m_doorT[0] = -1.0f;
-    if (m_doorT[1] >= 0.0f && (m_doorT[1] += dt) >= 16.0f * DOOR_FRAME_T) m_doorT[1] = -1.0f;
-    if (m_wipeT  >= 0.0f && (m_wipeT  += dt) >= 11.0f * WIPE_FRAME_T)  m_wipeT  = -1.0f;
-    if (m_flashT >= 0.0f && (m_flashT += dt) >= 9.0f * FLASH_FRAME_T) m_flashT = -1.0f;
+    if (m_wipe.Active())  m_wipe.Tick(dt);
+    if (m_flash.Active()) m_flash.Tick(dt);
 
     // panorama variant: obj 44 "Active 3" anim table via event groups
     // 114-129 (light buttons + strobe) and group 323 (foxy sprint).
@@ -968,15 +955,13 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     // v2.7.9: the bar HIDES while the tablet moves (group 331 hides
     // it the moment the raise starts; group 322 keeps it hidden
     // during the drop wipe until the player can click again).
-    if (m_raiseT < 0.0f && m_wipeT < 0.0f)
+    if (!m_raise.Active() && !m_wipe.Active())
         DrawInstance(IMG_FLIP_BAR, 554.0f, 668.0f, 0xFFFFFFFF, false);
 
     // v2.7.8: tablet-close dark wipe (obj 73 "flip down 2", event group
     // 322 creates it on put down==1) -- starts black, dissolves clear.
-    if (m_wipeT >= 0.0f) {
-        int idx = (int)(m_wipeT / WIPE_FRAME_T);
-        if (idx > 10) idx = 10;
-        DrawFrame(WIPE_SEQ[idx], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+    if (m_wipe.Active()) {
+        DrawFrame(WIPE_SEQ[m_wipe.Frame()], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
     }
 }
 
@@ -1055,20 +1040,17 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     // group 18 -> blip==1 -> group 16 white flash) and the monitor
     // takes over. No instant pop-in like v2.7.8 and earlier.
     const f32 dt = m_time - m_lastT;
-    if (!m_prevMonitor) m_raiseT = 0.0f;   // monitor just went up
+    if (!m_prevMonitor) m_raise.Start();   // monitor just went up
     m_prevMonitor = true;
-    if (m_raiseT >= 0.0f) {
-        m_raiseT += dt;
-        if (m_raiseT >= 11.0f * RAISE_FRAME_T) {
-            m_raiseT = -1.0f;
+    if (m_raise.Active()) {
+        m_raise.Tick(dt);
+        if (!m_raise.Active()) {
             m_lastT = m_time;
         } else {
             // office stays visible under the rising tablet; RenderOffice
             // also keeps m_lastT and the office FX timers ticking
             RenderOffice(game, phonePlaying);
-            int ridx = (int)(m_raiseT / RAISE_FRAME_T);
-            if (ridx > 10) ridx = 10;
-            DrawFrame(RAISE_SEQ[ridx], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+            DrawFrame(RAISE_SEQ[m_raise.Frame()], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
             return;
         }
     } else {
@@ -1079,9 +1061,9 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     // commit (group 133: viewing := last clicked) rides the same counter,
     // so the freshly appeared feed ALWAYS flashes once -- and map clicks
     // flash on every switch (the reference screenshot is exactly that).
-    if ((int)cam != m_prevCam) m_flashT = 0.0f;
+    if ((int)cam != m_prevCam) m_flash.Start();
     m_prevCam = (int)cam;
-    if (m_flashT >= 0.0f && (m_flashT += dt) >= 9.0f * FLASH_FRAME_T) m_flashT = -1.0f;
+    if (m_flash.Active()) m_flash.Tick(dt);
 
     // Room feed: 1600x720 room image centered behind the 1280x720 bezel.
     // Pirate cove follows Foxy's stage machine; kitchen has no feed.
@@ -1138,10 +1120,8 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
 
     // v2.7.8: white flash, layer 2 -- above static/REC (obj 42/43),
     // below the bezel (obj 50); one-shot 9 frames, then gone.
-    if (m_flashT >= 0.0f) {
-        int idx = (int)(m_flashT / FLASH_FRAME_T);
-        if (idx > 8) idx = 8;
-        DrawFrame(FLASH_SEQ[idx], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+    if (m_flash.Active()) {
+        DrawFrame(FLASH_SEQ[m_flash.Frame()], 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
     }
 
     // Monitor bezel (object "frame" img_11)
@@ -1233,24 +1213,16 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
     int frame = 0;
     if (anim == ANIM_FREDDY) {
         // anim 65: 31 frames @ 30 FPS (speed 50), repeat 1 -> play once, hold
-        int i = (int)(elapsed * 30.0f);
-        if (i > 30) i = 30;
-        frame = SCARE_FREDDY[i];
+        frame = SCARE_FREDDY[CfAnimFrame(50, elapsed, 31, false)];
     } else if (anim == ANIM_FOXY) {
         // anim 52: 25 frames @ 30 FPS (speed 50), repeat 1 -> play once, hold
-        int i = (int)(elapsed * 30.0f);
-        if (i > 24) i = 24;
-        frame = SCARE_FOXY[i];
+        frame = SCARE_FOXY[CfAnimFrame(50, elapsed, 25, false)];
     } else if (anim == ANIM_BONNIE) {
         // anim 35: 11 frames @ 45 FPS (speed 75), play once, hold last
-        int i = (int)(elapsed * 45.0f);
-        if (i > 10) i = 10;
-        frame = SCARE_BONNIE_KILL[i];
+        frame = SCARE_BONNIE_KILL[CfAnimFrame(75, elapsed, 11, false)];
     } else {
-        // anim 44: 16 frames @ 60 FPS (speed 99), play once, hold last
-        int i = (int)(elapsed * 60.0f);
-        if (i > 15) i = 15;
-        frame = SCARE_CHICA_KILL[i];
+        // anim 44: 16 frames @ ~60 FPS (speed 99), play once, hold last
+        frame = SCARE_CHICA_KILL[CfAnimFrame(99, elapsed, 16, false)];
     }
     // Scare frames are static 1600x720 room images on layer 0. The original
     // has NO screen shake -- the apparent jitter is the animation's own frame
