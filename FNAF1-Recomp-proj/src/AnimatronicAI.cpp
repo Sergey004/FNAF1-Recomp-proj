@@ -387,7 +387,8 @@ void AnimatronicAI::MoveChica(const DoorSystem& doors, AITickResult* results,
 // ============================================================
 //  FREDDY (groups 190, 397-398, 389-395, 406)
 //  pending -> delay (1000 - AI*100 ticks, monitor down) -> ONE step
-//  At 4B: monitor UP decides door entry vs retreat to 4A.
+//  At 4B: monitor UP (not viewing CAM 4B) decides door entry vs retreat
+//  to 4A; the retreat also needs CAM 4A off screen (groups 394/395).
 //  At door zone: 25% per second kill with monitor down (group 406).
 // ============================================================
 
@@ -412,9 +413,13 @@ void AnimatronicAI::UpdateFreddy(const DoorSystem& doors, const CameraSystem& ca
         return;
     }
 
-    // ---- 4B decision needs the monitor UP (groups 394/395) ----
+    // ---- 4B decision, fired by the monitor going UP (groups 394/395) ----
+    // Both groups exclude viewing==42 (CAM 4B): watching 4B holds Freddy.
+    // The retreat additionally excludes viewing==4 (CAM 4A), so with the
+    // door CLOSED, watching 4A parks him at the corner too.
     if (freddy.currentRoom == ROOM_EAST_HALL_CORNER && m_freddyGo) {
-        if (cameras.IsMonitorUp()) {
+        const CameraId viewed = cameras.GetCurrentCamera();
+        if (cameras.IsMonitorUp() && viewed != CAM_4B) {
             m_freddyGo = false;
             m_freddyPending = false;
             m_freddyDelayTicks = 0;
@@ -423,7 +428,7 @@ void AnimatronicAI::UpdateFreddy(const DoorSystem& doors, const CameraSystem& ca
                 m_freddyAtDoorZone = true;
                 AddResult(results, count, max, AI_EVENT_MOVED, ANIM_FREDDY, ROOM_RIGHT_DOOR);
                 AddResult(results, count, max, AI_EVENT_AT_DOOR, ANIM_FREDDY, ROOM_RIGHT_DOOR);
-            } else {
+            } else if (viewed != CAM_4A) {
                 freddy.currentRoom = ROOM_EAST_HALL;   // retreat to 4A
                 m_freddyPathIndex = 4;
                 AddResult(results, count, max, AI_EVENT_MOVED, ANIM_FREDDY, ROOM_EAST_HALL);

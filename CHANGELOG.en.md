@@ -1,8 +1,18 @@
 # Changelog — FNAF1 Recomp (Xbox 360)
 
 Notes on what is done and what is left. Versions match the code
-comment tags (`v2.8`, `v2.14`, …, `v2.26`) and the historical notes.
+comment tags (`v2.8`, `v2.14`, …, `v2.27`) and the historical notes.
 
+
+---
+
+## v2.27 — dump-verified Freddy 4B rule & Golden Freddy creepy screen
+
+- **Freddy can't slip in from CAM 4B while you watch him** (groups 394/395 read from the dump): the 4B decision now requires the monitor up **and** `viewing != 42` (CAM 4B). The door-closed retreat to 4A additionally requires `viewing != 4` (CAM 4A) — so with the door closed, watching either east-hall camera parks him at the corner. (The wiki mentions only CAM 4B; the dump splits the rule across the two groups.)
+- **Golden Freddy's kill screen rebuilt from the dump**: f14 "creepy start" is a full-screen dark face (img_545) with two img_547 twinkles at (510,192)/(804,196) — NOT the CAM 2B pose (img_571) we drew before. **His kill plays XSCREAM2 — a deliberate deviation from the dump** (the dump itself only uses XSCREAM2 on f15 "creepy end", the unreachable demo ending; its f14 is silent).
+- **No screen shake for Bonnie/Chica**: the wiki claims the background shakes during their scares; the original has none — the jitter is the scare animation's own frames (user-verified against the original; the v2.18 verdict stands).
+- **Office hallucination rebuilt to dump spec (groups 413-419)**: every ~20 s `Random(1000)==1` opens a 100-tick (~1.7 s) window; during it the IT'S ME overlay shows only on **~1-in-10 frames** (`Random(10)==1` per frame — the dump's rapid on/off chatter, not a continuous overlay), and **robotvoice (ch21) goes full volume** for the window (was: a whisper one-shot + continuous 1.5 s overlay). The overlay is drawn translucent (alpha 155/255, the static's coefficient-100 style — the dump does not export sprite-level ink). Per the dump this system is NOT tied to Golden Freddy — his sitting phase is silent (groups 420-425 play nothing), so the earlier golden-specific flicker/garble was removed.
+- The v2.26 force-close stays for now, with a caveat: the v1.132 dump contains no force-close. f14 sits silently (~200 s failsafe), then lands on f5 "freddy" (XSCREAM + static + the Freddy flicker scare) and returns to the title. Say the word and we'll switch to that exact flow.
 
 ---
 

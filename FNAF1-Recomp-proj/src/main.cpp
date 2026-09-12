@@ -176,7 +176,11 @@ static void FrameEnd() {
     if (!g_pd3dDevice) return;
     if (g_showConsole) g_debugConsole.Render(SCREEN_W, SCREEN_H);   // v2.17: DEV toggle
     if (g_goldenScareT >= 0.0f) g_render.RenderScareFlash(g_scareFlashImg, g_goldenScareT);   // scare flash
-    if (g_itsmeT >= 0.0f) g_render.RenderItsmeFlash(g_itsmeT);   // IT'S ME hallucination
+    // v2.27: IT'S ME hallucination — visible only on ~1-in-10 frames while
+    // the window is open (dump groups 413/416-418: Random(10)==1 per frame
+    // gates the SHOW; anything else HIDEs it). That per-frame chatter is
+    // what reads as "rapid flicker" in the original.
+    if (g_itsmeT >= 0.0f && (rand() % 10) == 0) g_render.RenderItsmeFlash(g_itsmeT);
     // Flush ALL queued quads (sprites AND text) before ending the scene --
     // without this the last same-texture batch renders one frame late
     // (or not at all for static screens).
@@ -538,7 +542,10 @@ static void TickGoldenFreddy(Game& game, GameRender& render) {
         s_goldTimer = 0.0f;
     }
 
-    // 4. hold: raising the monitor despawns him; ~5 s -> the kill
+    // 4. hold: raising the monitor despawns him; ~5 s -> the kill.
+    // v2.27: per the dump (groups 420-425) the sitting phase itself is
+    // SILENT and plain — any flicker/voice the player sees is the generic
+    // "Active 21" hallucination system, which runs on its own schedule.
     if (s_goldInOffice) {
         s_goldTimer += 1.0f / 60.0f;
         if (monUp) {
@@ -597,7 +604,11 @@ void OnJumpscare(AnimatronicId anim){
     g_audio.Stop(Snd::VOICEOVER[4]);
     g_audio.Stop(Snd::AMBIENCE2); g_audio.Stop(Snd::CIRCUS);
     s_phonePlaying=false;
-    g_audio.Play(&g_pak, Snd::XSCREAM, false, 1.0f);
+    // v2.27: Golden Freddy (ANIM_COUNT) gets XSCREAM2 — a DELIBERATE
+    // DEVIATION from the dump (see CHANGELOG v2.27): the dump itself only
+    // plays XSCREAM2 on f15 "creepy end" (unreachable demo ending) and its
+    // f14 "creepy start" is silent. The robots share XSCREAM (ch1).
+    g_audio.Play(&g_pak, (anim == ANIM_COUNT) ? Snd::XSCREAM2 : Snd::XSCREAM, false, 1.0f);
     // v2.23: no "lives" system — the original has none. A death just returns
     // to the title and Continue retries the same (unlocked) night; progress is
     // only written on a 6 AM screen, never on a jumpscare.
@@ -840,7 +851,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.26 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.27 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -855,7 +866,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.26 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.27 (%s %s)", __DATE__, __TIME__);
 
     // Try load pak from Xbox 360 canonical locations (game:\ is XEX directory;
     // e:\/hdd:\ are common on JTAG/RGH dashboards like FSD or Aurora)
@@ -981,9 +992,9 @@ int main(int argc, char* argv[]){
             g_goldenScareT += 1.0f/60.0f;
             if (g_goldenScareT > 1.3f) g_goldenScareT = -1.0f;
         }
-        if (g_itsmeT >= 0.0f) {          // v2.17: IT'S ME hallucination timer
+        if (g_itsmeT >= 0.0f) {          // v2.27: hallucination window = 100 ticks (group 415)
             g_itsmeT += 1.0f/60.0f;
-            if (g_itsmeT > 1.5f) g_itsmeT = -1.0f;
+            if (g_itsmeT > 100.0f/60.0f) g_itsmeT = -1.0f;
         }
 
         // v2.16: office ambience starts once on landing in PLAYING, on mixer channels
@@ -1035,15 +1046,20 @@ int main(int argc, char* argv[]){
             TickAudioMixer(game);              // v2.16: dynamic channel volumes each frame
             TickRandomEvents(game);            // v2.18: periodic pirate/breaths/circus one-shots
             TickGoldenFreddy(game, g_render);  // v2.22: Golden Freddy summon/appear/kill
-            // v2.17: rare "IT'S ME" Bonnie hallucination (obj "Active 21"):
-            // 1/1000 chance every ~20 s (group 419), whisper + full-screen flicker.
+            // v2.27: the "IT'S ME" office hallucination (obj "Active 21"),
+            // dump groups 413-419: every ~20 s Random(1000)==1 opens a
+            // 100-tick window; during it the overlay is shown only on
+            // frames where Random(10)==1 (~10 % duty flicker, groups
+            // 416-418) and robotvoice (ch21) goes FULL while it flashes.
             g_itsmeRollTimer += 1.0f/60.0f;
             if (g_itsmeRollTimer >= 20.0f) {
                 g_itsmeRollTimer = 0.0f;
-                if ((rand() % 1000) == 0) {
-                    g_audio.Play(&g_pak, Snd::WHISPERING, false, 0.9f);
-                    g_itsmeT = 0.0f;
-                }
+                if ((rand() % 1000) == 0) g_itsmeT = 0.0f;
+            }
+            if (g_itsmeT >= 0.0f) {
+                // group 416: ch21 (robotvoice) volume 100 while it flashes;
+                // TickAudioMixer resumes its proximity heuristic afterwards
+                g_audio.SetChannelVolume(CH_ROBOTVOICE, CFVolumeToDb(100));
             }
         }
         if(state==GAME_STATE_POWER_OUT) TickPowerOutFaceSound(game);   // v2.22 garble/digital

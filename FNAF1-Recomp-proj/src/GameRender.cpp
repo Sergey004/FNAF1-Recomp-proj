@@ -632,14 +632,18 @@ void GameRender::RenderScareFlash(int imgHandle, float elapsed) {
 
 // v2.17: the "IT'S ME" Bonnie hallucination — obj "Active 21" (frames
 // 525/543/520/544, 1280x720), speed 75 = 45 FPS, rare in the original.
+// Drawn SEMI-TRANSPARENT (alpha 155/255 = ink coefficient 100, the same
+// style as the camera static): the dump does not export sprite-level ink,
+// so the static's coefficient-100 translucency is used for overlays.
 void GameRender::RenderItsmeFlash(float elapsed) {
     if (!m_batch) return;
     const int idx = CfAnimFrame(75, elapsed, 4, true);   // speed 75 = 45 FPS
-    DrawFrame(ITSME_FRAMES[idx], 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+    DrawFrame(ITSME_FRAMES[idx], 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0x9BFFFFFF);
 }
 
 int  GameRender::GetGoldenRoll() const { return m_goldenRoll; }
 void GameRender::SetGoldenFreddyInOffice(bool on) { m_goldFredInOffice = on; }
+
 
 void GameRender::DrawStripCentered(const SpriteStrip& strip, float cx, float y,
                                    const char* text, u32 color, float scale) {
@@ -1218,11 +1222,15 @@ void GameRender::RenderPowerOut(const Game& game) {
 void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
     if (!m_batch) return;
 
-    // v2.22: Golden Freddy uses ANIM_COUNT as a sentinel. His "creepy start"
-    // is a flat full-screen 1280x720 face (img 571), not a 1600x720 scene,
-    // and has no panorama bend or frame animation.
+    // v2.27: Golden Freddy uses ANIM_COUNT as a sentinel. The kill screen is
+    // f14 "creepy start" per the dump: full-screen dark face backdrop
+    // (img_545, 1280x720) with two img_547 twinkles at (510,192)/(804,196),
+    // drawn flat (frame 14 has no Perspective object) — NOT img_571 (that is
+    // the CAM 2B easter-egg pose) and with no frame animation.
     if (anim == ANIM_COUNT) {
-        DrawFrame(GOLDEN_FREDDY, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+        DrawFrame(IMG_CREEPY_FACE, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+        DrawFrame(IMG_CREEPY_TWINKLE, 510.0f, 192.0f, 32.0f, 32.0f, 0xFFFFFFFF);
+        DrawFrame(IMG_CREEPY_TWINKLE, 804.0f, 196.0f, 32.0f, 32.0f, 0xFFFFFFFF);
         return;
     }
 

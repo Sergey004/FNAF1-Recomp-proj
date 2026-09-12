@@ -115,11 +115,13 @@ Path: `1A → 1B → 7 Bathrooms → 6 Kitchen → 4A → 4B → door zone → o
    100..1000 ticks.
 3. Step 1A→1B additionally requires **neither Bonnie nor Chica on 1A**
    (group 389). Steps run regardless of monitor state.
-4. At 4B, next step happens only while the monitor is **up** (viewing > 0,
-   not during flip states 4/42):
-   door open → step to door zone (group 394); door closed → back to 4A
-   (group 395). Freddy waits at 4B until you raise the tablet — the
-   documented "check cameras to advance Freddy" behaviour.
+4. At 4B, the decision runs only while the monitor is **up** (viewing > 0)
+   and not while you watch CAM 4B (viewing != 42 — both groups 394/395):
+   door open → step to the door zone (group 394); door closed → back to 4A
+   (group 395, which additionally requires viewing != 4 / CAM 4A — with
+   the door closed, watching 4A parks the retreat too). Freddy waits at
+   4B until you raise the tablet — the documented "check cameras to
+   advance Freddy" behaviour.
 5. At the door zone with monitor down, power on, `fox progress < 5`:
    every 1 s, **Random(4)==1 (25 %)** → kill (anim 65) (group 406).
    With the monitor up he just stands there.
@@ -195,8 +197,9 @@ during power-out. Both fixed in v2.7.12.
 
 ## 10. Misc
 
-- Camera IDs (`viewing` counter): 0 office, 1..10 = 1A,1B,2A,2B,3,4A,4B,5,6,7
-  mapped to anims; 99 = Pirate Cove; 4/42 = monitor flip states.
+- Camera IDs (`viewing` counter): 0 office; 1=1A, 2=1B, 3=2A, 4=4A, 5=5,
+  6=kitchen, 7=7, 22=2B, 33=closet, 42=4B, 99=Pirate Cove (full evidence
+  chain in CAMERA_FINDINGS.md — 4/42 are camera ids, NOT flip states).
 - Kitchen sound reroll: Chica in kitchen re-rolls kitchen cam alterable every
   1 s (group 245).
 - Footstep volume grows with proximity: 10 → 20 → 30 → 40 (Speaker ch0 volume

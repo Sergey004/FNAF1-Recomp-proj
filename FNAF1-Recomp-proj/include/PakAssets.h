@@ -164,6 +164,8 @@ enum PakImg {
     IMG_INTRO_AD       = 574,  // "HELP WANTED" newspaper 1280x720 (frame "ad")
 
     IMG_GOLDEN_FREDDY  = 573,  // Golden Freddy slumped in office 541x521
+    IMG_CREEPY_FACE    = 545,  // f14 "creepy start" dark face 1280x720
+    IMG_CREEPY_TWINKLE = 547,  // f14 white twinkle 32x32 (2 instances)
     IMG_LOADING_SPIN   = 482,  // loading spinner 40x40
     IMG_CUST_ARROW_R   = 541,  // customize ">" arrow 34x52
     IMG_CUST_ARROW_L   = 542   // customize "<" arrow 34x52
