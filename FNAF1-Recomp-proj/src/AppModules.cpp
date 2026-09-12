@@ -4,6 +4,7 @@
  */
 
 #include "AppModules.h"
+#include "TextRenderer.h"   // stub screens call DrawText (full type needed)
 
 namespace fnaf {
 
@@ -67,7 +68,7 @@ void FNaF2Module::Tick(f32 /*dt*/) {
 
 void FNaF2Module::Render() {
     // No game yet — placeholder card, queued through the core's batch.
-    if (m_services.text != NULL)
+    if (m_services.text != 0)
         m_services.text->DrawText(470, 344, "FNAF2 - foundation stub", 0xFF88FF88);
 }
 
@@ -86,7 +87,7 @@ void FNaF3Module::Tick(f32 /*dt*/) {
 }
 
 void FNaF3Module::Render() {
-    if (m_services.text != NULL)
+    if (m_services.text != 0)
         m_services.text->DrawText(470, 344, "FNAF3 - foundation stub", 0xFF88FF88);
 }
 

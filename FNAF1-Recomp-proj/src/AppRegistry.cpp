@@ -17,7 +17,7 @@ static i32 s_active = 0;   // stage 1: FNAF1 always
 i32 AppRegistry_Count() { return 3; }
 
 AppModule* AppRegistry_Get(i32 index) {
-    if (index < 0 || index >= 3) return NULL;
+    if (index < 0 || index >= 3) return 0;
     return s_modules[index];
 }
 

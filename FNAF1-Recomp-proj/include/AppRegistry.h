@@ -17,7 +17,7 @@ namespace fnaf {
 class AppModule;
 
 i32        AppRegistry_Count();          // 3 (FNAF1, FNAF2, FNAF3)
-AppModule* AppRegistry_Get(i32 index);   // NULL if out of range
+AppModule* AppRegistry_Get(i32 index);   // 0 if out of range
 AppModule* AppRegistry_Active();         // the module the core talks to
 void       AppRegistry_SetActive(i32 index); // ignored if out of range
 

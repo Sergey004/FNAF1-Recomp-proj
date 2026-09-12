@@ -42,7 +42,7 @@ struct AppServices {
     SpriteBatch*  batch;   // quad queue; core calls Begin() before module Render()
     TextRenderer* text;    // bitmap text (debug/HUD strings)
 
-    AppServices() : audio(NULL), pak(NULL), batch(NULL), text(NULL) {}
+    AppServices() : audio(0), pak(0), batch(0), text(0) {}
 };
 
 class AppModule {

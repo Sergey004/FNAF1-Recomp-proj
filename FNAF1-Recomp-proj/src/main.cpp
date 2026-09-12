@@ -24,7 +24,7 @@
 #include "GameRender.h"
 #include "AudioSystem.h"
 #include "AppRegistry.h"  // v2.28: AppModule contract + module table
-#include "asset_mapping.hpp"
+#include "AppModules.h"   // v2.28: full AppModule type (banner prints Name/PakName)
 
 #include <xtl.h>
 #include <xinputdefs.h>  // XINPUT_KEYSTROKE / XINPUT_FLAG_KEYBOARD (USB-keyboard reset)
