@@ -840,7 +840,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.25 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.26 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -855,7 +855,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.25 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.26 (%s %s)", __DATE__, __TIME__);
 
     // Try load pak from Xbox 360 canonical locations (game:\ is XEX directory;
     // e:\/hdd:\ are common on JTAG/RGH dashboards like FSD or Aurora)
@@ -1399,6 +1399,12 @@ int main(int argc, char* argv[]){
         if(FrameBegin(ColorForState(state, game.GetPower().GetPower()))){
             if(state==GAME_STATE_JUMPSCARE){
                 g_render.RenderJumpscare(game.GetJumpscareAnimatronic(), scareElapsed);
+                // v2.26: Golden Freddy — per the original, instead of the normal
+                // Game Over screen the game forcibly closes (only avoidable by
+                // raising the Monitor in time).
+                if (game.GetJumpscareAnimatronic()==ANIM_COUNT &&
+                    scareElapsed >= (f32)game.GetJumpscareDurationSec())
+                    exit(0);
                 scareElapsed += 1.0f/60.0f;   // v2.18: advance AFTER the first frame renders (start on frame 0)
             } else if(state==GAME_STATE_POWER_OUT){
                 g_render.RenderPowerOut(game);

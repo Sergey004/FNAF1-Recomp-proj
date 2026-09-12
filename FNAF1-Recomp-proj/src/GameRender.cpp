@@ -931,11 +931,6 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     // capture the flat layer 0 into the panorama target...
     m_batch->BeginSceneCapture(0xFF000000u);
     DrawInstance(bg, 0.0f,   0.0f, 0xFFFFFFFF, true);
-    // v2.25: office corridor light glow (img_608 "lights") — the original shows
-    // the yellow ceiling/string-light gradient while a door light is on
-    // (VisibleAtStart=false, SHOW@G431 / HIDE@G411-433).
-    if (doors.IsLightOn(DOOR_LEFT) || doors.IsLightOn(DOOR_RIGHT))
-        DrawInstance(IMG_OFFICE_LIGHTS, 0.0f, -78.0f, 0xFFFFFFFF, true);
     DrawInstance(FAN[fan], 868.0f, 400.0f, 0xFFFFFFFF, true);
     DrawInstance(lImg, 72.0f,  -1.0f, 0xFFFFFFFF, true);
     DrawInstance(rImg, 1270.0f, -2.0f, 0xFFFFFFFF, true);
@@ -1233,17 +1228,17 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
 
     int frame = 0;
     if (anim == ANIM_FREDDY) {
-        // anim 65: 31 frames @ 30 FPS (speed 50), repeat 1 -> play once, hold
-        frame = SCARE_FREDDY[CfAnimFrame(50, elapsed, 31, false)];
+        // anim 65: 31 frames @ 30 FPS (speed 50), repeat 1 — loops like the original
+        frame = SCARE_FREDDY[CfAnimFrame(50, elapsed, 31, true)];
     } else if (anim == ANIM_FOXY) {
-        // anim 52: 25 frames @ 30 FPS (speed 50), repeat 1 -> play once, hold
-        frame = SCARE_FOXY[CfAnimFrame(50, elapsed, 25, false)];
+        // anim 52: 25 frames @ 30 FPS (speed 50), repeat 1 — loops like the original
+        frame = SCARE_FOXY[CfAnimFrame(50, elapsed, 25, true)];
     } else if (anim == ANIM_BONNIE) {
-        // anim 35: 11 frames @ 45 FPS (speed 75), play once, hold last
-        frame = SCARE_BONNIE_KILL[CfAnimFrame(75, elapsed, 11, false)];
+        // anim 35: 11 frames @ 45 FPS (speed 75), repeat 0 — loops like the original
+        frame = SCARE_BONNIE_KILL[CfAnimFrame(75, elapsed, 11, true)];
     } else {
-        // anim 44: 16 frames @ ~60 FPS (speed 99), play once, hold last
-        frame = SCARE_CHICA_KILL[CfAnimFrame(99, elapsed, 16, false)];
+        // anim 44: 16 frames @ ~60 FPS (speed 99), repeat 0 — loops like the original
+        frame = SCARE_CHICA_KILL[CfAnimFrame(99, elapsed, 16, true)];
     }
     // Scare frames are static 1600x720 room images on layer 0. The original
     // has NO screen shake -- the apparent jitter is the animation's own frame

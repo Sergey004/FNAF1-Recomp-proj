@@ -1,14 +1,16 @@
 # Changelog — FNAF1 Recomp (Xbox 360)
 
 Notes on what is done and what is left. Versions match the code
-comment tags (`v2.8`, `v2.14`, …, `v2.25`) and the historical notes.
+comment tags (`v2.8`, `v2.14`, …, `v2.26`) and the historical notes.
 
 
 ---
 
-## v2.25 — office corridor light glow
+## v2.26 — scare looping, Golden Freddy force-close, Halloween sprite fix
 
-- Added the office "lights" overlay (`img_608`, the yellow ceiling/string-light gradient at instance (0,-78), 1600x253) — the original shows it while a door light is on (`VisibleAtStart=false`, `SHOW@G431` / `HIDE@G411-433`). Drawn on layer 0 with the scene (bent by the parabola shader), behind the doors/panels but over the corridor background.
+- **Jumpscares loop like the original**: the scare frame cycles (Freddy 31, Foxy 25, Bonnie 11, Chica 16) now repeat for the whole scare instead of freezing on the last frame.
+- **Golden Freddy force-closes the game**: per the original — instead of the normal Game Over screen, the game closes after his full-screen scare (~2.5 s), matching the wiki ("instead of being taken to the normal Game Over screen, the game will forcibly close"). Only avoidable by raising the Monitor in time.
+- **Removed the mistaken office "lights" draw**: the img_608 string-lights image is the Halloween event decoration, not a door-light glow — it no longer appears when a door light is turned on.
 
 ---
 
