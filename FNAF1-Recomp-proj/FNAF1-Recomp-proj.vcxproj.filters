@@ -1,21 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClInclude Include="include\AudioSystem.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\GameRender.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\PakAssets.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClCompile Include="src\AudioSystem.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\GameRender.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <Filter Include="Source Files">
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
@@ -27,15 +12,6 @@
     <Filter Include="achievements_pics">
       <UniqueIdentifier>{3bbf909d-ff11-4b3d-9cd0-81b491ee9898}</UniqueIdentifier>
     </Filter>
-    <ClInclude Include="include\font_atlas.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\Progress.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\Achievements.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="achievements.xml" />
@@ -72,10 +48,22 @@
     <None Include="fnaf1.spa" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\Achievements.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="include\Animatronic.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\AnimatronicAI.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AppModule.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AppModules.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AppRegistry.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\asset_mapping.h">
@@ -84,7 +72,13 @@
     <ClInclude Include="include\asset_mapping.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\AudioSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="include\CameraSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\CfAnimTimer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\DebugConsole.h">
@@ -96,7 +90,13 @@
     <ClInclude Include="include\fnaf.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\font_atlas.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="include\Game.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\GameRender.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\GameTimer.h">
@@ -111,10 +111,16 @@
     <ClInclude Include="include\NightConfig.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\PakAssets.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="include\PakLoader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\PowerSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Progress.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\Room.h">
@@ -132,9 +138,41 @@
     <ClInclude Include="include\XdkCompat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_fnaf1.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_fnaf2.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_fnaf3.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_fnaf4.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_sisterlocation.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <Filter Include="Header Files\assets">
+      <UniqueIdentifier>{fac29d42-52c3-418e-a155-0c4ce95f59d0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Achievements.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\AnimatronicAI.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AppModules.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AppRegistry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AudioSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\CameraSystem.cpp">
@@ -147,6 +185,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Game.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GameRender.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\GameTimer.cpp">
@@ -170,6 +211,9 @@
     <ClCompile Include="src\PowerSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\Progress.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\Room.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -177,12 +221,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\TextRenderer.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Progress.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Achievements.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

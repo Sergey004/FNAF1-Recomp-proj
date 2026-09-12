@@ -869,24 +869,26 @@ int main(int argc, char* argv[]){
     // the screen) -- visible without a debugger attached
     g_debugConsole.Print("FNAF1-Recomp v2.29 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
+    // v2.29: SOFT pak scan — probe every module's bundle at the canonical
+    // location, report each, and park the active module on one that exists
+    // (FNAF1 has priority; boot never fails here).
+    bool pakFound[8] = { false };
+    AppRegistry_ScanPaks(pakFound, 8);
+    for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi) {
+        printf("Pak scan: %s -> %s\n", AppRegistry_Get(mi)->PakName(),
+               pakFound[mi] ? "OK" : "not found");
+        g_debugConsole.Print("Pak %s: %s", AppRegistry_Get(mi)->PakName(),
+                             pakFound[mi] ? "OK" : "not found");
+    }
     g_debugConsole.Print("Module: %s (%s)", AppRegistry_Active()->Name(),
                          AppRegistry_Active()->PakName());
 
-    // Try load pak from Xbox 360 canonical locations (game:\ is XEX directory;
-    // e:\/hdd:\ are common on JTAG/RGH dashboards like FSD or Aurora)
-    const char* pakPaths[] = {
-        "game:\\fnaf1.pak",
-        // "D:\\fnaf1.pak",
-        // "e:\\fnaf1.pak",
-        // "hdd:\\fnaf1.pak",
-        // "fnaf1.pak",
-        // "./fnaf1.pak"
-    };
-    const int pakPathCount = (int)(sizeof(pakPaths)/sizeof(pakPaths[0]));
-    for(int i=0;i<pakPathCount;++i){
-        const char* p = pakPaths[i];
-        if(g_pak.Load(p,g_pd3dDevice)){ g_pakLoaded=true; break; }
-    }
+    // Try load the ACTIVE module's pak from Xbox 360 canonical locations
+    // (game:\ is XEX directory; e:\/hdd:\ are common on JTAG/RGH dashboards
+    // like FSD or Aurora — re-enable those variants when needed)
+    char pakPath[128];
+    Snprintf(pakPath, sizeof(pakPath), "game:\\%s", AppRegistry_Active()->PakName());
+    if(g_pak.Load(pakPath,g_pd3dDevice)){ g_pakLoaded=true; }
     if(g_pakLoaded){
         printf("Pak loaded: %d tex %d snd\n",g_pak.GetTextureCount(),g_pak.GetSoundCount());
         g_debugConsole.Print("Pak: %d tex %d snd",g_pak.GetTextureCount(),g_pak.GetSoundCount());
