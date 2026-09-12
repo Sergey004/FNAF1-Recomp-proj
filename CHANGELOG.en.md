@@ -1,8 +1,28 @@
 # Changelog — FNAF1 Recomp (Xbox 360)
 
 Notes on what is done and what is left. Versions match the code
-comment tags (`v2.8`, `v2.14`, …, `v2.27`) and the historical notes.
+comment tags (`v2.8`, `v2.14`, …, `v2.29`) and the historical notes.
 
+
+---
+
+## v2.29 — streaming pak loader (built for Sister Location)
+
+- **`PakLoader::LoadStreaming()`** — "sliding over the file": only the pak header + tables + name pool stay resident (a few dozen KB); each asset's blob is read at its table offset on first use. Textures upload to D3D on the first `FindTexture` and the staging buffer is freed (UMA: it then lives in the shared 512 MB pool); sounds are read + normalized per-sound on the first `FindSound` (RIFF peel / 8-bit expand / byte order — with a 4 KB **mini-vote at load time** replacing the whole-bank byte-order vote, and passthrough blobs like SL's mp3s correctly marked unplayable instead of submitted as garbage PCM).
+- **`PreloadAsync(names, count)`** — a background worker thread (XDK: `CreateThread` + event + critical section; PC falls back to synchronous) runs the same ensure-ahead path, so room-to-room transitions can pull the next room's textures while the current frame renders. A `FindTexture` miss still loads synchronously, so the render can never see a half-loaded texture.
+- **Scope (per decision): SL only.** FNAF1/2/3/4 stay on the eager `Load()` — their paks fit the 512 MB UMA pool comfortably; the eager path was refactored (`UploadTexture` extracted) but behaves identically. The SL module (stage 7) will boot through `LoadStreaming` and drive `PreloadAsync` from its room-to-room frame transitions. Dormant until then — FNAF1 boots exactly as before.
+- Rationale per the XDK docs (see docs/ARCHITECTURE.md): the games run from **HDD**, so `XFileCache` / `ReadFileScatter` / physical sort keys (all DVD-only) don't apply; a plain seek+read over an open file is the correct primitive.
+
+---
+
+## v2.28 — app foundation for FNAF 2 / FNAF 3 (core + modules)
+
+- **The app is split into CORE + MODULES** (docs/ARCHITECTURE.md): the Xbox shell (D3D9 loop, SpriteBatch, XAudio2 mixer, XInput, fades, XContent wrappers) stays in main.cpp and the shared systems; each game becomes an `AppModule` (Name/PakName/Load/Unload/Tick/Render/WantsExit) talking to the core through `AppServices` (audio/pak/batch/text). The core never includes game headers; a module never owns the device.
+- **Module registry** (`AppRegistry`): FNaF1Module (active — the game still runs directly from main.cpp at stage 1; `RequestExit()` prepared to replace the raw `exit(0)`), plus FNaF2Module / FNaF3Module placeholders that report their bundles (`fnaf2.pak` / `fnaf3.pak`) and render stub screens. Boot banner prints the active module.
+- **FNAF2 and FNAF3 dumps taken with our CTFAK-CPP** — both exes read clean, the tool passed its first third-party-runtime test:
+  - FNAF2: 27 frames (office 1600×768 with **751 groups**, "dream" 2500×768, "8bit" minigame hub, error/error 2, rare1 ×3, customize 80), 804 images, 66 wav, 452 objects.
+  - FNAF3: 26 frames (office **2000×768** with 773 groups, cutscenes 190 groups, six 3072×2304 Atari minigame frames: BB/Mangle/Toy Chica/GFreddy/RWQFSFASXC/Marion, bad/good end), 1066 images, 70 wav, 577 objects.
+  - Dumps live in `ctfak-cpp/build/Dumps/…`; per the dump-only-authority rule, stage 6/7 of the migration plan starts from these, not from any wiki.
 
 ---
 
