@@ -9,13 +9,13 @@ What started as a from-scratch reimplementation of FNAF1 on raw Xbox 360 XDK
 plug-in modules, each with its own assets bundle, renderer and game logic —
 all dump-driven and tested on real hardware:
 
-| Game | Status |
-|---|---|
-| **FNAF 1** | fully playable, 1:1 with the PC release |
-| **FNAF 2** | playable skeleton: disclaimer → title ("the video from Freddy's eyes") → night loop → panning dark office (flashlight + battery) → 12-camera monitor with the map → 70 s/hour clock → 6 AM |
-| **FNAF 3** | test level: title (Springtrap + static bursts) + the 2000-wide office |
-| **FNAF 4** | test level: red-sky title + the 1300-wide bedroom; streams its 373 MB pak |
-| **Sister Location** | planned (1.5 GB pak — the streaming loader is built for it; the startup flow is already pinned from the dump) |
+| Game | Ready | Implemented |
+|---|---|---|
+| **FNAF 1** | **~97 %** | everything: nights 1–7 + Custom Night, full dump-mirrored AI, cameras/doors/lights, jumpscares, power-out, Golden Freddy, hallucinations, phone call, saves, achievements. Left: the "died" noise screen, a few rare easter eggs |
+| **FNAF 2** | **~35 %** | disclaimer, title (the "from Freddy's eyes" bg roll + glitch + audio), night loop (70 s/hour clock → 6 AM), panning dark office, hold-flashlight + battery (dump rules incl. BB steal), 12-camera monitor + map panel/buttons. Left: phone call, mask, vents, music box, the 9-animatronic AI (751 event groups), jumpscares/death, office sound loops, saves, 8-bit minigames |
+| **FNAF 3** | **~15 %** | disclaimer, title (Springtrap scene + static bursts + titlemusic), the 2000-wide office with pan. Left: the whole game — vent/audio-only mechanic, phantom AI, minigames, saves, cutscenes |
+| **FNAF 4** | **~10 %** | disclaimer, title (red sky + heading + menu), the 1300-wide bedroom with pan, streaming pak load. Left: the whole game — door/closet/bed mechanics, nightmare AI, saves |
+| **Sister Location** | **~3 %** | dump + pak + startup flow pinned (Warning → Elevator/HandUnit voice → title); the streaming loader is built. Left: everything visual and logical |
 
 One boot shows a **game selector** when more than one bundle is present.
 Every game ships its own `.spa` (Xbox identity/achievements) and its own
