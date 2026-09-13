@@ -9,17 +9,23 @@
 
 namespace fnaf {
 
+static const i32 kModuleCount = 5;   // FNAF1, FNAF2, FNAF3, FNAF4, SL
+
 static FNaF1Module s_fnaf1;
 static FNaF2Module s_fnaf2;
 static FNaF3Module s_fnaf3;
+static FNaF4Module s_fnaf4;
+static SLModule    s_sl;
 
-static AppModule* const s_modules[3] = { &s_fnaf1, &s_fnaf2, &s_fnaf3 };
-static i32 s_active = 0;   // stage 1: FNAF1 always
+static AppModule* const s_modules[kModuleCount] = {
+    &s_fnaf1, &s_fnaf2, &s_fnaf3, &s_fnaf4, &s_sl
+};
+static i32 s_active = 0;   // FNAF1 unless the pak scan says otherwise
 
-i32 AppRegistry_Count() { return 3; }
+i32 AppRegistry_Count() { return kModuleCount; }
 
 AppModule* AppRegistry_Get(i32 index) {
-    if (index < 0 || index >= 3) return 0;
+    if (index < 0 || index >= kModuleCount) return 0;
     return s_modules[index];
 }
 
@@ -28,13 +34,13 @@ AppModule* AppRegistry_Active() {
 }
 
 void AppRegistry_SetActive(i32 index) {
-    if (index >= 0 && index < 3) s_active = index;
+    if (index >= 0 && index < kModuleCount) s_active = index;
 }
 
 // v2.29: soft pak scan. Only reads are performed (fopen/fclose probe) —
 // a missing pak is a report, never an error.
 void AppRegistry_ScanPaks(bool* found, i32 maxCount) {
-    const i32 n = AppRegistry_Count() < maxCount ? AppRegistry_Count() : maxCount;
+    const i32 n = kModuleCount < maxCount ? kModuleCount : maxCount;
 
     for (i32 i = 0; i < n; ++i) {
         char path[128];

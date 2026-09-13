@@ -33,16 +33,19 @@ class AudioSystem;
 class PakLoader;
 class SpriteBatch;
 class TextRenderer;
+struct GameInput;
 
 // Services the core hands to every module once, at boot. All owned by the
-// core — a module must not free or re-create them.
+// core — a module must not free or re-create them. `input` points at the
+// per-frame snapshot the core refreshes before each Tick.
 struct AppServices {
     AudioSystem*  audio;   // XAudio2 dB mixer (channels, Play/PlayOnChannel)
     PakLoader*    pak;     // shared Clickteam-pak loader (game:\ reads)
     SpriteBatch*  batch;   // quad queue; core calls Begin() before module Render()
     TextRenderer* text;    // bitmap text (debug/HUD strings)
+    GameInput*    input;   // v2.30: this frame's polled pad snapshot
 
-    AppServices() : audio(0), pak(0), batch(0), text(0) {}
+    AppServices() : audio(0), pak(0), batch(0), text(0), input(0) {}
 };
 
 class AppModule {

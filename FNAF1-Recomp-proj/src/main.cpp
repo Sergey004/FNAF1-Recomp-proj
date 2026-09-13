@@ -852,7 +852,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.29 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.32 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -867,7 +867,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.29 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.32 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -880,8 +880,75 @@ int main(int argc, char* argv[]){
         g_debugConsole.Print("Pak %s: %s", AppRegistry_Get(mi)->PakName(),
                              pakFound[mi] ? "OK" : "not found");
     }
+
+    // v2.32: BOOT SELECTOR — when more than one bundle is present, show a
+    // small list (D-pad/stick to move, A to launch). One pak boots straight
+    // (FNAF1 priority from the scan). The menu runs on the raw core (text
+    // only, no pak textures yet).
+    {
+        i32 foundCount = 0;
+        for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi)
+            if (pakFound[mi]) ++foundCount;
+        if (foundCount > 1) {
+            i32 cursor = 0;
+            while (!pakFound[cursor]) ++cursor;   // start on the first presentable
+            bool selDone = false;
+            while (!selDone) {
+                GameInput gi; UpdateInput(gi);
+                if (gi.cameraUp)   { do { cursor = (cursor + AppRegistry_Count() - 1) % AppRegistry_Count(); } while (!pakFound[cursor]); }
+                if (gi.cameraDown) { do { cursor = (cursor + 1) % AppRegistry_Count(); } while (!pakFound[cursor]); }
+                if (gi.cameraToggle) selDone = true;
+                if (gi.back) { cursor = 0; selDone = true; }   // B = default (FNAF1)
+
+                FrameBegin();
+                {
+                    g_text.DrawText(490, 120, "SELECT GAME", 0xFFFFFFFF);
+                    for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi) {
+                        if (!pakFound[mi]) continue;   // only launchable games
+                        char row[80];
+                        Snprintf(row, sizeof(row), "%s %s  (%s)",
+                                 mi == cursor ? ">" : " ",
+                                 AppRegistry_Get(mi)->Name(),
+                                 AppRegistry_Get(mi)->PakName());
+                        g_text.DrawText(500, 220 + mi * 60, row,
+                                        mi == cursor ? 0xFF80FF80 : 0xFFB0B0B0);
+                    }
+                    g_text.DrawText(430, 620, "D-pad select   A launch   B default (FNAF1)", 0xFF909090);
+                }
+                FrameEnd();
+            }
+            AppRegistry_SetActive(cursor);
+            g_debugConsole.Print("Selected: %s", AppRegistry_Active()->Name());
+        }
+    }
+
     g_debugConsole.Print("Module: %s (%s)", AppRegistry_Active()->Name(),
                          AppRegistry_Active()->PakName());
+
+    // v2.30: dev override for the per-game XEX work — a command-line arg
+    // naming a module ("fnaf2"/"fnaf3"/"fnaf4"/"sl") activates it after
+    // the scan (Xenia/debugger args; the console launcher will pick the
+    // XEX itself once the per-game builds exist).
+    for (int ai = 1; ai < argc; ++ai) {
+        for (i32 m = 0; m < AppRegistry_Count(); ++m) {
+            AppModule* mm = AppRegistry_Get(m);
+            if (!mm) continue;
+            // case-insensitive compare of the lowercase arg vs module name
+            const char* a = argv[ai]; const char* b = mm->Name();
+            bool match = true;
+            for (int k = 0; a[k] || b[k]; ++k) {
+                char ca = a[k], cb = b[k];
+                if (ca >= 'A' && ca <= 'Z') ca = (char)(ca - 'A' + 'a');
+                if (cb >= 'A' && cb <= 'Z') cb = (char)(cb - 'A' + 'a');
+                if (ca != cb) { match = false; break; }
+                if (!ca) break;
+            }
+            if (match && a[0]) {
+                AppRegistry_SetActive(m);
+                g_debugConsole.Print("Arg override -> %s", mm->Name());
+            }
+        }
+    }
 
     // Try load the ACTIVE module's pak from Xbox 360 canonical locations
     // (game:\ is XEX directory; e:\/hdd:\ are common on JTAG/RGH dashboards
@@ -959,6 +1026,36 @@ int main(int argc, char* argv[]){
     while(true){
         GameInput gi; UpdateInput(gi);
         bool devToggled = false;   // v2.17: Start+B fired this frame (swallow it)
+
+        // ---------------- MODULE MODE (v2.30) ----------------
+        // A non-FNAF1 active module owns the frame: Tick + Render per loop,
+        // no FNAF1 state machine, no fades. B exits the app (the per-game
+        // XEX builds will own their own flow; this shared-core branch is
+        // the testbed for their screens until then).
+        if (strcmp(AppRegistry_Active()->Name(), "FNAF1") != 0) {
+            AppModule* m = AppRegistry_Active();
+            g_audio.Tick();
+            // fill the shared services once and hand them over; the pad
+            // snapshot is refreshed every frame before Tick
+            static AppServices s_svc;
+            static GameInput   s_in;
+            if (!s_svc.pak) {
+                s_svc.audio = &g_audio;
+                s_svc.pak   = &g_pak;
+                s_svc.batch = &g_batch;
+                s_svc.text  = &g_text;
+                m->Load(s_svc);
+                g_debugConsole.Print("Module %s: services handed over", m->Name());
+            }
+            s_in = gi;
+            s_svc.input = &s_in;
+            m->Tick(1.0f / 60.0f);
+            if (gi.back) { printf("Module mode: B -> exit\n"); exit(0); }
+            FrameBegin();
+            m->Render();
+            FrameEnd();
+            continue;
+        }
 
         // ---------------- PERSPECTIVE TUNER (v2.7.11) ----------------
         // L3+R3 together toggles the tuner (works in every state -- the

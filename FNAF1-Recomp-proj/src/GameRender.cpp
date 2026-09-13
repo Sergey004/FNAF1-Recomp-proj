@@ -782,15 +782,15 @@ void GameRender::DrawSharedHud(const Game& game, bool phonePlaying) {
         DrawStripText(STRIP_CLOCK, 1198.0f - hw - 6.0f, 31.0f, hrs, 0xFFFFFFFF, 1.0f);
     }
 
-    // "Night N" — small row under the clock (word img_447 @(1148,74) via
-    // its parking hotspot, digits right after the word on the same line —
-    // exactly the real-game HUD; no collision now that the hour digits
-    // share the AM row above).
+    // "Night N" — small row under the clock: word img_447 instance
+    // (754,74) (parking hotspot lands it at ~1148), the night number
+    // COUNTER sits at (1237,89) in the dump — draw the digits exactly
+    // there (bottom-aligned with the word, clear of the screen edge).
     DrawInstance(IMG_NIGHT_WORD_OFC, 754.0f, 74.0f, 0xFFFFFFFF, false);
     {
         char nb[16];
         Snprintf(nb, sizeof(nb), "%d", game.GetCurrentNight());
-        DrawStripText(STRIP_VAR14, 1148.0f + 63.0f + 6.0f, 74.0f, nb, 0xFFFFFFFF, 1.0f);
+        DrawStripText(STRIP_VAR14, 1237.0f, 89.0f, nb, 0xFFFFFFFF, 1.0f);
     }
 
     // power: "Power left:" img_207 @(106,638) + VAR14 digits + img_208 "%"

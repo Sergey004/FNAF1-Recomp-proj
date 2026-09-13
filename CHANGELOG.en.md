@@ -1,8 +1,45 @@
 # Changelog — FNAF1 Recomp (Xbox 360)
 
 Notes on what is done and what is left. Versions match the code
-comment tags (`v2.8`, `v2.14`, …, `v2.29`) and the historical notes.
+comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+
+---
+
+## v2.32 — FNAF3 + FNAF4 test renders (title + office)
+
+Both games now render their screens in module mode (arg "fnaf3"/"fnaf4"), same pattern as FNAF2: per-game renderer + thin module:
+
+- **FNaF3Render**: title (bg img_862; the FULL-STATIC title per the dump — the composite is covered by the static cycle [37,620,33,34,35,36]@99, the menu flashes through ~every 2.5 s as a labelled approximation until the flicker groups are pinned; menu items 592/301/625/826 + selector 833 at placement-table coords); office (2000×768 room img_203, pan 0..976, office static on top). Minigame rooms (BB, Mangle, Toy Chica, GFreddy, RWQFSFASXC, Marion) — later stages.
+- **FNaF4Render**: title (red-sky Backdrop img_626, the heading image img_658 @ (589,-2), menu images 730/737/738/731 at placement coords, footer texts); the bedroom (1300×768 img_4, pan 0..276). Stars/DEMO hidden; the FNAF4 logic (left door / right closet / bed) — later stages.
+- Roadmap fixed: FNAF2 → FNAF3 → FNAF4 to playable level; Sister Location last (the 1.5 GB streaming monster).
+- **Boot selector is back (v2.32)**: with more than one bundle present, boot shows a text list (D-pad select, A launch, B = default FNAF1); one pak boots straight. The argv override still wins for Xenia/debug runs.
+
+---
+
+## v2.31 — FNAF2 game skeleton: night loop, flashlight, cameras
+
+The FNAF2 state now lives in `FNaF2Game` (`include/FNaF2Game.h`) with counters named exactly as the dump's ("viewing", "lit?", "night", "battery life", "time of the night", "in danger", "mask", BB-steal flag), and `FNaF2Module` renders from it:
+
+- **Night loop**: title (selector New Game/Custom via D-pad, A starts) → night card → office → 6 AM → title. Custom Night shows the selector but is locked (no progression yet).
+- **Clock (dump-pinned)**: the "AM" counter hits 70 → hour change (group 484/485): 12→1, then +1; 70 s per hour, night 12AM→6AM ≈ 7 min; hour 6 = win screen.
+- **Flashlight (group 35/36)**: HOLD (LB on pad / Ctrl on PC), blocked by battery ≤ 0, mask, monitor up, "in danger", and by Balloon Boy having stolen it. Battery 7000 at night start, −1 per lit frame (group 170). The office renders dark (world tinted to ~28%) with the flashlight bringing full brightness; the ceiling strips (507) and LIGHT buttons stay lit.
+- **Camera monitor**: A raises/lowers (viewing 0↔1), D-pad cycles cams 1..12. The feed table is pinned from the office map-button groups (100–123): CAM01 [174], 02 [80], 03 [83], 04 [43], 05 [38], 06 [32], 07 [51], 08 [37], 09 [117], 10 [41], 11 [76] (Prize Corner), 12 [50] — the EMPTY variants; animatronic-presence frames come with the AI stage. A 0.12 s static burst plays on each switch; a text cam strip stands in for the real map buttons.
+- Fixed the FNAF1 night-number HUD to the dump position — the counter sits at (1237,89), the digits were drawn at (1217,74) (and at the screen edge in the v2.7.13 build seen in the user's recording).
+- Known approximations: night-card/6AM durations (2.5/5 s, pin from the frames), the timed title-glitch, 1600-wide feeds squeezed into the window (needs sub-rect crop in the batch).
+- **Renderers are now per-game**: all FNAF2 drawing moved out of the module into `FNaF2Render` (`include/FNaF2Render.h` + `src/FNaF2Render.cpp`) — a stateless-per-frame renderer fed `const FNaF2Game&` + clocks. GameRender stays FNAF1-only; both sit on the same core trio (SpriteBatch/PakLoader/TextRenderer via AppServices). New files: FNaF2Game.h/.cpp, FNaF2Render.h/.cpp.
+
+---
+
+## v2.30 — FNAF2 title screen renders (module mode)
+
+- **FNaF2Module draws the real FNAF2 title** from the dump (frame 1 "title", 1024×768): background img_321, the six-frame static cycle [332,334,328,329,330,331] at speed 99 = 59.4 FPS, the "Freddy glitch" frames (anims 12/13/14 = imgs 65/73/210), logo img_469, menu (new game 301 / continue 303 / selector 229 on New Game / night word 270 + counter digit / custom night 438 — VisibleAtStart=true per the dump). Deliberately hidden per the dump: demo, stars, 6th night (no FNAF2 save system yet). Frame coordinates map to the 720p screen as a pillarbox (scale 0.9375, 160 px bars), z-order follows the frame's instance order (static UNDER the logo/menu).
+- **DEVIATION (labelled)**: the glitch trigger group was not located in the title events yet — a timed approximation (~every 7 s, one glitch frame for ~0.25 s) runs until the event is pinned.
+- **Module mode in the core loop**: when the active module is not FNAF1, the loop owns the frame to the module (Tick + Render, no FNAF1 state machine/fades); B exits. A command-line arg naming a module ("fnaf2", …) overrides the pak-scan choice (Xenia/debugger args; per-game XEX builds will pick their module by construction).
+- **Verified against the tool's Frame Layout composite** (frame_1_title.png + placement table): all menu/logo positions now use the hotspot-corrected left/top (logo (96,39), new game (86,437), continue (86,507), selector (33,512) — frame start has it on CONTINUE, night word (97,549), custom night (89,650)); the four TEXT objects (heading "Five Nights at Freddy's 2" word-per-line top-left, "v 1.033", "Press and hold delete to reset all data.", "©2014 Scott Cawthon") are drawn with the debug font at their composite positions (raw instance coords are junk; consolas-based glyphs later). The "Demo" watermark in the composite is a frame-renderer artifact — the events keep it hidden (DEMO? pinned 0).
+- **FNAF2 office renders with panning** (frame 3 "Frame 1", 1600×768): A on the title switches to the office; the left stick pans the 1024-wide window across the 1600-wide room (0..576 world px, ~480 px/s). Drawn from the placement table: bg img_92, the "lights" strips (507), the wall piece (218), both wall LIGHT buttons (90/98), the desk row — table fan (293), plushies (601/604/603/606), mic (612), BB (610), toy bonnie (608), cupcake (555), golden fred (611) — with the viewport-space static over everything. Not drawn: all event-spawned objects (puppet, under-table Freddy, JJ, the "in office" poses, yellowbear, RWQFSFASXC), the mask/flip/camera overlays and the Halloween pumpkin.
+- **AppServices gains `input`** (per-frame pad snapshot refreshed by the core) and the core now actually hands services to the active module (`module->Load`) on entering module mode — until then the stubs ran with empty services.
+- Architecture decision recorded: separate XEX per game + shared static core.lib, each XEX shipping its own .spa (SPAFILE/XDBF with its own XACH achievements, via spaassembler); the in-binary selector is dropped (launcher.xex via XLaunchNewImage is optional later).
 
 ---
 
