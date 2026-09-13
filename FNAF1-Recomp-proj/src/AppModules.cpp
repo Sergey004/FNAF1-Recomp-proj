@@ -4,6 +4,7 @@
  */
 
 #include "AppModules.h"
+#include "AudioSystem.h"    // Play/Stop for the module ambience
 #include "TextRenderer.h"   // stub screens call DrawText (full type needed)
 #include "PakLoader.h"      // FindTexture for the module's own draws
 #include "SpriteBatch.h"
@@ -62,6 +63,7 @@ bool FNaF2Module::Load(AppServices& services) {
     m_time = 0.0f;
     m_lastSwitchT = -1.0f;
     m_pan = 288.0f;   // center of the 576-px pan range
+    m_prevAudioScreen = -1;
     m_render.Init(services.pak, services.batch, services.text);
     return true;
 }
@@ -90,10 +92,28 @@ void FNaF2Module::Tick(f32 dt) {
         if (m_pan < 0.0f)   m_pan = 0.0f;
         if (m_pan > 576.0f) m_pan = 576.0f;
     }
+
+    // v2.32: screen ambience — the title plays static2 + "In The Depths"
+    // (the FNAF2 menu song); other screens are silent for now (the office
+    // fan/room loops come with the office-audio stage).
+    const int scr = (int)m_game.GetScreen();
+    if (scr != m_prevAudioScreen && m_services.audio && m_services.pak) {
+        if (scr == (int)FNaF2Game::SCR_TITLE) {
+            // dump group 3: static2 (ch1 vol 50) + The_Sand_Temple_Loop_G
+            // (ch2 vol 100) — the title drone (NOT "In The Depths")
+            m_services.audio->Play(m_services.pak, "snd_static2", true, 0.5f);
+            m_services.audio->Play(m_services.pak, "snd_The_Sand_Temple_Loop_G", true, 1.0f);
+        } else {
+            m_services.audio->Stop("snd_static2");
+            m_services.audio->Stop("snd_In_The_Depths_C");
+        }
+        m_prevAudioScreen = scr;
+    }
 }
 
 void FNaF2Module::Render() {
     switch (m_game.GetScreen()) {
+        case FNaF2Game::SCR_DISCLAIMER: m_render.RenderDisclaimer(m_game); break;
         case FNaF2Game::SCR_TITLE:      m_render.RenderTitle(m_game, m_time); break;
         case FNaF2Game::SCR_NIGHTSTART: {
             // night card (frame "what day") — text card until its layout is ported
@@ -124,16 +144,42 @@ bool FNaF3Module::Load(AppServices& services) {
     m_wantsExit = false;
     m_time = 0.0f;
     m_pan = 488.0f;
-    m_screen = 0;
+    m_screen = -1;    // disclaimer first (frame 0 "Frame 17")
+    m_cardT = 0.0f;
     m_prevA = false;
     m_render.Init(services.pak, services.batch, services.text);
+    // v2.32: title ambience (titlemusic + static, per the FNAF3 title)
+    if (services.audio && services.pak) {
+        services.audio->Play(services.pak, "snd_titlemusic", true, 0.45f);
+        services.audio->Play(services.pak, "snd_static_sound", true, 0.35f);
+    }
     return true;
 }
 
 void FNaF3Module::Tick(f32 dt) {
     m_time += dt;
+    if (m_screen == -1) {
+        // own warning screen (~3.5 s or any key)
+        m_cardT += dt;
+        const bool anyKey = m_services.input &&
+            (m_services.input->cameraToggle || m_services.input->cameraUp ||
+             m_services.input->cameraDown);
+        if (m_cardT >= 3.5f || anyKey) { m_screen = 0; m_cardT = 0.0f; }
+        return;
+    }
     const bool aNow = m_services.input ? m_services.input->cameraToggle : false;
-    if (aNow && !m_prevA) m_screen = (m_screen == 0) ? 1 : 0;
+    if (aNow && !m_prevA) {
+        m_screen = (m_screen == 0) ? 1 : 0;
+        if (m_services.audio) {
+            if (m_screen == 0) {
+                m_services.audio->Play(m_services.pak, "snd_titlemusic", true, 0.45f);
+                m_services.audio->Play(m_services.pak, "snd_static_sound", true, 0.35f);
+            } else {
+                m_services.audio->Stop("snd_titlemusic");
+                m_services.audio->Stop("snd_static_sound");
+            }
+        }
+    }
     m_prevA = aNow;
     const f32 look = m_services.input ? m_services.input->lookDir : 0.0f;
     if (m_screen == 1) {
@@ -144,6 +190,17 @@ void FNaF3Module::Tick(f32 dt) {
 }
 
 void FNaF3Module::Render() {
+    if (m_screen == -1) {
+        if (m_services.text) {
+            m_services.text->DrawText((int)(530.0f * 1.25f), (int)(313.0f * 0.9375f),
+                                      "WARNING!", 0xFFFFFFFF);
+            m_services.text->DrawText((int)(338.0f * 1.25f), (int)(360.0f * 0.9375f),
+                                      "This game contains flashing lights, loud", 0xFFFFFFFF);
+            m_services.text->DrawText((int)(390.0f * 1.25f), (int)(388.0f * 0.9375f),
+                                      "noises, and lots of jumpscares!", 0xFFFFFFFF);
+        }
+        return;
+    }
     if (m_screen == 1) m_render.RenderOffice(m_time, m_pan);
     else               m_render.RenderTitle(m_time);
 }
@@ -159,7 +216,8 @@ bool FNaF4Module::Load(AppServices& services) {
     m_wantsExit = false;
     m_time = 0.0f;
     m_pan = 138.0f;
-    m_screen = 0;
+    m_screen = -1;    // disclaimer first (frame 0 "Frame 17")
+    m_cardT = 0.0f;
     m_prevA = false;
     m_render.Init(services.pak, services.batch, services.text);
     return true;
@@ -167,6 +225,19 @@ bool FNaF4Module::Load(AppServices& services) {
 
 void FNaF4Module::Tick(f32 dt) {
     m_time += dt;
+    if (m_screen == -1) {
+        m_cardT += dt;
+        const bool anyKey = m_services.input &&
+            (m_services.input->cameraToggle || m_services.input->cameraUp ||
+             m_services.input->cameraDown);
+        if (m_cardT >= 3.5f || anyKey) {
+            m_screen = 0; m_cardT = 0.0f;
+            // the title theme starts with the title (dump group 1)
+            if (m_services.audio && m_services.pak)
+                m_services.audio->Play(m_services.pak, "snd_title", true, 0.3f);
+        }
+        return;
+    }
     const bool aNow = m_services.input ? m_services.input->cameraToggle : false;
     if (aNow && !m_prevA) m_screen = (m_screen == 0) ? 1 : 0;
     m_prevA = aNow;
@@ -179,6 +250,18 @@ void FNaF4Module::Tick(f32 dt) {
 }
 
 void FNaF4Module::Render() {
+    if (m_screen == -1) {
+        // FNAF4's warning is RED (frame 0 "Frame 17")
+        if (m_services.text) {
+            m_services.text->DrawText((int)(465.0f * 1.25f), (int)(290.0f * 0.9375f),
+                                      "WARNING!", 0xFF2020E0);
+            m_services.text->DrawText((int)(255.0f * 1.25f), (int)(365.0f * 0.9375f),
+                                      "THIS GAME CONTAINS FLASHING LIGHTS, LOUD", 0xFF2020E0);
+            m_services.text->DrawText((int)(298.0f * 1.25f), (int)(393.0f * 0.9375f),
+                                      "NOISES, AND LOTS OF JUMPSCARES!", 0xFF2020E0);
+        }
+        return;
+    }
     if (m_screen == 1) m_render.RenderOffice(m_time, m_pan);
     else               m_render.RenderTitle(m_time);
 }

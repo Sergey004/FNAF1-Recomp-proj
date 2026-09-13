@@ -848,6 +848,46 @@ static void TickBrowserEntry(const GameInput& gi) {
 // ============================================================
 //  main
 // ============================================================
+// v2.32: the boot selector state (filled by the pak scan in main())
+static bool g_pakFound[8] = { false };
+
+// The boot selector: runs on the bare core (text only, pak not loaded).
+// D-pad/stick select, A launch, B = default (FNAF1). Returns the chosen
+// module index; AppRegistry_Active() is left pointing at it.
+static i32 RunBootSelector() {
+    i32 cursor = 0;
+    while (!g_pakFound[cursor]) ++cursor;   // start on the first presentable
+    bool selDone = false;
+    while (!selDone) {
+        GameInput gi; UpdateInput(gi);
+        if (gi.cameraUp)   { do { cursor = (cursor + AppRegistry_Count() - 1) % AppRegistry_Count(); } while (!g_pakFound[cursor]); }
+        if (gi.cameraDown) { do { cursor = (cursor + 1) % AppRegistry_Count(); } while (!g_pakFound[cursor]); }
+        if (gi.cameraToggle) selDone = true;
+        if (gi.back) { cursor = 0; selDone = true; }   // B = default (FNAF1)
+
+        FrameBegin(D3DCOLOR_XRGB(0,0,0));
+        {
+            g_text.DrawText(490, 120, "SELECT GAME", 0xFFFFFFFF);
+            for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi) {
+                if (!g_pakFound[mi]) continue;   // only launchable games
+                char row[80];
+                Snprintf(row, sizeof(row), "%s %s  (%s)",
+                         mi == cursor ? ">" : " ",
+                         AppRegistry_Get(mi)->Name(),
+                         AppRegistry_Get(mi)->PakName());
+                g_text.DrawText(500, 220 + mi * 60, row,
+                                mi == cursor ? 0xFF80FF80 : 0xFFB0B0B0);
+            }
+            g_text.DrawText(430, 620, "D-pad select   A launch   B default (FNAF1)", 0xFF909090);
+        }
+        FrameEnd();
+    }
+    AppRegistry_SetActive(cursor);
+    g_debugConsole.Print("Selected: %s", AppRegistry_Active()->Name());
+    return cursor;
+}
+
+
 int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
@@ -872,54 +912,20 @@ int main(int argc, char* argv[]){
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
     // (FNAF1 has priority; boot never fails here).
-    bool pakFound[8] = { false };
-    AppRegistry_ScanPaks(pakFound, 8);
+    AppRegistry_ScanPaks(g_pakFound, 8);
     for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi) {
         printf("Pak scan: %s -> %s\n", AppRegistry_Get(mi)->PakName(),
-               pakFound[mi] ? "OK" : "not found");
+               g_pakFound[mi] ? "OK" : "not found");
         g_debugConsole.Print("Pak %s: %s", AppRegistry_Get(mi)->PakName(),
-                             pakFound[mi] ? "OK" : "not found");
+                             g_pakFound[mi] ? "OK" : "not found");
     }
 
-    // v2.32: BOOT SELECTOR — when more than one bundle is present, show a
-    // small list (D-pad/stick to move, A to launch). One pak boots straight
-    // (FNAF1 priority from the scan). The menu runs on the raw core (text
-    // only, no pak textures yet).
+    // v2.32: BOOT SELECTOR — more than one bundle present? show the list.
     {
         i32 foundCount = 0;
         for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi)
-            if (pakFound[mi]) ++foundCount;
-        if (foundCount > 1) {
-            i32 cursor = 0;
-            while (!pakFound[cursor]) ++cursor;   // start on the first presentable
-            bool selDone = false;
-            while (!selDone) {
-                GameInput gi; UpdateInput(gi);
-                if (gi.cameraUp)   { do { cursor = (cursor + AppRegistry_Count() - 1) % AppRegistry_Count(); } while (!pakFound[cursor]); }
-                if (gi.cameraDown) { do { cursor = (cursor + 1) % AppRegistry_Count(); } while (!pakFound[cursor]); }
-                if (gi.cameraToggle) selDone = true;
-                if (gi.back) { cursor = 0; selDone = true; }   // B = default (FNAF1)
-
-                FrameBegin();
-                {
-                    g_text.DrawText(490, 120, "SELECT GAME", 0xFFFFFFFF);
-                    for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi) {
-                        if (!pakFound[mi]) continue;   // only launchable games
-                        char row[80];
-                        Snprintf(row, sizeof(row), "%s %s  (%s)",
-                                 mi == cursor ? ">" : " ",
-                                 AppRegistry_Get(mi)->Name(),
-                                 AppRegistry_Get(mi)->PakName());
-                        g_text.DrawText(500, 220 + mi * 60, row,
-                                        mi == cursor ? 0xFF80FF80 : 0xFFB0B0B0);
-                    }
-                    g_text.DrawText(430, 620, "D-pad select   A launch   B default (FNAF1)", 0xFF909090);
-                }
-                FrameEnd();
-            }
-            AppRegistry_SetActive(cursor);
-            g_debugConsole.Print("Selected: %s", AppRegistry_Active()->Name());
-        }
+            if (g_pakFound[mi]) ++foundCount;
+        if (foundCount > 1) RunBootSelector();
     }
 
     g_debugConsole.Print("Module: %s (%s)", AppRegistry_Active()->Name(),
@@ -955,7 +961,12 @@ int main(int argc, char* argv[]){
     // like FSD or Aurora — re-enable those variants when needed)
     char pakPath[128];
     Snprintf(pakPath, sizeof(pakPath), "game:\\%s", AppRegistry_Active()->PakName());
-    if(g_pak.Load(pakPath,g_pd3dDevice)){ g_pakLoaded=true; }
+    // v2.32: the module picks its loader — eager fits FNAF1-3 in the
+    // 512 MB UMA pool, FNAF4/SL must stream (real-HW OOM otherwise).
+    const bool pakOk = AppRegistry_Active()->PrefersStreaming()
+        ? g_pak.LoadStreaming(pakPath, g_pd3dDevice)
+        : g_pak.Load(pakPath, g_pd3dDevice);
+    if(pakOk){ g_pakLoaded=true; }
     if(g_pakLoaded){
         printf("Pak loaded: %d tex %d snd\n",g_pak.GetTextureCount(),g_pak.GetSoundCount());
         g_debugConsole.Print("Pak: %d tex %d snd",g_pak.GetTextureCount(),g_pak.GetSoundCount());
@@ -1039,22 +1050,49 @@ int main(int argc, char* argv[]){
             // snapshot is refreshed every frame before Tick
             static AppServices s_svc;
             static GameInput   s_in;
-            if (!s_svc.pak) {
-                s_svc.audio = &g_audio;
-                s_svc.pak   = &g_pak;
-                s_svc.batch = &g_batch;
-                s_svc.text  = &g_text;
+            static AppModule*  s_loadedModule = 0;
+            if (s_loadedModule != m) {
+                if (!s_svc.pak) {
+                    s_svc.audio = &g_audio;
+                    s_svc.pak   = &g_pak;
+                    s_svc.batch = &g_batch;
+                    s_svc.text  = &g_text;
+                }
                 m->Load(s_svc);
+                s_loadedModule = m;
                 g_debugConsole.Print("Module %s: services handed over", m->Name());
             }
             s_in = gi;
             s_svc.input = &s_in;
             m->Tick(1.0f / 60.0f);
-            if (gi.back) { printf("Module mode: B -> exit\n"); exit(0); }
-            FrameBegin();
-            m->Render();
-            FrameEnd();
-            continue;
+            if (gi.back) {
+                // v2.32: B = back to the boot selector (NOT a console kill):
+                // drop the current pak, pick another game, load its bundle.
+                g_pak.Unload();
+                g_pakLoaded = false;
+                s_loadedModule = 0;
+                RunBootSelector();
+                char pakPath2[128];
+                Snprintf(pakPath2, sizeof(pakPath2), "game:\\%s",
+                         AppRegistry_Active()->PakName());
+                const bool pakOk2 = AppRegistry_Active()->PrefersStreaming()
+                    ? g_pak.LoadStreaming(pakPath2, g_pd3dDevice)
+                    : g_pak.Load(pakPath2, g_pd3dDevice);
+                g_pakLoaded = pakOk2;
+                if (strcmp(AppRegistry_Active()->Name(), "FNAF1") == 0) {
+                    state = GAME_STATE_DISCLAIMER;   // fresh FNAF1 boot flow
+                } else {
+                    AppRegistry_Active()->Load(s_svc);
+                    s_loadedModule = AppRegistry_Active();
+                }
+            }
+            if (strcmp(AppRegistry_Active()->Name(), "FNAF1") != 0) {
+                FrameBegin(D3DCOLOR_XRGB(0,0,0));
+                m->Render();
+                FrameEnd();
+                continue;
+            }
+            // FNAF1 was chosen in the selector: fall through to its flow
         }
 
         // ---------------- PERSPECTIVE TUNER (v2.7.11) ----------------

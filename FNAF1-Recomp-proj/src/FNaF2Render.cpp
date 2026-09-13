@@ -51,16 +51,59 @@ int FNaF2Render::StaticFrame(f32 time) const {
     return kFrames[(int)(time / period) % 6];
 }
 
+// ---- disclaimer (frame 0 "Frame 17"): black + white mono warning ----
+void FNaF2Render::RenderDisclaimer(const FNaF2Game& game) {
+    if (!m_text) return;
+    (void)game;
+    m_text->DrawText((int)(455.0f * 1.25f), (int)(288.0f * kScaleY), "WARNING!", 0xFFFFFFFF);
+    m_text->DrawText((int)(283.0f * 1.25f), (int)(345.0f * kScaleY),
+                     "This game contains flashing lights, loud", 0xFFFFFFFF);
+    m_text->DrawText((int)(341.0f * 1.25f), (int)(382.0f * kScaleY),
+                     "noises, and lots of jumpscares!", 0xFFFFFFFF);
+}
+
 // ---- title (frame 1 "title", 1024x768) --------------------------------
 
 void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
     if (!m_batch || !m_pak) return;
 
-    // background (obj "Active 2", img_321, opaque)
-    Draw(321, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    // ---- the background "video FROM Freddy's eyes" (dump groups 4+8-11):
+    // at boot alterable[0] == 0 -> anim 12 = img_362 (the eye view IS the
+    // first scene); every 2 s a Random(50) re-roll maps 0/1/2 to the eye
+    // views 362/470/215 and anything else to the normal bg 321. We use a
+    // stateless hash per 2 s slot (same 3/51 duty as Random(50)).
+    {
+        const f32 kRollPeriod = 2.0f;
+        const int slot = (int)(time / kRollPeriod);
+        int roll;
+        if (slot == 0) {
+            roll = 0;                                   // boot state: eye view
+        } else {
+            u32 h = (u32)slot * 2654435761u + 1u;
+            h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+            roll = (int)(h % 51u);
+        }
+        const int bgImg = (roll == 0) ? 362 : (roll == 1) ? 470 : (roll == 2) ? 215 : 321;
+        Draw(bgImg, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    }
 
-    // static UNDER the logo/menu per the frame's instance order
-    Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    // ---- static UNDER the logo/menu per the frame's instance order, with
+    // the X jitter (group 1: every ~1.8 s a random X shift; we use a hash
+    // per 1.8 s slot, range +-50, the strip is drawn slightly wide so no
+    // gaps appear) ----
+    {
+        const f32 kJitPeriod = 1.8f;
+        const int jslot = (int)(time / kJitPeriod);
+        u32 h = (u32)jslot * 2654435761u + 7u;
+        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+        const f32 jx = (f32)(h % 101u) - 50.0f;
+        char name[32];
+        Snprintf(name, sizeof(name), "img_%d", StaticFrame(time));
+        PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+        if (t && t->texture && m_batch)
+            m_batch->Draw(t->texture, kOffX + jx * kScale, 0.0f,
+                          (1024.0f + 100.0f) * kScale, 768.0f * kScale, 0xFFFFFFFF);
+    }
 
     // the "Freddy glitch" (anims 12/13/14 = imgs 65/73/210).
     // DEVIATION: timed approximation (~7 s, one frame ~0.25 s) until the

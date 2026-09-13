@@ -1,13 +1,25 @@
-# FNAF1-Recomp — Five Nights at Freddy's for Xbox 360
+# FNAF Recomp — the classic FNAF series for Xbox 360
 
-> ⚠️ **Use a separate/offline Xbox 360 profile for this game.**
+> ⚠️ **Use a separate/offline Xbox 360 profile for this project.**
 > **This is an unofficial homebrew/clean-room reconstruction and recompilation project. Do not use Xbox Live with it.**
 
-A from-scratch reimplementation of FNAF1 on raw Xbox 360 XDK (D3D9 + XAudio2,
-VS2010/PPC, C++03 — no lambdas, no nullptr), aiming for a 1:1 match with the
-original PC release. The project has grown into a **foundation for the whole
-classic series**: FNAF 2/3/4, Sister Location and Ultimate Custom Night all
-plug into the same shell as modules.
+What started as a from-scratch reimplementation of FNAF1 on raw Xbox 360 XDK
+(D3D9 + XAudio2, VS2010/PPC, C++03 — no lambdas, no nullptr) is now a
+**MULTI-GAME shell**: one codebase hosts the whole classic series as
+plug-in modules, each with its own assets bundle, renderer and game logic —
+all dump-driven and tested on real hardware:
+
+| Game | Status |
+|---|---|
+| **FNAF 1** | fully playable, 1:1 with the PC release |
+| **FNAF 2** | playable skeleton: disclaimer → title ("the video from Freddy's eyes") → night loop → panning dark office (flashlight + battery) → 12-camera monitor with the map → 70 s/hour clock → 6 AM |
+| **FNAF 3** | test level: title (Springtrap + static bursts) + the 2000-wide office |
+| **FNAF 4** | test level: red-sky title + the 1300-wide bedroom; streams its 373 MB pak |
+| **Sister Location** | planned (1.5 GB pak — the streaming loader is built for it; the startup flow is already pinned from the dump) |
+
+One boot shows a **game selector** when more than one bundle is present.
+Every game ships its own `.spa` (Xbox identity/achievements) and its own
+`*.pak` (textures + sounds, built by our tool from that game's own dump).
 
 Русская версия: [README.ru.md](README.ru.md).
 
@@ -18,19 +30,25 @@ plug into the same shell as modules.
 > deliberate deviation from the dump is labelled as such in the code and in
 > the changelog.
 
-## Status (v2.29)
+## Status (v2.32)
 
 - **FNAF1 — fully playable, 1:1**: nights 1–7 + Custom Night, the full
   animatronic AI taken from the dump's event groups, jumpscares, power-out
   sequence, Golden Freddy (1/100 poster roll → office → kill screen +
   force-close), XContent saves/achievements, loose-save import; sounds and
   animation speeds verified against the dump (`fps = speed × 0.6`).
-- **Series foundation (v2.28–2.29)**: the `AppModule` contract (core ↔ game),
-  a module registry (FNAF1/2/3), a streaming pak loader (built for SL), and
-  GPU-ready pak + per-game asset-table generation for every game in the
-  series.
-- Dumps taken for FNAF1/2/3/4 + SL (17/27/26/19/36 event frames, paks from
-  0.1 GB up to 1.5 GB).
+- **FNAF2 — playable skeleton**: per-game disclaimer, the title with the
+  dump's "video from Freddy's eyes" background roll, the panning dark office
+  with a hold-flashlight and battery, the 12-camera monitor with the map,
+  the 70 s/hour night clock. Phone call, mask, vents, music box and the
+  animatronic AI are the next stages.
+- **FNAF3 / FNAF4 — test levels**: titles and offices render from their
+  dumps (FNAF4 boots through the streaming loader — its pak does not fit
+  the 512 MB UMA pool eagerly).
+- **Core**: `AppModule` contract, per-game renderers, boot selector, soft
+  pak scan, streaming pak loader, per-game disclaimers and title ambience.
+  Full session history: [CHANGELOG.en.md](CHANGELOG.en.md) /
+  [CHANGELOG.ru.md](CHANGELOG.ru.md).
 
 Full history: [CHANGELOG.en.md](CHANGELOG.en.md) /
 [CHANGELOG.ru.md](CHANGELOG.ru.md).
@@ -62,7 +80,10 @@ FNaF1Module (active)   FNaF2Module   FNaF3Module   … (FNAF4/SL/UCN)
 3. **Assets**: `fnaf1.pak` must sit next to the XEX (see "Asset pipeline").
    Without it you get the system "Missing fnaf1.pak" message box.
 4. **Running**: Xenia for fast iteration, or a console (RGH/JTAG — the game
-   runs from HDD). Command-line argument `1..7` picks the starting night (dev).
+   runs from HDD). When several `*.pak` bundles are present, boot shows a
+   **game selector** (D-pad select, A launch, B = FNAF1). Command-line
+   arguments: `1..7` picks the starting night, `fnaf2`/`fnaf3`/`fnaf4`/`sl`
+   force a module (dev).
 5. **Two builds**: default — system (saves/achievements in XContent);
    `FNAF_LIVE_SAFE` — the live-safe variant (save at `game:\save\freddy`,
    local achievements).

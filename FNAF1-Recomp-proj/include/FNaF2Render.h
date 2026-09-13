@@ -33,6 +33,7 @@ public:
 
     // frame 1 "title" (1024x768): bg, static cycle + Freddy glitch, logo,
     // menu (new game / selector / custom night). `time` drives the cycles.
+    void RenderDisclaimer(const FNaF2Game& game);   // frame 0 "Frame 17"
     void RenderTitle(const FNaF2Game& game, f32 time);
 
     // frame 3 "Frame 1" (1600x768): the panning office (dark unless lit),

@@ -49,25 +49,25 @@ int FNaF3Render::StaticFrame(f32 time) const {
 void FNaF3Render::RenderTitle(f32 time) {
     if (!m_batch || !m_pak) return;
 
-    // The FNAF3 title at frame start is FULL STATIC (the composite is
-    // covered; the menu flickers through it at runtime). Approximation:
-    // every ~2.5 s the menu shows through for ~0.18 s (DEVIATION until
-    // the flicker groups are pinned).
-    const f32 period = 2.5f;
-    const f32 phase  = time - period * (f32)(int)(time / period);
-    const bool menuFlash = phase < 0.18f;
+    // The scene is ALWAYS visible (bg img_862 + menu); the static appears
+    // only as short glitch bursts (the dump has a burst timer on the
+    // static object, groups 72/73 — roll every 40 s, ticks down; here a
+    // ~0.1 s burst per 1.6 s slot approximates the flicker).
+    Draw(862, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    Draw(592,  97.0f, 428.0f, 215.0f,  49.0f, 0xFFFFFFFF);  // "new game"
+    Draw(301,  97.0f, 500.0f, 243.0f,  49.0f, 0xFFFFFFFF);  // "load game"
+    Draw(625,  97.0f, 572.0f, 257.0f,  49.0f, 0xFFFFFFFF);  // "nightmare"
+    Draw(826,  96.0f, 641.0f, 145.0f,  49.0f, 0xFFFFFFFF);  // "extra"
+    Draw(833,  38.0f, 501.0f,  34.0f,  49.0f, 0xFFFFFFFF);  // selector
 
-    if (menuFlash) {
-        // bg (obj "Active 2", img_862) + the menu (sizes from the mapping)
-        Draw(862, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-        Draw(592,  97.0f, 428.0f, 215.0f,  49.0f, 0xFFFFFFFF);  // "new game"
-        Draw(301,  97.0f, 500.0f, 243.0f,  49.0f, 0xFFFFFFFF);  // "continue word"
-        Draw(625,  97.0f, 572.0f, 257.0f,  49.0f, 0xFFFFFFFF);  // "6th night"
-        Draw(826,  96.0f, 641.0f, 145.0f,  49.0f, 0xFFFFFFFF);  // "custom night"
-        Draw(833,  38.0f, 501.0f,  34.0f,  49.0f, 0xFFFFFFFF);  // selector
+    {
+        const f32 kPeriod = 1.6f;
+        const int slot = (int)(time / kPeriod);
+        u32 h = (u32)slot * 2654435761u + 3u;
+        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+        if ((h % 100u) < 8u)                       // ~8% of slots flash
+            Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     }
-    // static over everything (obj "static" @ (0,0), layer 2)
-    Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
 }
 
 void FNaF3Render::RenderOffice(f32 time, f32 pan) {
@@ -78,8 +78,15 @@ void FNaF3Render::RenderOffice(f32 time, f32 pan) {
     // vent/light logic stage).
     DrawWorld(203, 0.0f, 0.0f, 2000.0f, 768.0f, pan, 0xFFFFFFFF);
 
-    // office static
-    Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    // office static: short glitch bursts, not a constant cover
+    {
+        const f32 kPeriod = 1.4f;
+        const int slot = (int)(time / kPeriod);
+        u32 h = (u32)slot * 2654435761u + 5u;
+        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+        if ((h % 100u) < 10u)
+            Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    }
 
     if (m_text) m_text->DrawText(180, 20, "FNAF3 office (test)", 0xFF80FF80);
 }

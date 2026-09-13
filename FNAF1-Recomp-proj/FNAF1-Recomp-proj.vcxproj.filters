@@ -48,6 +48,21 @@
     <None Include="fnaf1.spa" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\assets\asset_mapping_fnaf1.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_fnaf2.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_fnaf3.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_fnaf4.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
+    <ClInclude Include="include\assets\asset_mapping_sisterlocation.hpp">
+      <Filter>Header Files\assets</Filter>
+    </ClInclude>
     <ClInclude Include="include\Achievements.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -88,6 +103,18 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\fnaf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNaF2Game.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNaF2Render.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNaF3Render.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNaF4Render.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\font_atlas.h">
@@ -138,21 +165,6 @@
     <ClInclude Include="include\XdkCompat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\assets\asset_mapping_fnaf1.hpp">
-      <Filter>Header Files\assets</Filter>
-    </ClInclude>
-    <ClInclude Include="include\assets\asset_mapping_fnaf2.hpp">
-      <Filter>Header Files\assets</Filter>
-    </ClInclude>
-    <ClInclude Include="include\assets\asset_mapping_fnaf3.hpp">
-      <Filter>Header Files\assets</Filter>
-    </ClInclude>
-    <ClInclude Include="include\assets\asset_mapping_fnaf4.hpp">
-      <Filter>Header Files\assets</Filter>
-    </ClInclude>
-    <ClInclude Include="include\assets\asset_mapping_sisterlocation.hpp">
-      <Filter>Header Files\assets</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files\assets">
@@ -182,6 +194,18 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\DoorSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FNaF2Game.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FNaF2Render.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FNaF3Render.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FNaF4Render.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Game.cpp">

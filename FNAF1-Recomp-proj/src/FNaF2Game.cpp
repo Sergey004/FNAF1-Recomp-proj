@@ -19,7 +19,8 @@ static const f32 kSixAmSeconds = 5.0f;    // 6AM cheer hold (approx; pin from fr
 FNaF2Game::FNaF2Game() { ResetToTitle(); }
 
 void FNaF2Game::ResetToTitle() {
-    m_screen = SCR_TITLE;
+    m_screen = SCR_DISCLAIMER;   // v2.32: every game opens with ITS warning
+    m_cardT = 0.0f;
     m_night = 1;
     m_timeOfNight = 12;
     m_amClock = 0.0f;
@@ -64,6 +65,16 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
     m_time += dt;
 
     switch (m_screen) {
+        case SCR_DISCLAIMER: {
+            // frame 0 "Frame 17": hold ~3.5 s or any key (group flow -> title)
+            m_cardT += dt;
+            if (m_cardT >= 3.5f || in.aPressed || in.upPressed || in.downPressed) {
+                m_screen = SCR_TITLE;
+                m_cardT = 0.0f;
+            }
+            break;
+        }
+
         case SCR_TITLE: {
             // selector: New Game / Custom Night (locked until beaten 6)
             if (in.upPressed || in.downPressed)

@@ -6,6 +6,31 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+# SESSION SUMMARY — 2026-09-12/13: the project became a MULTI-GAME shell
+
+This session turned the FNAF1 recomp into a foundation hosting the whole classic series. Everything below was tested on a REAL Xbox 360 (RGH), not just Xenia.
+
+**Dumps & tooling (CTFAK-CPP)**
+- Full dumps taken for FNAF2/3/4 and Sister Location (assets + event listings + structure JSON) — the authority source for everything below.
+- Restored the lost **Recomp Pack** tool (the .pak repacker existed in the source but was never registered/CMake-listed); generalized per-game pak naming (fnaf2/fnaf3/fnaf4/sisterlocation.pak); built GPU-ready paks for all games; per-game `asset_mapping_<id>.hpp` tables (namespaced, in `include/assets/`).
+- Verified the tool on Fusion builds 288 AND 286 (SL), up to a 1.5 GB pak.
+
+**Architecture**
+- **Core + per-game modules**: `AppModule` contract (Name/PakName/Load/Tick/Render/WantsExit/PrefersStreaming), `AppServices{audio,pak,batch,text,input}`, module registry, soft pak scan at boot.
+- **Renderers split per game**: GameRender = FNAF1 only; FNaF2/FNaF3/FNaF4Render — stateless, fed game state + clocks. Full-stretch 16:9 mapping (X 1.25 / Y 0.9375) like the stretched PC windows.
+- **Streaming pak loader** (`LoadStreaming` + `PreloadAsync` worker thread) — built for SL's 1.5 GB, proven necessary on real HW by FNAF4's OOM crash.
+- **Boot selector** with a soft pak scan; B in module mode returns to it (no more console kill).
+
+**FNAF2 — playable skeleton**: per-game disclaimer → title (the dump's "video FROM Freddy's eyes" bg roll, static X-jitter, Sand Temple drone) → night card → panning dark office (flashlight LB-hold per groups 35/36, battery 7000, BB-steal flag) → camera monitor (12 feeds pinned from groups 100-123, map panel + buttons) → 70 s/hour clock → 6 AM.
+
+**FNAF3 / FNAF4 — test levels**: titles and offices from their dumps (FNAF3: Springtrap scene + static bursts + titlemusic; FNAF4: red-sky title + 1300-wide bedroom, streaming loader, its title theme).
+
+**FNAF1 fixes along the way**: Freddy's 4B entry rule per dump groups 394/395; Golden Freddy kill screen rebuilt from f14; office hallucination per groups 413-419; night-number HUD to (1237,89).
+
+**Roadmap**: FNAF2 → FNAF3 → FNAF4 to FNAF1-level playability; Sister Location last (streaming monster, startup flow already pinned: Warning → Elevator/HandUnit voice → title).
+
+---
+
 ## v2.32 — FNAF3 + FNAF4 test renders (title + office)
 
 Both games now render their screens in module mode (arg "fnaf3"/"fnaf4"), same pattern as FNAF2: per-game renderer + thin module:
@@ -13,7 +38,12 @@ Both games now render their screens in module mode (arg "fnaf3"/"fnaf4"), same p
 - **FNaF3Render**: title (bg img_862; the FULL-STATIC title per the dump — the composite is covered by the static cycle [37,620,33,34,35,36]@99, the menu flashes through ~every 2.5 s as a labelled approximation until the flicker groups are pinned; menu items 592/301/625/826 + selector 833 at placement-table coords); office (2000×768 room img_203, pan 0..976, office static on top). Minigame rooms (BB, Mangle, Toy Chica, GFreddy, RWQFSFASXC, Marion) — later stages.
 - **FNaF4Render**: title (red-sky Backdrop img_626, the heading image img_658 @ (589,-2), menu images 730/737/738/731 at placement coords, footer texts); the bedroom (1300×768 img_4, pan 0..276). Stars/DEMO hidden; the FNAF4 logic (left door / right closet / bed) — later stages.
 - Roadmap fixed: FNAF2 → FNAF3 → FNAF4 to playable level; Sister Location last (the 1.5 GB streaming monster).
+- **Full-stretch 16:9 like the stretched PC windows**: all three module renderers map the 1024-wide frames with a separate X scale (1.25) and Y scale (0.9375) — no pillarbox bars; camera feeds stretch to fill; FNAF1 keeps its own panorama.
+- **FNAF2 title "video FROM Freddy's eyes" pinned to the dump** (groups 3,4,8-11): the game OPENS on the eye view (img_362); every 2 s a Random(50) re-roll maps 0/1/2 to the eye views (362/470/215) and the rest to the normal bg (321); the static layer jitters its X every ~1.8 s. Title audio corrected per dump: static2 (vol 50) + The_Sand_Temple_Loop_G drone (vol 100) — "In The Depths" was wrong.
+- **FNAF3 reworked after the console test**: the scene is ALWAYS visible (Springtrap bg + menu), the static appears only as short glitch bursts (the dump has a burst timer on the static object); the invented static_sound audio layer removed (the dump plays only titlemusic) and the music volume halved — "очень громкий звук" fixed.
+- **Per-game disclaimers**: every game now opens with ITS warning screen (frame 0 "Frame 17" per dump — same text, FNAF4's in red), ~3.5 s or any key; the title music starts at the TITLE, not during the warning.
 - **Boot selector is back (v2.32)**: with more than one bundle present, boot shows a text list (D-pad select, A launch, B = default FNAF1); one pak boots straight. The argv override still wins for Xenia/debug runs.
+- **Module ambience is live**: FNAF2 title plays static2 + "In The Depths" (the menu song), FNAF3 title plays titlemusic + static_sound, FNAF4 plays its base ambience over title AND bedroom; stops/starts follow the screens. Office/room loops come with each game's audio stage.
 
 ---
 

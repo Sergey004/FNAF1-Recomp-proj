@@ -78,6 +78,12 @@ public:
     // Module asks the core to shut the app down (Golden-Freddy-style
     // force close). Polled once per frame after Tick.
     virtual bool WantsExit() const = 0;
+
+    // v2.32: true = the core loads this module's bundle with the
+    // STREAMING pak loader (PakLoader::LoadStreaming) instead of the
+    // eager one. FNAF4 needs it (373 MB pak + all textures eager =
+    // out of the 512 MB UMA pool on real HW), SL will too (1.5 GB).
+    virtual bool PrefersStreaming() const { return false; }
 };
 
 } // namespace fnaf

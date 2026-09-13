@@ -330,6 +330,10 @@
     <ClInclude Include="include\DebugConsole.h" />
     <ClInclude Include="include\DoorSystem.h" />
     <ClInclude Include="include\fnaf.h" />
+    <ClInclude Include="include\FNaF2Game.h" />
+    <ClInclude Include="include\FNaF2Render.h" />
+    <ClInclude Include="include\FNaF3Render.h" />
+    <ClInclude Include="include\FNaF4Render.h" />
     <ClInclude Include="include\font_atlas.h" />
     <ClInclude Include="include\Game.h" />
     <ClInclude Include="include\GameRender.h" />
@@ -356,6 +360,10 @@
     <ClCompile Include="src\CameraSystem.cpp" />
     <ClCompile Include="src\DebugConsole.cpp" />
     <ClCompile Include="src\DoorSystem.cpp" />
+    <ClCompile Include="src\FNaF2Game.cpp" />
+    <ClCompile Include="src\FNaF2Render.cpp" />
+    <ClCompile Include="src\FNaF3Render.cpp" />
+    <ClCompile Include="src\FNaF4Render.cpp" />
     <ClCompile Include="src\Game.cpp" />
     <ClCompile Include="src\GameRender.cpp" />
     <ClCompile Include="src\GameTimer.cpp" />

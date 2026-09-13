@@ -40,6 +40,7 @@ struct FNaF2Inputs {         // translated from GameInput by the module
 class FNaF2Game {
 public:
     enum Screen {
+        SCR_DISCLAIMER = 4,  // frame 0 "Frame 17" (own warning per game)
         SCR_TITLE = 0,       // frame 1 "title"
         SCR_NIGHTSTART = 1,  // frame 2 "what day" (night card)
         SCR_OFFICE = 2,      // frame 3 "Frame 1"

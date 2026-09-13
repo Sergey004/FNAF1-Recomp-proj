@@ -75,6 +75,7 @@ private:
     f32         m_time;        // seconds since activation (drives static/glitch)
     f32         m_lastSwitchT; // camera-switch blip timer (monitor static)
     f32         m_pan;         // office pan: 0..(1600-1024) world px (stick)
+    int         m_prevAudioScreen; // v2.32: ambience switching (-1 none)
     FNaF2Game   m_game;        // v2.31: the dump-mirrored game state
     FNaF2Render m_render;      // v2.31: the per-game renderer (no GameRender)
 };
@@ -85,7 +86,7 @@ private:
 class FNaF3Module : public AppModule {
 public:
     FNaF3Module() : m_wantsExit(false), m_time(0.0f), m_pan(488.0f),
-                    m_screen(0), m_prevA(false) {}
+                    m_screen(-1), m_prevA(false), m_cardT(0.0f) {}
 
     virtual const char* Name()   const { return "FNAF3"; }
     virtual const char* PakName() const { return "fnaf3.pak"; }
@@ -101,8 +102,9 @@ private:
     bool        m_wantsExit;
     f32         m_time;    // anim clock
     f32         m_pan;     // office pan 0..976 (2000-wide world)
-    int         m_screen;  // 0 title, 1 office (A switches)
+    int         m_screen;  // -1 disclaimer, 0 title, 1 office
     bool        m_prevA;
+    f32         m_cardT;   // disclaimer timer
     FNaF3Render m_render;
 };
 
@@ -112,7 +114,7 @@ private:
 class FNaF4Module : public AppModule {
 public:
     FNaF4Module() : m_wantsExit(false), m_time(0.0f), m_pan(138.0f),
-                    m_screen(0), m_prevA(false) {}
+                    m_screen(-1), m_prevA(false), m_cardT(0.0f) {}
 
     virtual const char* Name()   const { return "FNAF4"; }
     virtual const char* PakName() const { return "fnaf4.pak"; }
@@ -122,14 +124,18 @@ public:
     virtual void Tick(f32 dt);
     virtual void Render();
     virtual bool WantsExit() const { return m_wantsExit; }
+    // 373 MB pak + 1281 eager textures = over the 512 MB UMA pool (real-HW
+    // console crash) — the streaming loader is mandatory for FNAF4.
+    virtual bool PrefersStreaming() const { return true; }
 
 private:
     AppServices m_services;
     bool        m_wantsExit;
     f32         m_time;    // anim clock
     f32         m_pan;     // bedroom pan 0..276 (1300-wide world)
-    int         m_screen;  // 0 title, 1 office (A switches)
+    int         m_screen;  // -1 disclaimer, 0 title, 1 office
     bool        m_prevA;
+    f32         m_cardT;   // disclaimer timer
     FNaF4Render m_render;
 };
 
@@ -149,6 +155,8 @@ public:
     virtual void Tick(f32 dt);
     virtual void Render();
     virtual bool WantsExit() const { return m_wantsExit; }
+    // 1.5 GB pak — streaming is the only option for SL (stage 9).
+    virtual bool PrefersStreaming() const { return true; }
 
 private:
     AppServices m_services;
