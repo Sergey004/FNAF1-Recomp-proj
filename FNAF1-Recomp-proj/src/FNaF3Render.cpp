@@ -13,8 +13,8 @@
 
 namespace fnaf {
 
-static const f32 kScale = 720.0f / 768.0f;
-static const f32 kOffX  = (1280.0f - 1024.0f * kScale) * 0.5f;   // 160
+static const f32 kScaleX = 1280.0f / 1024.0f;   // full-stretch 16:9
+static const f32 kScaleY = 720.0f / 768.0f;
 
 void FNaF3Render::Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text) {
     m_pak = pak; m_batch = batch; m_text = text;
@@ -25,19 +25,19 @@ void FNaF3Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
-    m_batch->Draw(t->texture, kOffX + fx * kScale, fy * kScale,
-                  fw * kScale, fh * kScale, color);
+    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
+                  fw * kScaleX, fh * kScaleY, color);
 }
 
 void FNaF3Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
                             float pan, u32 color) {
-    const f32 sx = kOffX + (wx - pan) * kScale;
-    if (sx >= 1280.0f || sx + fw * kScale <= kOffX) return;
+    const f32 sx = (wx - pan) * kScaleX;
+    if (sx >= 1280.0f || sx + fw * kScaleX <= 0.0f) return;
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
-    m_batch->Draw(t->texture, sx, wy * kScale, fw * kScale, fh * kScale, color);
+    m_batch->Draw(t->texture, sx, wy * kScaleY, fw * kScaleX, fh * kScaleY, color);
 }
 
 int FNaF3Render::StaticFrame(f32 time) const {

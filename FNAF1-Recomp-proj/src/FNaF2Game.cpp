@@ -15,6 +15,10 @@ static const i32 kBatteryMax   = 7000;   // group 34x: battery life := 7000
 static const f32 kSecondsPerHour = 70.0f; // "AM" alterable[0] >= 70 (g484/485)
 static const f32 kCardSeconds  = 2.5f;    // night card hold (approx; pin from frame 2)
 static const f32 kSixAmSeconds = 5.0f;    // 6AM cheer hold (approx; pin from frame 5)
+static const f32 kMaskT = 0.30f;           // mask down/up transition (anim length)
+static const f32 kMusicMax   = 60.0f;      // music box units (approx — pin from an extension)
+static const f32 kMusicWind  = 3.0f;       // per held frame on CAM 11
+static const f32 kMusicDrain = 1.0f / 40.0f;  // per frame idle (~0.4/s -> ~2.5 min)
 
 FNaF2Game::FNaF2Game() { ResetToTitle(); }
 
@@ -27,6 +31,10 @@ void FNaF2Game::ResetToTitle() {
     m_batteryLife = kBatteryMax;
     m_litQ = 0;
     m_viewing = 0;
+    m_maskState = 0;
+    m_maskT = 0.0f;
+    m_musicBox = kMusicMax;
+    m_musicDrainAcc = 0.0f;
     m_inDanger = 0;
     m_maskOn = false;
     m_bbGotLight = false;
@@ -56,6 +64,10 @@ void FNaF2Game::StartNight(i32 night) {
     m_batteryLife = kBatteryMax;
     m_litQ = 0;
     m_viewing = 0;
+    m_maskState = 0;
+    m_maskT = 0.0f;
+    m_musicBox = kMusicMax;
+    m_musicDrainAcc = 0.0f;
     m_inDanger = 0;
     m_maskOn = false;
     m_bbGotLight = false;
@@ -99,6 +111,37 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             if (in.aPressed)    ToggleMonitor();
             if (in.leftPressed)  CycleCam(-1);
             if (in.rightPressed) CycleCam(1);
+
+            // ---- MASK, dump alterable[0]: 0 off -> 1 coming down -> 2 on
+            // -> 3 going up -> 0. Put on while holding (and not on cam);
+            // taking it off happens on release. LL = light-side note: the
+            // mask blocks the flashlight (group 35) and keeps the monitor
+            // unusable while on (approximation).
+            const bool wantMask = in.maskHeld && m_viewing == 0 && m_batteryLife > 0;
+            switch (m_maskState) {
+                case 0: if (wantMask)      { m_maskState = 1; m_maskT = 0.0f; } break;
+                case 1: m_maskT += dt;
+                        if (m_maskT >= kMaskT || !wantMask) { m_maskState = 2; m_maskT = 0.0f; if (!wantMask) m_maskState = 0; }
+                        break;
+                case 2: if (!wantMask)     { m_maskState = 3; m_maskT = 0.0f; } break;
+                case 3: m_maskT += dt;
+                        if (m_maskT >= kMaskT) { m_maskState = 0; m_maskT = 0.0f; }
+                        break;
+            }
+            m_maskOn = (m_maskState == 1 || m_maskState == 2);   // blocks light
+
+            // ---- music box: winds only while viewing CAM 11 (the "music
+            // button" area), drains always; zero = the Puppet comes (the
+            // attack fires with the AI stage; a flag is set for now)
+            if (in.windHeld && m_viewing == 11 && !m_maskOn)
+                m_musicBox += kMusicWind * dt * 60.0f;
+            m_musicDrainAcc += kMusicDrain;
+            if (m_musicDrainAcc >= 1.0f) {
+                m_musicDrainAcc -= 1.0f;
+                m_musicBox -= 1.0f;
+            }
+            if (m_musicBox < 0.0f) m_musicBox = 0.0f;
+            if (m_musicBox > kMusicMax) m_musicBox = kMusicMax;
 
             // ---- flashlight, group 35/36: HOLD, blocked by battery,
             // mask, monitor up, "in danger", BB having the light ----

@@ -64,6 +64,8 @@ bool FNaF2Module::Load(AppServices& services) {
     m_lastSwitchT = -1.0f;
     m_pan = 288.0f;   // center of the 576-px pan range
     m_prevAudioScreen = -1;
+    m_callDone = false;
+    m_callT = 0.0f;
     m_render.Init(services.pak, services.batch, services.text);
     return true;
 }
@@ -79,6 +81,10 @@ void FNaF2Module::Tick(f32 dt) {
     in.leftPressed  = m_services.input ? m_services.input->cameraLeft   : false;
     in.rightPressed = m_services.input ? m_services.input->cameraRight  : false;
     in.lightHeld    = m_services.input ? m_services.input->leftShoulderHeld : false; // LB = hold flashlight
+    // v2.33: LT = Freddy mask hold, RT = music-box wind (both analog
+    // triggers are unused by FNAF2's other mechanics)
+    in.maskHeld     = m_services.input ? (m_services.input->leftDoorAxis  > 0.5f) : false;
+    in.windHeld     = m_services.input ? (m_services.input->rightDoorAxis > 0.5f) : false;
     in.lookDir      = m_services.input ? m_services.input->lookDir      : 0.0f;
 
     const i32 viewingBefore = m_game.GetViewing();
@@ -91,6 +97,24 @@ void FNaF2Module::Tick(f32 dt) {
         m_pan += in.lookDir * 480.0f * dt;          // ~480 px/s pan speed
         if (m_pan < 0.0f)   m_pan = 0.0f;
         if (m_pan > 576.0f) m_pan = 576.0f;
+
+        // v2.33: the phone call — ~2 s into the office, one-shot per
+        // night, sample "call <night>b" (night 6 = the garbled call). The
+        // dump's night gates (play voice N counters) are collapsed into
+        // <night> here; no mute in FNAF2.
+        if (!m_callDone) {
+            m_callT += dt;
+            if (m_callT >= 2.0f && m_services.audio && m_services.pak) {
+                char call[32];
+                const i32 n = m_game.GetNight() < 1 ? 1 : (m_game.GetNight() > 6 ? 6 : m_game.GetNight());
+                Snprintf(call, sizeof(call), "snd_call %db", n);
+                m_services.audio->Play(m_services.pak, call, false, 1.0f);
+                m_callDone = true;
+            }
+        }
+    } else if (m_callDone) {
+        m_callDone = false;   // leaving the office resets for the next night
+        m_callT = 0.0f;
     }
 
     // v2.32: screen ambience — the title plays static2 + "In The Depths"

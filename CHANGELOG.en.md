@@ -31,6 +31,12 @@ This session turned the FNAF1 recomp into a foundation hosting the whole classic
 
 ---
 
+## v2.33 — FNAF2: the Phone Guy call
+
+- **The night phone call is live**: ~2 s into the office the game plays the dump's record once — `snd_call 1b`…`6b` by night (night 6 = the garbled call). Implemented via the module's audio (the game class stays engine-free); no mute (FNAF2 has none); re-arms on the next office entry. Version bumped to v2.33.
+
+---
+
 ## v2.32 — FNAF3 + FNAF4 test renders (title + office)
 
 Both games now render their screens in module mode (arg "fnaf3"/"fnaf4"), same pattern as FNAF2: per-game renderer + thin module:

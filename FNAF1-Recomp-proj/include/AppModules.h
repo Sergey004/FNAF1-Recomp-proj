@@ -76,6 +76,8 @@ private:
     f32         m_lastSwitchT; // camera-switch blip timer (monitor static)
     f32         m_pan;         // office pan: 0..(1600-1024) world px (stick)
     int         m_prevAudioScreen; // v2.32: ambience switching (-1 none)
+    bool        m_callDone;    // v2.33: phone call played this night
+    f32         m_callT;       // v2.33: seconds in the office before the call
     FNaF2Game   m_game;        // v2.31: the dump-mirrored game state
     FNaF2Render m_render;      // v2.31: the per-game renderer (no GameRender)
 };

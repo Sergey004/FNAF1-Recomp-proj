@@ -30,11 +30,14 @@ struct FNaF2Inputs {         // translated from GameInput by the module
     bool leftPressed;        // cam cycle - (edge)
     bool rightPressed;       // cam cycle + (edge)
     bool lightHeld;          // flashlight hold (Ctrl on PC / LB on pad)
+    bool maskHeld;            // v2.33: Freddy mask hold (LT on pad)
+    bool windHeld;            // v2.33: music-box wind hold (RT on pad)
     f32  lookDir;            // office pan -1..1
 
     FNaF2Inputs() : aPressed(false), upPressed(false), downPressed(false),
                     leftPressed(false), rightPressed(false),
-                    lightHeld(false), lookDir(0.0f) {}
+                    lightHeld(false), maskHeld(false), windHeld(false),
+                    lookDir(0.0f) {}
 };
 
 class FNaF2Game {
@@ -59,6 +62,9 @@ public:
     i32    GetHour()          const { return m_timeOfNight; }
     i32    GetBatteryLife()   const { return m_batteryLife; }
     bool   IsLit()            const { return m_litQ != 0; }
+    i32    GetMaskState()     const { return m_maskState; }  // 0 off..2 on
+    f32    GetMusicBox()      const { return m_musicBox; }   // 0..kMusicMax
+    bool   IsMasked()         const { return m_maskState == 2; }
     i32    GetViewing()       const { return m_viewing; }
     i32    GetOptionSelected()const { return m_optionSelected; }
     f32    GetCardTimer()     const { return m_cardT; }
@@ -75,6 +81,10 @@ private:
     i32    m_batteryLife;      // "battery life" (7000 at night start)
     i32    m_litQ;             // "lit?" 0/1
     i32    m_viewing;          // "viewing" 0 = down, 1..12 = camera id
+    i32    m_maskState;        // "mask" alterable[0]: 0 off,1 down,2 on,3 up
+    f32    m_maskT;            // mask transition timer
+    f32    m_musicBox;         // "music box counter" wind level
+    f32    m_musicDrainAcc;    // drain accumulator
     i32    m_inDanger;         // "in danger" (blocks the light)
     bool   m_maskOn;           // "mask" alterable[0] != 0 (AI stage)
     bool   m_bbGotLight;       // "balloon boy" x "got you box" (BB stage)

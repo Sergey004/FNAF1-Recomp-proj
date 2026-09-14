@@ -586,6 +586,29 @@ static void PollTitleKeyboardReset(MenuSystem& menu) {
     }
 }
 
+// v2.33: the same wipe from the PAD — hold LT+RT ~2.5 s on the title (the
+// triggers do nothing on that screen; Start+B/LB+RB are taken by DEV and
+// the sprite browser).
+static f32 g_titleWipeHoldT = 0.0f;
+static void PollTitlePadReset(MenuSystem& menu, const GameInput& gi, f32 dt) {
+    const bool combo = gi.leftDoorAxis > 0.5f && gi.rightDoorAxis > 0.5f;
+    if (combo) {
+        g_titleWipeHoldT += dt;
+        if (g_titleWipeHoldT >= 2.5f) {
+            g_titleWipeHoldT = 0.0f;
+            Progress::Reset(g_prog);
+            if (Progress::Save(g_prog)) {
+                RefreshMenuFromProgress(menu);
+                g_debugConsole.Print("SAVE WIPED (LT+RT hold)");
+            } else {
+                g_debugConsole.Print("SAVE WIPE FAILED");
+            }
+        }
+    } else {
+        g_titleWipeHoldT = 0.0f;
+    }
+}
+
 void OnTimeUpdate(i32 hour){
     if(hour!=s_lastHour){
         s_lastHour=hour;
@@ -892,7 +915,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.32 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.33 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -907,7 +930,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.32 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.33 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1369,6 +1392,7 @@ int main(int argc, char* argv[]){
         if(state==GAME_STATE_MENU){
             if(menuFrameCounter < 30){ menuFrameCounter++; }
             PollTitleKeyboardReset(menu);   // hidden Delete-key save wipe (original title events)
+            PollTitlePadReset(menu, gi, 1.0f / 60.0f);   // v2.33: same from the pad (LT+RT hold)
 
             MenuAction act = MENU_ACTION_NONE;
             // v2.14/v2.20: achievements — Y opens the SYSTEM list in the system build
@@ -1401,6 +1425,14 @@ int main(int argc, char* argv[]){
                 if(act==MENU_ACTION_START_NIGHT){
                     i32 night=menu.GetSelectedNight();
                     g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
+                    // v2.33: 1:1 with dump group 24 — clicking New Game writes
+                    // `level=1` to the ini (the beat flags are KEPT, exactly
+                    // like the original's set-"level" action)
+                    if (menu.LastStartWasNewGame()) {
+                        Progress::Load(g_prog);
+                        g_prog.nextNight = 1;
+                        Progress::Save(g_prog);
+                    }
                     game.Init(night);
                     g_ach.BeginNight(night);   // v2.14: reset per-night achievement flags
                     s_phoneMuted=false; s_phonePlaying=false; s_phoneStarted=false;

@@ -18,7 +18,7 @@ all dump-driven and tested on real hardware:
 | **Sister Location** | **~3 %** | dump + pak + startup flow pinned (Warning → Elevator/HandUnit voice → title); the streaming loader is built. Left: everything visual and logical |
 
 One boot shows a **game selector** when more than one bundle is present.
-Every game ships its own `.spa` (Xbox identity/achievements) and its own
+Every game ships its own `.spa` (Xbox identity/achievements, not yet) and its own
 `*.pak` (textures + sounds, built by our tool from that game's own dump).
 
 Русская версия: [README.ru.md](README.ru.md).
@@ -35,7 +35,7 @@ Every game ships its own `.spa` (Xbox identity/achievements) and its own
 - **FNAF1 — fully playable, 1:1**: nights 1–7 + Custom Night, the full
   animatronic AI taken from the dump's event groups, jumpscares, power-out
   sequence, Golden Freddy (1/100 poster roll → office → kill screen +
-  force-close), XContent saves/achievements, loose-save import; sounds and
+  force-close), XContent saves/achievements (not work on real hardware, for now), loose-save import; sounds and
   animation speeds verified against the dump (`fps = speed × 0.6`).
 - **FNAF2 — playable skeleton**: per-game disclaimer, the title with the
   dump's "video from Freddy's eyes" background roll, the panning dark office
@@ -178,4 +178,4 @@ the same time. Rule for behavior disputes: read the event groups in
 
 Unofficial fan reimplementation for personal console use. A legally purchased
 copy of the original game is required — all assets are extracted from it. Do
-not distribute the assets or built images.
+not distribute the assets or built images. (In other words, Build it yourself)

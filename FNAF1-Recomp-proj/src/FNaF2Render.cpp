@@ -15,8 +15,10 @@
 namespace fnaf {
 
 // frame 1024x768 -> 720p pillarbox: scale 0.9375, 160 px bars
-static const f32 kScale = 720.0f / 768.0f;
-static const f32 kOffX  = (1280.0f - 1024.0f * kScale) * 0.5f;   // 160
+// frame 1024x768 -> FULL-STRETCH 1280x720 (PC-window behaviour):
+// X scale 1.25, Y scale 0.9375, no bars
+static const f32 kScaleX = 1280.0f / 1024.0f;   // 1.25
+static const f32 kScaleY = 720.0f / 768.0f;     // 0.9375
 
 void FNaF2Render::Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text) {
     m_pak = pak; m_batch = batch; m_text = text;
@@ -29,19 +31,19 @@ void FNaF2Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
-    m_batch->Draw(t->texture, kOffX + fx * kScale, fy * kScale,
-                  fw * kScale, fh * kScale, color);
+    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
+                  fw * kScaleX, fh * kScaleY, color);
 }
 
 void FNaF2Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
                             float pan, u32 color) {
-    const f32 sx = kOffX + (wx - pan) * kScale;
-    if (sx >= 1280.0f || sx + fw * kScale <= kOffX) return;   // off-window
+    const f32 sx = (wx - pan) * kScaleX;
+    if (sx >= 1280.0f || sx + fw * kScaleX <= 0.0f) return;   // off-window
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
-    m_batch->Draw(t->texture, sx, wy * kScale, fw * kScale, fh * kScale, color);
+    m_batch->Draw(t->texture, sx, wy * kScaleY, fw * kScaleX, fh * kScaleY, color);
 }
 
 int FNaF2Render::StaticFrame(f32 time) const {
@@ -101,8 +103,8 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
         Snprintf(name, sizeof(name), "img_%d", StaticFrame(time));
         PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
         if (t && t->texture && m_batch)
-            m_batch->Draw(t->texture, kOffX + jx * kScale, 0.0f,
-                          (1024.0f + 100.0f) * kScale, 768.0f * kScale, 0xFFFFFFFF);
+            m_batch->Draw(t->texture, jx * kScaleX, 0.0f,
+                          (1024.0f + 100.0f) * kScaleX, 768.0f * kScaleY, 0xFFFFFFFF);
     }
 
     // the "Freddy glitch" (anims 12/13/14 = imgs 65/73/210).
@@ -210,9 +212,8 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
     Snprintf(name, sizeof(name), "img_%d", kFeedImg[v]);
     PakLoadedTexture* t = m_pak->FindTexture(name);
     if (t && t->texture && m_batch) {
-        const f32 w = (f32)t->origWidth * kScale;
-        m_batch->Draw(t->texture, kOffX + (960.0f - w) * 0.5f, 0.0f,
-                      w, 768.0f * kScale, 0xFFFFFFFF);
+        // every feed stretches to fill the screen (PC-window behaviour)
+        m_batch->Draw(t->texture, 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
     }
 
     // feed-switch interference burst
@@ -242,11 +243,19 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
             for (int i = 0; i < 12; ++i) {
                 char cb[4];
                 Snprintf(cb, sizeof(cb), "%02d", kButtons[i].cam);
-                m_text->DrawText((int)(kOffX + (kButtons[i].x + 18.0f) * kScale),
-                                 (int)((kButtons[i].y + 13.0f) * kScale), cb,
+                m_text->DrawText((int)((kButtons[i].x + 18.0f) * kScaleX),
+                                 (int)((kButtons[i].y + 13.0f) * kScaleY), cb,
                                  kButtons[i].cam == v ? 0xFF202020 : 0xFF303030);
             }
         }
+    }
+
+    // CAM 11 (Prize Corner): the MUSIC BOX — wind button img_251/273 and
+    // a counter bar (the pump's charge; the button is held with RT).
+    if (v == 11) {
+        Draw(251, 90.0f, 560.0f, 156.0f, 65.0f, 0xFFFFFFFF);
+        if (m_text) m_text->DrawText((int)(20.0f), (int)(640.0f),
+                                     "Hold RT to wind the music box", 0xFFC0C0C0);
     }
 
     if (m_text) {
