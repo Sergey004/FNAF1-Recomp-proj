@@ -63,7 +63,7 @@ static const i32 SCREEN_H = 720;
 // can silently fail to show at boot (sound plays, no window), so every
 // use falls back to SoftPrompt. Defined below FrameEnd.
 static bool SysPrompt(const wchar_t* title, const wchar_t* text,
-                      const wchar_t* const* buttons, DWORD nButtons,
+                      const wchar_t** buttons, DWORD nButtons,
                       DWORD focus, DWORD flags, DWORD* pressedOut);
 static bool SoftPrompt(const char* title, const char* text1, const char* text2,
                        const char* yesLabel, const char* noLabel);
@@ -198,7 +198,7 @@ static void FrameEnd() {
 // v2.34: one XShowMessageBoxUI call with logging + watchdog; returns
 // true only if the system box actually completed (pressedOut valid).
 static bool SysPrompt(const wchar_t* title, const wchar_t* text,
-                      const wchar_t* const* buttons, DWORD nButtons,
+                      const wchar_t** buttons, DWORD nButtons,
                       DWORD focus, DWORD flags, DWORD* pressedOut) {
     MESSAGEBOX_RESULT result;
     XOVERLAPPED overlapped;
