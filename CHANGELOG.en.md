@@ -31,6 +31,16 @@ This session turned the FNAF1 recomp into a foundation hosting the whole classic
 
 ---
 
+## v2.34 — message boxes: watchdog + software fallback (the "sound, no window" fix)
+
+- **Root cause (real-HW import test)**: `XShowMessageBoxUI` played the system sound but never drew the box — it is called at boot before the first presented frame, and the docs only guarantee it fails loudly with `ERROR_ACCESS_DENIED` when another system UI already owns the screen; a silently-non-rendering/pending box leaves the old `while(!XHasOverlappedIoCompleted) Sleep(16)` hanging forever.
+- **`SysPrompt` wrapper**: one place calls `XShowMessageBoxUI` (non-NULL `XOVERLAPPED`, per the docs), logs `ret`/`res`/button to printf + the debug console, waits with a **10 s watchdog** instead of forever.
+- **`SoftPrompt` fallback**: a software-drawn prompt (title/text/hint, A = Yes, B = No, 30 s timeout) using our text+input stack — works on Xenia (no XMB) and on real HW when the system box failed to show.
+- **Every message box routes through it**: import question (No/Yes), import-done (OK), the missing-`fnaf1.pak` error, and `ShowFatalError` (which falls back only when the D3D stack is up). Boot presents **one black frame before the first box** so XAM has a frame to overlay.
+- Behavior is 1:1 when the system box works (real HW); the fallback only engages on actual failure. Version → v2.34.
+
+---
+
 ## v2.33 — FNAF2: the Phone Guy call
 
 - **The night phone call is live**: ~2 s into the office the game plays the dump's record once — `snd_call 1b`…`6b` by night (night 6 = the garbled call). Implemented via the module's audio (the game class stays engine-free); no mute (FNAF2 has none); re-arms on the next office entry. Version bumped to v2.33.

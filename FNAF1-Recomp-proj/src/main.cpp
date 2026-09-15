@@ -57,6 +57,17 @@ static Game* g_gameRef = nullptr;
 static const i32 SCREEN_W = 1280;
 static const i32 SCREEN_H = 720;
 
+// v2.34: message-box helpers — SysPrompt wraps XShowMessageBoxUI with
+// return-code logging and a 10 s watchdog; SoftPrompt draws the prompt
+// with our own text/input stack (defined after FrameEnd). The system box
+// can silently fail to show at boot (sound plays, no window), so every
+// use falls back to SoftPrompt. Defined below FrameEnd.
+static bool SysPrompt(const wchar_t* title, const wchar_t* text,
+                      const wchar_t* const* buttons, DWORD nButtons,
+                      DWORD focus, DWORD flags, DWORD* pressedOut);
+static bool SoftPrompt(const char* title, const char* text1, const char* text2,
+                       const char* yesLabel, const char* noLabel);
+
 // On the console printf goes nowhere (no stdout), so ANY fatal init failure
 // must be reported through XShowMessageBoxUI -- otherwise the user just sees
 // a silent black screen. ascii -> UTF-16 copy is manual (no CRT conversion
@@ -70,15 +81,9 @@ static void ShowFatalError(const char* titleA, const char* textA) {
     for (i = 0; textA && textA[i] && i < 319; ++i) wText[i] = (wchar_t)(unsigned char)textA[i];
     wText[i] = 0;
     LPCWSTR awszButtons[] = { L"OK" };
-    MESSAGEBOX_RESULT result;
-    XOVERLAPPED overlapped;
-    ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
-    DWORD dwRet = XShowMessageBoxUI(XUSER_INDEX_ANY, wTitle, wText, 1, awszButtons,
-                                    0, XMB_ERRORICON, &result, &overlapped);
-    if (dwRet == ERROR_IO_PENDING) {
-        while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
-        XGetOverlappedResult(&overlapped, NULL, TRUE);
-    }
+    DWORD pressed = 0;
+    if (!SysPrompt(wTitle, wText, awszButtons, 1, 0, XMB_ERRORICON, &pressed))
+        SoftPrompt(titleA, textA, 0, "OK", 0);
     Sleep(2000);
 }
 
@@ -190,96 +195,112 @@ static void FrameEnd() {
     g_pd3dDevice->Present(NULL, NULL, NULL, NULL);
 }
 
-static bool ShowPakErrorScreen(){
-    static bool shown = false;
-    if (shown) { exit(0); return false; }
-    shown = true;
-    DWORD dwUserIndex = XUSER_INDEX_ANY;
-    LPCWSTR wszTitle = L"fnaf1.pak NOT FOUND";
-    LPCWSTR wszText  = L"The game requires fnaf1.pak\nPlace it next to the .xex";
-    LPCWSTR awszButtons[] = { L"OK" };
-    DWORD cButtons = 1;
-    DWORD dwFocusButton = 0;
-    DWORD dwFlags = XMB_ERRORICON;
+// v2.34: one XShowMessageBoxUI call with logging + watchdog; returns
+// true only if the system box actually completed (pressedOut valid).
+static bool SysPrompt(const wchar_t* title, const wchar_t* text,
+                      const wchar_t* const* buttons, DWORD nButtons,
+                      DWORD focus, DWORD flags, DWORD* pressedOut) {
     MESSAGEBOX_RESULT result;
     XOVERLAPPED overlapped;
     ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
 
-    DWORD dwRet = XShowMessageBoxUI(
-        dwUserIndex,
-        wszTitle,
-        wszText,
-        cButtons,
-        awszButtons,
-        dwFocusButton,
-        dwFlags,
-        &result,
-        &overlapped
-    );
+    DWORD dwRet = XShowMessageBoxUI(XUSER_INDEX_ANY, title, text, nButtons,
+                                    buttons, focus, flags, &result, &overlapped);
+    printf("XMB: ret=0x%08X\n", dwRet);
+    g_debugConsole.Print("XMB: ret=0x%08X", dwRet);
+
     if (dwRet == ERROR_IO_PENDING) {
-        while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
-        DWORD dwRes = XGetOverlappedResult(&overlapped, NULL, TRUE);
-        if (dwRes == ERROR_SUCCESS) {
-            exit(0);
-        } else {
-            exit(0);
+        DWORD waitedMs = 0;
+        while (!XHasOverlappedIoCompleted(&overlapped) && waitedMs < 10000) {
+            Sleep(16);
+            waitedMs += 16;
         }
-    } else {
-        exit(0);
+        if (!XHasOverlappedIoCompleted(&overlapped)) {
+            printf("XMB: watchdog timeout, falling back to the soft prompt\n");
+            g_debugConsole.Print("XMB: watchdog timeout");
+            return false;
+        }
+        DWORD dwRes = XGetOverlappedResult(&overlapped, NULL, TRUE);
+        printf("XMB: res=0x%08X btn=%lu\n", dwRes, result.dwButtonPressed);
+        g_debugConsole.Print("XMB: res=0x%08X btn=%lu", dwRes, result.dwButtonPressed);
+        if (dwRes != ERROR_SUCCESS) return false;
+    } else if (dwRet != ERROR_SUCCESS) {
+        return false;
     }
+    if (pressedOut) *pressedOut = result.dwButtonPressed;
+    return true;
+}
+
+// v2.34: software-drawn fallback (works where XAM cannot draw the box —
+// Xenia, boot-before-present, another UI holding the system). A/B answer,
+// 30 s timeout. Needs the D3D/text stack (guarded).
+static bool SoftPrompt(const char* title, const char* text1, const char* text2,
+                       const char* yesLabel, const char* noLabel) {
+    if (!g_pd3dDevice) return false;
+    if (!noLabel) noLabel = "Cancel";
+    int frames = 0;
+    for (;;) {
+        GameInput gi; UpdateInput(gi);
+        if (gi.cameraToggle) return true;          // A = yes
+        if (gi.back) return false;                 // B = no
+        if (++frames > 30 * 60) return false;      // ~30 s timeout
+        FrameBegin(D3DCOLOR_XRGB(0,0,0));
+        g_text.DrawText(430, 250, title, 0xFFFFFFFF);
+        g_text.DrawText(390, 310, text1, 0xFFB0B0B0);
+        if (text2) g_text.DrawText(390, 340, text2, 0xFFB0B0B0);
+        char hint[96];
+        Snprintf(hint, sizeof(hint), "A = %s    B = %s", yesLabel, noLabel);
+        g_text.DrawText(450, 430, hint, 0xFF80FF80);
+        FrameEnd();
+        Sleep(16);
+    }
+}
+
+static bool ShowPakErrorScreen(){
+    static bool shown = false;
+    if (shown) { exit(0); return false; }
+    shown = true;
+    LPCWSTR wszTitle = L"fnaf1.pak NOT FOUND";
+    LPCWSTR wszText  = L"The game requires fnaf1.pak\nPlace it next to the .xex";
+    LPCWSTR awszButtons[] = { L"OK" };
+    DWORD pressed = 0;
+    if (!SysPrompt(wszTitle, wszText, awszButtons, 1, 0, XMB_ERRORICON, &pressed))
+        SoftPrompt("fnaf1.pak NOT FOUND",
+                   "The game requires fnaf1.pak. Place it next to the .xex",
+                   0, "OK", 0);
+    exit(0);
     return false;
 }
 
 // v2.23: ask whether to import a loose "freddy" save found next to the game
 // into the XContent save container. Same async pattern as ShowPakErrorScreen.
 static bool ShowImportSavePrompt(){
-    DWORD dwUserIndex = XUSER_INDEX_ANY;
     LPCWSTR wszTitle = L"Import save";
     LPCWSTR wszText  = L"Do you want to import the save found in the game folder?";
     LPCWSTR awszButtons[] = { L"No", L"Yes" };
-    DWORD cButtons = 2;
-    DWORD dwFocusButton = 1;               // default highlight "Yes"
-    DWORD dwFlags = XMB_WARNINGICON;
-    MESSAGEBOX_RESULT result;
-    XOVERLAPPED overlapped;
-    ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
 
-    DWORD dwRet = XShowMessageBoxUI(
-        dwUserIndex, wszTitle, wszText, cButtons, awszButtons,
-        dwFocusButton, dwFlags, &result, &overlapped);
-
-    if (dwRet == ERROR_IO_PENDING) {
-        while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
-        DWORD dwRes = XGetOverlappedResult(&overlapped, NULL, TRUE);
-        if (dwRes != ERROR_SUCCESS) return false;
-    } else if (dwRet != ERROR_SUCCESS) {
-        return false;
-    }
-    return result.dwButtonPressed == 1;    // 1 == "Yes"
+    // v2.34: system box first (1:1 feel on real HW); if it failed to show,
+    // the software prompt still lets the player answer (works on Xenia too)
+    DWORD pressed = 0;
+    if (SysPrompt(wszTitle, wszText, awszButtons, 2, 1, XMB_WARNINGICON, &pressed))
+        return pressed == 1;               // 1 == "Yes"
+    return SoftPrompt("Import save",
+                      "Do you want to import the save found in the game folder?",
+                      0, "Yes", "No");
 }
 
 // v2.23: informational box after a successful import — tell the player to
 // restart so the imported save is picked up fresh.
 static void ShowImportDonePrompt(){
-    DWORD dwUserIndex = XUSER_INDEX_ANY;
     LPCWSTR wszTitle = L"Import complete";
     LPCWSTR wszText  = L"Import complete. Please restart the game.";
     LPCWSTR awszButtons[] = { L"OK" };
-    DWORD cButtons = 1;
-    DWORD dwFocusButton = 0;
-    DWORD dwFlags = XMB_NOICON;
-    MESSAGEBOX_RESULT result;
-    XOVERLAPPED overlapped;
-    ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
 
-    DWORD dwRet = XShowMessageBoxUI(
-        dwUserIndex, wszTitle, wszText, cButtons, awszButtons,
-        dwFocusButton, dwFlags, &result, &overlapped);
-
-    if (dwRet == ERROR_IO_PENDING) {
-        while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
-        XGetOverlappedResult(&overlapped, NULL, TRUE);
-    }
+    DWORD pressed = 0;
+    if (!SysPrompt(wszTitle, wszText, awszButtons, 1, 0, XMB_NOICON, &pressed))
+        SoftPrompt("Import complete",
+                   "Import complete. Please restart the game.",
+                   0, "OK", 0);
 }
 
 // ============================================================
@@ -915,7 +936,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.33 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.34 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -930,7 +951,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.33 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.34 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1028,6 +1049,10 @@ int main(int argc, char* argv[]){
     g_render.Init(&g_batch,&g_text,&g_pak);
 
     MenuSystem menu;
+    // v2.34: present one frame first — at boot the XAM message box can
+    // "sound without showing" if nothing has been presented yet
+    FrameBegin(D3DCOLOR_XRGB(0,0,0));
+    FrameEnd();
     // v2.23: if a loose "freddy" save is found next to the game, ask before
     // importing it into the XContent container.
     if (Progress::HasLooseSave() && ShowImportSavePrompt()) {
