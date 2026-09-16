@@ -57,16 +57,14 @@ static Game* g_gameRef = nullptr;
 static const i32 SCREEN_W = 1280;
 static const i32 SCREEN_H = 720;
 
-// v2.34: message-box helpers — SysPrompt wraps XShowMessageBoxUI with
-// return-code logging and a 10 s watchdog; SoftPrompt draws the prompt
-// with our own text/input stack (defined after FrameEnd). The system box
-// can silently fail to show at boot (sound plays, no window), so every
-// use falls back to SoftPrompt. Defined below FrameEnd.
+// v2.34/2.35: message-box helper — SysPrompt wraps XShowMessageBoxUI with
+// return-code logging and a plain blocking wait. Real-HW evidence: the
+// system box always appears (the FIRST call is slow because XAM cold-
+// starts its XUI), so a software fallback was tried (v2.34) and removed
+// again (v2.35) — the box itself is the 1:1 UI.
 static bool SysPrompt(const wchar_t* title, const wchar_t* text,
                       const wchar_t** buttons, DWORD nButtons,
                       DWORD focus, DWORD flags, DWORD* pressedOut);
-static bool SoftPrompt(const char* title, const char* text1, const char* text2,
-                       const char* yesLabel, const char* noLabel);
 
 // On the console printf goes nowhere (no stdout), so ANY fatal init failure
 // must be reported through XShowMessageBoxUI -- otherwise the user just sees
@@ -82,8 +80,7 @@ static void ShowFatalError(const char* titleA, const char* textA) {
     wText[i] = 0;
     LPCWSTR awszButtons[] = { L"OK" };
     DWORD pressed = 0;
-    if (!SysPrompt(wTitle, wText, awszButtons, 1, 0, XMB_ERRORICON, &pressed))
-        SoftPrompt(titleA, textA, 0, "OK", 0);
+    SysPrompt(wTitle, wText, awszButtons, 1, 0, XMB_ERRORICON, &pressed);
     Sleep(2000);
 }
 
@@ -210,16 +207,11 @@ static bool SysPrompt(const wchar_t* title, const wchar_t* text,
     g_debugConsole.Print("XMB: ret=0x%08X", dwRet);
 
     if (dwRet == ERROR_IO_PENDING) {
-        DWORD waitedMs = 0;
-        while (!XHasOverlappedIoCompleted(&overlapped) && waitedMs < 10000) {
-            Sleep(16);
-            waitedMs += 16;
-        }
-        if (!XHasOverlappedIoCompleted(&overlapped)) {
-            printf("XMB: watchdog timeout, falling back to the soft prompt\n");
-            g_debugConsole.Print("XMB: watchdog timeout");
-            return false;
-        }
+        // v2.35: plain blocking wait — real-HW evidence: the box DOES open,
+        // the first call is slow because XAM cold-starts its XUI (10 s+
+        // before "Hooked: HUD: XuiSceneCreate") — a watchdog would fall
+        // back over a box that is about to appear.
+        while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
         DWORD dwRes = XGetOverlappedResult(&overlapped, NULL, TRUE);
         printf("XMB: res=0x%08X btn=%lu\n", dwRes, result.dwButtonPressed);
         g_debugConsole.Print("XMB: res=0x%08X btn=%lu", dwRes, result.dwButtonPressed);
@@ -231,44 +223,25 @@ static bool SysPrompt(const wchar_t* title, const wchar_t* text,
     return true;
 }
 
-// v2.34: software-drawn fallback (works where XAM cannot draw the box —
-// Xenia, boot-before-present, another UI holding the system). A/B answer,
-// 30 s timeout. Needs the D3D/text stack (guarded).
-static bool SoftPrompt(const char* title, const char* text1, const char* text2,
-                       const char* yesLabel, const char* noLabel) {
-    if (!g_pd3dDevice) return false;
-    if (!noLabel) noLabel = "Cancel";
-    int frames = 0;
-    for (;;) {
-        GameInput gi; UpdateInput(gi);
-        if (gi.cameraToggle) return true;          // A = yes
-        if (gi.back) return false;                 // B = no
-        if (++frames > 30 * 60) return false;      // ~30 s timeout
-        FrameBegin(D3DCOLOR_XRGB(0,0,0));
-        g_text.DrawText(430, 250, title, 0xFFFFFFFF);
-        g_text.DrawText(390, 310, text1, 0xFFB0B0B0);
-        if (text2) g_text.DrawText(390, 340, text2, 0xFFB0B0B0);
-        char hint[96];
-        Snprintf(hint, sizeof(hint), "A = %s    B = %s", yesLabel, noLabel);
-        g_text.DrawText(450, 430, hint, 0xFF80FF80);
-        FrameEnd();
-        Sleep(16);
-    }
+// v2.35: a clean exit to the Xbox dashboard. exit(0) on XDK tears the
+// process down abruptly (the kernel logs threads dying with code 0 — the
+// "core falls" the user saw); XLaunchNewImage(NULL) relaunches the system
+// dashboard instead. Exception: Golden Freddy's force-close keeps exit(0)
+// on purpose (it mirrors the original's abrupt close).
+static void ExitToDashboard() {
+    XLaunchNewImage(NULL, NULL);
 }
 
 static bool ShowPakErrorScreen(){
     static bool shown = false;
-    if (shown) { exit(0); return false; }
+    if (shown) { ExitToDashboard(); return false; }
     shown = true;
     LPCWSTR wszTitle = L"fnaf1.pak NOT FOUND";
     LPCWSTR wszText  = L"The game requires fnaf1.pak\nPlace it next to the .xex";
     LPCWSTR awszButtons[] = { L"OK" };
     DWORD pressed = 0;
-    if (!SysPrompt(wszTitle, wszText, awszButtons, 1, 0, XMB_ERRORICON, &pressed))
-        SoftPrompt("fnaf1.pak NOT FOUND",
-                   "The game requires fnaf1.pak. Place it next to the .xex",
-                   0, "OK", 0);
-    exit(0);
+    SysPrompt(wszTitle, wszText, awszButtons, 1, 0, XMB_ERRORICON, &pressed);
+    ExitToDashboard();
     return false;
 }
 
@@ -282,11 +255,8 @@ static bool ShowImportSavePrompt(){
     // v2.34: system box first (1:1 feel on real HW); if it failed to show,
     // the software prompt still lets the player answer (works on Xenia too)
     DWORD pressed = 0;
-    if (SysPrompt(wszTitle, wszText, awszButtons, 2, 1, XMB_WARNINGICON, &pressed))
-        return pressed == 1;               // 1 == "Yes"
-    return SoftPrompt("Import save",
-                      "Do you want to import the save found in the game folder?",
-                      0, "Yes", "No");
+    SysPrompt(wszTitle, wszText, awszButtons, 2, 1, XMB_WARNINGICON, &pressed);
+    return pressed == 1;                   // 1 == "Yes"
 }
 
 // v2.23: informational box after a successful import — tell the player to
@@ -297,10 +267,7 @@ static void ShowImportDonePrompt(){
     LPCWSTR awszButtons[] = { L"OK" };
 
     DWORD pressed = 0;
-    if (!SysPrompt(wszTitle, wszText, awszButtons, 1, 0, XMB_NOICON, &pressed))
-        SoftPrompt("Import complete",
-                   "Import complete. Please restart the game.",
-                   0, "OK", 0);
+    SysPrompt(wszTitle, wszText, awszButtons, 1, 0, XMB_NOICON, &pressed);
 }
 
 // ============================================================
@@ -544,6 +511,20 @@ static void TickPowerOutFaceSound(const Game& game) {
 static int   s_goldState = 0;
 static bool  s_goldInOffice = false;
 static f32   s_goldTimer = 0.0f;
+static f32   s_goldItsmeT = 0.0f;   // v2.35: IT'S ME burst clock during his visit
+
+// v2.35: DEV — spawn the REAL Golden Freddy pipeline in the office
+// (bypasses the 1/100 poster roll): giggle + office appearance (img 573) +
+// IT'S ME flashes + full-screen face + the intentional close.
+static void DebugSpawnGoldenFreddy() {
+    if (s_goldInOffice) return;
+    s_goldState = 2;
+    s_goldInOffice = true;
+    s_goldTimer = 0.0f;
+    s_goldItsmeT = 0.0f;
+    g_audio.Play(&g_pak, Snd::FREDDY_LAUGH_LONG, false, 1.0f);
+    g_debugConsole.Print("GOLDEN SPAWNED (debug): appears in the office");
+}
 
 static void TickGoldenFreddy(Game& game, GameRender& render) {
     const bool monUp = game.GetCameras().IsMonitorUp();
@@ -565,16 +546,25 @@ static void TickGoldenFreddy(Game& game, GameRender& render) {
     }
 
     // 4. hold: raising the monitor despawns him; ~5 s -> the kill.
-    // v2.27: per the dump (groups 420-425) the sitting phase itself is
-    // SILENT and plain — any flicker/voice the player sees is the generic
-    // "Active 21" hallucination system, which runs on its own schedule.
+    // v2.35: his visit is accompanied by IT'S ME flashes (~0.2 s every
+    // ~1.1 s) — the wiki's hallucination phase; then the full-screen face
+    // (f14) and the intentional close.
     if (s_goldInOffice) {
         s_goldTimer += 1.0f / 60.0f;
         if (monUp) {
             s_goldInOffice = false; s_goldState = 0; s_goldTimer = 0.0f;
-        } else if (s_goldTimer >= 5.0f) {
-            s_goldInOffice = false; s_goldState = 0; s_goldTimer = 0.0f;
-            game.DebugTriggerGoldenFreddy();
+            s_goldItsmeT = 0.0f;
+            g_itsmeT = -1.0f;
+        } else {
+            s_goldItsmeT += 1.0f / 60.0f;
+            if (s_goldItsmeT >= 1.1f) s_goldItsmeT -= 1.1f;
+            g_itsmeT = (s_goldItsmeT < 0.2f) ? 1.0f : -1.0f;
+            if (s_goldTimer >= 5.0f) {
+                s_goldInOffice = false; s_goldState = 0; s_goldTimer = 0.0f;
+                s_goldItsmeT = 0.0f;
+                g_itsmeT = -1.0f;
+                game.DebugTriggerGoldenFreddy();
+            }
         }
     }
 
@@ -936,7 +926,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.34 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.35 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -951,7 +941,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.34 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.35 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1058,11 +1048,12 @@ int main(int argc, char* argv[]){
     if (Progress::HasLooseSave() && ShowImportSavePrompt()) {
         if (Progress::ImportSave()) {
             ShowImportDonePrompt();
-            exit(0);   // v2.23: close so the player restarts fresh with the imported save
+            ExitToDashboard();   // v2.23: leave to the dashboard so the player restarts fresh
         }
     }
     RefreshMenuFromProgress(menu);   // v2.7.13: boot from fnaf_save.bin
     g_ach.Init();                     // v2.14: load achievements (device already chosen)
+    g_ach.SetDebugConsole(&g_debugConsole);   // v2.35: ACH results on the debug console
 
     // Boot: disclaimer first (original title-frame String obj 0 flow)
     GameState state = GAME_STATE_DISCLAIMER;
@@ -1162,12 +1153,19 @@ int main(int argc, char* argv[]){
         }
 
         // ---------------- DEV MENU (v2.17) ----------------
-        // Start + B toggles it (works in every state). The toggle frame is
-        // swallowed in the DEV block below so Start never leaks into the
-        // pause handler (which was kicking the game back to the title).
-        if (gi.pause && gi.back) {
+        // Start+B DEV combo. The pad almost never reports BOTH edges on the
+        // SAME 16 ms frame — B normally lands first, Start a frame or two
+        // later — and a lone Start edge falls into the pause handler below,
+        // kicking the game to the title. So: remember a B edge for ~330 ms
+        // and accept a Start edge inside that window (same-frame still works
+        // because the B edge is recorded before the check).
+        static int  s_devBWindow = 0;           // frames left of the B window
+        if (gi.back) s_devBWindow = 20;
+        if (s_devBWindow > 0) --s_devBWindow;
+        if (gi.pause && (gi.back || s_devBWindow > 0)) {
             g_devMode  = !g_devMode;
             devToggled = true;
+            s_devBWindow = 0;
             if (g_devMode) g_debugConsole.Print("DEV menu ON");
         }
 
@@ -1328,10 +1326,11 @@ int main(int argc, char* argv[]){
                         break;
                     case 4:
                         if (g_devAnim == 4) {
-                            // Golden Freddy ("yellow bear"): distinct giggle + face flash
-                            g_audio.Play(&g_pak, Snd::FREDDY_LAUGH_LONG, false, 1.0f);
-                            g_scareFlashImg = SCARE_IMG_GOLDEN;
-                            g_goldenScareT = 0.0f;
+                            // Golden Freddy: the REAL pipeline — appears in
+                            // the office (not a camera frame), IT'S ME
+                            // flashes, ~5 s later the face fills the screen
+                            // and the title closes (safe, intentional).
+                            DebugSpawnGoldenFreddy();
                         } else if (g_devAnim == 5) {
                             // Bonnie door-light stare + windowscare sting
                             g_audio.Play(&g_pak, Snd::WINDOW_SCARE, false, 1.0f);
@@ -1614,8 +1613,12 @@ int main(int argc, char* argv[]){
             if(state==GAME_STATE_JUMPSCARE){
                 g_render.RenderJumpscare(game.GetJumpscareAnimatronic(), scareElapsed);
                 // v2.26: Golden Freddy — per the original, instead of the normal
-                // Game Over screen the game forcibly closes (only avoidable by
-                // raising the Monitor in time).
+                // Game Over screen the game ABRUPTLY closes (only avoidable
+                // by raising the Monitor in time). v2.35 decision: keep
+                // exit(0) on purpose — it is SAFE (a plain process end; on
+                // RGH dashboards the system may present it as a "crash" and
+                // reboot to the dashboard, but the console is never harmed
+                // and always recovers; README documents this as a feature).
                 if (game.GetJumpscareAnimatronic()==ANIM_COUNT &&
                     scareElapsed >= (f32)game.GetJumpscareDurationSec())
                     exit(0);

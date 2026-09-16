@@ -8,6 +8,7 @@
 
 #include "Achievements.h"
 #include "Progress.h"
+#include "DebugConsole.h"
 #include <cstdio>
 
 // ---------------------------------------------------------------------------
@@ -46,6 +47,7 @@ static const AchievementDef kAchievements[Achievements::COUNT] = {
 
 Achievements::Achievements()
     : m_unlocked(0)
+    , m_console(0)
     , m_foxyRan(false)
     , m_freddyEast(false)
     , m_night(0)
@@ -58,6 +60,7 @@ void Achievements::Init() {
     u32 bits = 0;
     if (Progress::LoadAchieve(&bits)) m_unlocked = bits;
     printf("Achievements: unlocked=0x%03X\n", (unsigned)m_unlocked);
+    if (m_console) m_console->Print("Achievements: unlocked=0x%03X", (unsigned)m_unlocked);
 }
 
 bool Achievements::IsUnlocked(int id) const {
@@ -155,7 +158,22 @@ int Achievements::ToastGamerscore() const {
 }
 
 void Achievements::Save() {
-    Progress::SaveAchieve(m_unlocked);
+    if (!Progress::SaveAchieve(m_unlocked)) {
+        printf("ACH save FAILED\n");
+        if (m_console) m_console->Print("ACH save FAILED");
+    }
+}
+
+// v2.35: human-readable names for the XDK results achievements can hit.
+static const char* AchErrName(DWORD res) {
+    switch (res) {
+        case ERROR_SUCCESS:          return "OK";
+        case ERROR_ACCESS_DENIED:    return "ACCESS_DENIED";
+        case ERROR_INVALID_PARAMETER:return "BAD_PARAM";
+        case ERROR_DEVICE_NOT_CONNECTED: return "DEVICE_NOT_CONNECTED";
+        case ERROR_NO_MORE_FILES:    return "NO_DISK_SPACE";
+        default: return "?";
+    }
 }
 
 void Achievements::SystemWrite(int id) {
@@ -167,7 +185,8 @@ void Achievements::SystemWrite(int id) {
     a.dwUserIndex     = 0;             // first controller (single-profile console)
     a.dwAchievementId = (DWORD)id;
     DWORD res = XUserWriteAchievements(1, &a, NULL);
-    printf("ACH %d -> 0x%08X\n", id, (unsigned)res);
+    printf("ACH %d -> 0x%08X (%s)\n", id, (unsigned)res, AchErrName(res));
+    if (m_console) m_console->Print("ACH %d -> 0x%08X (%s)", id, (unsigned)res, AchErrName(res));
 #else
     // Live Safe build: no Xbox profile write; the local game:\save\fnaf_ach.ini +
     // in-game UI are the entire record.
@@ -179,7 +198,9 @@ void Achievements::SystemWrite(int id) {
 bool Achievements::ShowSystemUI() {
 #if !defined(FNAF_LIVE_SAFE)
     // System build: open the Xbox Guide "Achievements" list for this title.
-    XShowAchievementsUI(0);
+    DWORD res = XShowAchievementsUI(0);
+    printf("ACH UI -> 0x%08X (%s)\n", (unsigned)res, AchErrName(res));
+    if (m_console) m_console->Print("ACH UI -> 0x%08X (%s)", (unsigned)res, AchErrName(res));
     return true;
 #else
     // Live Safe build: no system UI — caller falls back to the in-game screen.

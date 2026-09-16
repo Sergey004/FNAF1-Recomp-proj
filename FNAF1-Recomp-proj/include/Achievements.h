@@ -51,6 +51,11 @@ public:
     // XContent device has already been chosen (no second selector dialog).
     void Init();
 
+    // v2.35: hook the on-screen debug console (main's g_debugConsole) — the
+    // XDK calls log results somewhere visible on the console (printf goes
+    // nowhere there). Optional: NULL = printf-only.
+    void SetDebugConsole(class DebugConsole* c) { m_console = c; }
+
     bool IsUnlocked(int id) const;
 
     // Night-scoped "prevent X" tracking, reset at the start of each night.
@@ -87,6 +92,7 @@ public:
 
 private:
     u32   m_unlocked;     // bit (id-1) set = achievement id unlocked
+    class DebugConsole* m_console;   // v2.35: on-screen log sink (may be 0)
     bool  m_foxyRan;      // this night
     bool  m_freddyEast;   // this night
     int   m_night;

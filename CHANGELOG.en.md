@@ -31,6 +31,18 @@ This session turned the FNAF1 recomp into a foundation hosting the whole classic
 
 ---
 
+## v2.35 — message boxes: software fallback removed (the box was fine)
+
+- Real-HW log proved the v2.34 watchdog was wrong: `XMB: ret=0x3E5` (= ERROR_IO_PENDING — the box opens), then a ~10 s delay until `Hooked: 'HUD: XuiSceneCreate'` — that is XAM **cold-starting its XUI on the FIRST call**; the window itself appears fine afterwards.
+- Reverted to the plain blocking wait (no watchdog, no `SoftPrompt`): `SysPrompt` keeps the return-code logging (`ret`/`res`/button) and every box routes through it (import question/done, missing pak, fatal). The one black frame presented before the first boot box stays (harmless).
+
+The Xenia caveat is accepted: Xenia does not render the XMB; if emulator testing needs prompts later, a fallback can return behind a build flag.
+
+- **Start+B DEV combo made pad-robust**: the pad reports the two edges a frame or two apart, so a lone Start fell into the pause handler and booted the game back to the title. A ~330 ms window after a B edge now accepts the Start edge (same-frame still works).
+- **Clean exits to the dashboard**: `exit(0)` tears the XDK process down abruptly (kernel threads dying with code 0). `ExitToDashboard()` = `XLaunchNewImage(NULL, NULL)` now ends the missing-pak screen and the import self-close; **Golden Freddy intentionally keeps exit(0)** (it mirrors the original's abrupt close).
+- **Golden Freddy flow restored (DEV item 4 now runs the REAL pipeline)**: the old DEV test drew the CAM 2B pose over the camera view ("just a camera frame"). It now spawns the actual sequence — giggle, he appears IN THE OFFICE (img 573), **IT'S ME flashes accompany the visit** (~0.2 s every ~1.1 s, the wiki's hallucination phase), the full-screen face (f14) and the intentional close. READMEs document the "crash" as a safe feature.
+---
+
 ## v2.34 — message boxes: watchdog + software fallback (the "sound, no window" fix)
 
 - **Root cause (real-HW import test)**: `XShowMessageBoxUI` played the system sound but never drew the box — it is called at boot before the first presented frame, and the docs only guarantee it fails loudly with `ERROR_ACCESS_DENIED` when another system UI already owns the screen; a silently-non-rendering/pending box leaves the old `while(!XHasOverlappedIoCompleted) Sleep(16)` hanging forever.

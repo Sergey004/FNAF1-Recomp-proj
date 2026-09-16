@@ -2,6 +2,13 @@
 
 > ⚠️ **Use a separate/offline Xbox 360 profile for this project.**
 > **This is an unofficial homebrew/clean-room reconstruction and recompilation project. Do not use Xbox Live with it.**
+> ⚠️ **"Crash" during Golden Freddy's kill is a FEATURE.** After his
+> full-screen face appears, the game intentionally closes the title the same
+> abrupt way the ORIGINAL PC release does — it looks like a crash but is a
+> safe easter egg: only the game quits (for a moment you land at the
+> dashboard), the console is never harmed, and it is avoidable by raising
+> the Monitor in time. All other exits (incl. missing pak and the save
+> import restart) go to the dashboard through `XLaunchNewImage`.
 
 What started as a from-scratch reimplementation of FNAF1 on raw Xbox 360 XDK
 (D3D9 + XAudio2, VS2010/PPC, C++03 — no lambdas, no nullptr) is now a
