@@ -52,6 +52,41 @@ static f32               g_itsmeT = -1.0f;       // v2.17: IT'S ME hallucination
 static f32               g_itsmeRollTimer = 0.0f; // v2.17: 20 s accumulator for the rare IT'S ME roll
 static f32               g_creepyT = -1.0f;      // v2.36: post-game-over "creepy start" (f14) timer (-1 = off)
 
+// v2.37: pad RUMBLE — two motors (left = low-freq thump, right = high-freq
+// buzz). XInputSetState with a linear-decay envelope (pattern: the scare-
+// flash timers). Kicks are one-shot; the last kick wins; an empty envelope
+// writes zeros every frame (safe in menus/pause).
+static DWORD s_rumL = 0, s_rumR = 0;
+static DWORD s_rumStartL = 0, s_rumStartR = 0;
+static f32   s_rumT = 0.0f, s_rumDur = 0.0f;
+
+static void RumbleKick(DWORD left, DWORD right, f32 seconds) {
+    if (seconds <= 0.0f) return;
+    if (seconds > 5.0f) seconds = 5.0f;         // safety cap
+    s_rumStartL = left; s_rumStartR = right;
+    s_rumL = left;     s_rumR = right;
+    s_rumDur = seconds; s_rumT = seconds;
+}
+
+static void TickRumble(f32 dt) {
+    XINPUT_VIBRATION vib;
+    vib.wLeftMotorSpeed = s_rumL;
+    vib.wRightMotorSpeed = s_rumR;
+    if (s_rumT > 0.0f) {
+        s_rumT -= dt;
+        if (s_rumT <= 0.0f) {
+            s_rumL = s_rumR = 0;                // dead silence after the kick
+            vib.wLeftMotorSpeed = 0; vib.wRightMotorSpeed = 0;
+        } else {
+            const f32 f = s_rumT / s_rumDur;    // linear decay
+            s_rumL = (DWORD)((f32)s_rumStartL * f);
+            s_rumR = (DWORD)((f32)s_rumStartR * f);
+            vib.wLeftMotorSpeed = s_rumL; vib.wRightMotorSpeed = s_rumR;
+        }
+    }
+    XInputSetState(0, &vib);
+}
+
 // Game reference for callbacks needing state
 static Game* g_gameRef = nullptr;
 
@@ -645,6 +680,9 @@ void OnJumpscare(AnimatronicId anim){
     // plays XSCREAM2 on f15 "creepy end" (unreachable demo ending) and its
     // f14 "creepy start" is silent. The robots share XSCREAM (ch1).
     g_audio.Play(&g_pak, (anim == ANIM_COUNT) ? Snd::XSCREAM2 : Snd::XSCREAM, false, 1.0f);
+    // v2.37: the pad shakes at FULL force for the whole scare (both motors)
+    RumbleKick(65535, 65535, 1.4f);
+    g_debugConsole.Print("SCARE %s begin", nm);
     // v2.23: no "lives" system — the original has none. A death just returns
     // to the title and Continue retries the same (unlocked) night; progress is
     // only written on a 6 AM screen, never on a jumpscare.
@@ -658,6 +696,8 @@ void OnPowerOut(){
     g_audio.Stop(Snd::EERIE_AMBIENCE); g_audio.Stop(Snd::STATIC_LOOP); g_audio.Stop(Snd::STATIC2);
     s_phonePlaying=false;
     g_audio.Play(&g_pak, Snd::POWERDOWN, false, 1.0f);
+    // v2.37: dry fading crackle on the high-freq motor at the power cut
+    RumbleKick(0, 26000, 0.6f);
     // group 271/286: dark ambient drone (ambience2) alongside the music box
     g_audio.Play(&g_pak, Snd::AMBIENCE2, true, 0.5f);
     s_faceStatePrev = 0;   // v2.22: reset the "Active 2" face-sound cycle
@@ -729,6 +769,8 @@ void OnCameraChange(CameraId cam, int reason){
 }
 void OnDoorChange(DoorSide s,bool c){
     printf("[Door %s: %s]\n",s==DOOR_LEFT?"Left":"Right",c?"CLOSED":"OPEN");
+    // v2.37: dull heavy left-motor push when the door lands (close only)
+    if (c) RumbleKick(18000, 0, 0.15f);
     // door slam (SFXBible_12478) on close
     g_audio.Play(&g_pak, Snd::DOOR_SLAM, false, 1.0f);
 }
@@ -739,6 +781,9 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
     const char* n[]={"Freddy","Bonnie","Chica","Foxy"};
     RoomInfo i=RoomSystem::GetRoomInfo(r);
     printf("[AI] %s -> %s\n",n[a],i.name);
+    // v2.37: Freddy's hulk creeping closer — a barely-there low-freq pulse
+    // on his path steps (the touch of the approach)
+    if (a == ANIM_FREDDY) RumbleKick(13000, 0, 0.2f);
     // v2.17: deep steps for Bonnie/Chica; Freddy's laugh is the _1d/_2d/_8d
     // giggle family (#56/57/58), NOT Laugh_Giggle_Girl_1 (#38 = Golden Freddy).
     if(a==ANIM_BONNIE||a==ANIM_CHICA) {
@@ -765,6 +810,7 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
         g_audio.SetChannelVolume(CH_FREDDY_LAUGH, laughV);
         g_audio.SetChannelVolume(CH_RUNFAST, runV);
         g_audio.PlayOnChannel(&g_pak, Snd::FREDDY_LAUGH[rand() % 3], false, CH_FREDDY_LAUGH);
+        RumbleKick(13000, 0, 0.2f);   // v2.37: Freddy's laugh — faint LF pulse
         g_audio.PlayOnChannel(&g_pak, Snd::RUNNING_FAST, false, CH_RUNFAST);
         // music box while Freddy is in the kitchen (groups 399/400, ch22)
         if (r==ROOM_KITCHEN) g_audio.PlayOnChannel(&g_pak, Snd::MUSIC_BOX, false, CH_MUSICBOX);
@@ -785,6 +831,15 @@ void OnFoxyStageChange(FoxyStage s){
 }
 void OnFoxyDoorBang(f32 p){
     printf("[AI] Foxy bangs! -%.1f%%\n",p);
+    // v2.37: strong single thump on the LEFT motor at the bang (the power
+    // penalty moment), + diagnostics: bang # (power drain 10+50*(n-1)
+    // tenths -> n = (p-1)/5) and the right-door state — tells the "scare
+    // plays every ~3 bangs" report apart from "door was closed".
+    RumbleKick(30000, 0, 0.15f);
+    int bangIdx = (int)((p - 1.0f) / 5.0f) + 1;
+    if (bangIdx < 1) bangIdx = 1;
+    const bool doorClosed = g_gameRef ? g_gameRef->GetDoors().IsDoorClosed(DOOR_RIGHT) : false;
+    g_debugConsole.Print("FOXY bang #%d door=%s", bangIdx, doorClosed ? "closed" : "open");
     // group 270/323: pounding + knock
     g_audio.Stop(Snd::RUN); g_audio.Stop(Snd::RUNNING_FAST);
     g_audio.Play(&g_pak, Snd::DOOR_POUNDING, false, 1.0f);
@@ -927,7 +982,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.36 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.37 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -942,7 +997,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.36 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.37 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1175,6 +1230,7 @@ int main(int argc, char* argv[]){
         game.TickDoors(1.0f/60.0f);   // v2.22: door slide (visual, 60 Hz)
         g_audio.Tick();
         g_ach.Tick(1.0f/60.0f);     // v2.14: achievement toast timer
+        TickRumble(1.0f/60.0f);     // v2.37: pad rumble envelope (decay + XInputSetState)
         TickFade(state, 1.0f/60.0f);  // v2.15: advance any running fade (may change `state`)
         if (g_goldenScareT >= 0.0f) {          // v2.17: scare flash timer
             g_goldenScareT += 1.0f/60.0f;
@@ -1595,6 +1651,7 @@ int main(int argc, char* argv[]){
             // since the poster/nose is an office object.
             if(gi.yToggle && !game.GetCameras().IsMonitorUp())
                 g_audio.Play(&g_pak, Snd::PARTY_FAVOR, false, 0.9f);
+                RumbleKick(0, 12000, 0.05f);   // v2.37: nose honk — micro right-motor click
             if(gi.pause){
                 if(s_phonePlaying){ for(int v=0;v<5;++v) g_audio.Stop(Snd::VOICEOVER[v]); s_phonePlaying=false; }
                 // stop the office ambience when leaving to the menu, else it keeps
@@ -1619,8 +1676,21 @@ int main(int argc, char* argv[]){
                 GameState ns = game.Tick();
                 accumulator -= tickDelta;
                 tickCount++;
+                // v2.37: hold the non-Golden scare until the RENDER clock
+                // (scareElapsed, 60 Hz) ALSO passed the duration — the logic
+                // timer alone could cut the scare short on frame drift
+                // (the Foxy scare looked like "1 in 3").
+                if (ns == GAME_STATE_GAME_OVER && state == GAME_STATE_JUMPSCARE &&
+                    game.GetJumpscareAnimatronic() != ANIM_COUNT &&
+                    scareElapsed < (f32)game.GetJumpscareDurationSec())
+                    break;
                 if(ns != GAME_STATE_PLAYING){
-                    if(ns != state) StartTransition(state, ns);   // fade-in next-day/game-over
+                    if(ns != state) {
+                        if (state == GAME_STATE_JUMPSCARE)
+                            g_debugConsole.Print("SCARE end: rend=%.2f/%.2fs",
+                                scareElapsed, (f32)game.GetJumpscareDurationSec());
+                        StartTransition(state, ns);   // fade-in next-day/game-over
+                    }
                     break;
                 }
             }

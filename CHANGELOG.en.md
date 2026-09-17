@@ -6,12 +6,12 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
-## v2.36 — FNAF1 is 100% complete: the last three easter eggs
+## v2.36 — FNAF1 at ~99.5%: the last three easter eggs
 
 - **Rare Pirate Cove "IT'S ME" sign** (dump groups 64/65 + 348): at Foxy stage 3 the feed now splits on the shared `random for pic` roll (1..100, re-rolled on every monitor drop) — `> 10` → the gone pose (240), `<= 10` → the rare sign (img 553, `CAMFEED_1C_ITSME`, was defined but never drawn).
 - **Post-Game-Over creepy screen 1/10000** (dump frame 8 groups 2/3/5): when the backroom ends the game rolls `rand()%10000 == 0` and, on a hit, shows the f14 "creepy start" face (~2.5 s, SILENT — no force-close, per the dump it just ends on the title) instead of going straight to the menu.
 - **Door/light button jam** (dump groups 97/101/107/109): while an animatronic stands in the doorway (Bonnie on the left zone, Chica on the right — `IsAnyAnimatronicAtDoor` now finally has callers), door/light clicks play only the "error" stinger and do nothing. Freddy's right-door arrival is separate in the dump and is not jammed.
-- Version → v2.36. FNAF1: 100%.
+- Version → v2.36. FNAF1 is **~99.5%** — the remaining half-percent: **achievements and XContent saves not yet verified on the console** (the ACH writes log via the debug console v2.35, but the RGH profile-side result and the XContent save round-trip are unconfirmed).
 
 ---
 
@@ -26,6 +26,21 @@ The Xenia caveat is accepted: Xenia does not render the XMB; if emulator testing
 - **Clean exits to the dashboard**: `exit(0)` tears the XDK process down abruptly (kernel threads dying with code 0). `ExitToDashboard()` = `XLaunchNewImage(NULL, NULL)` now ends the missing-pak screen and the import self-close; **Golden Freddy intentionally keeps exit(0)** (it mirrors the original's abrupt close).
 - **Golden Freddy flow restored (DEV item 4 now runs the REAL pipeline)**: the old DEV test drew the CAM 2B pose over the camera view ("just a camera frame"). It now spawns the actual sequence — giggle, he appears IN THE OFFICE (img 573), **IT'S ME flashes accompany the visit** (~0.2 s every ~1.1 s, the wiki's hallucination phase), the full-screen face (f14) and the intentional close. READMEs document the "crash" as a safe feature.
 - **FNAF1 HUD: the in-game night number in the top-right reads as ONE row** — right after the "Night" word (x1217, y74). It was drawn at the raw counter anchor (1237,89), hanging below-right of the word — the "crooked" look. The "12 AM" clock keeps its row (AM at (1198,31), digits right-aligned to it); the menu's "Continue → Night N" position was already inline (unchanged).
+---
+
+## v2.37 — pad rumble (two motors) + Foxy scare safety/diagnostics
+
+- **Rumble service** (`RumbleKick(left, right, seconds)` + `TickRumble`, linear decay, safety cap 5 s, zeros when idle): uses `XInputSetState(0, …)` — both motors, mapped per the recommended card:
+  - Jumpscares (all, incl. Golden Freddy): **both motors at max** for the whole scream (~1.4 s);
+  - Foxy door bang: strong **left-motor thump** at the power-penalty moment;
+  - Air-lock door close (only on close): dull left-motor push;
+  - Freddy's nose honk (Y in the office): micro **right-motor** click in sync with the honk;
+  - Freddy's steps/laugh: faint low-freq pulse per move/laugh;
+  - Power at 0%: dry fading **right-motor** crackle at the cut, then dead silence.
+- **Foxy jumpscare safety**: the `JUMPSCARE → GAME_OVER` handover is now held until the RENDER clock (`scareElapsed`) also passed the scare duration — the logic-timer-only exit could cut the scare short on frame drift (the reported "plays ~1 in 3"). Golden Freddy is excluded (its own exit(0) path).
+- **Diagnostics** in the debug console: `SCARE <name> begin`, `SCARE end: rend=X/Y` (shows if a scare was ever truncated), `FOXY bang #N door=open|closed` (tells the "1 in 3" apart from the correct no-scare-while-door-closed behaviour).
+- Version → v2.37.
+
 ---
 
 ## v2.34 — message boxes: watchdog + software fallback (the "sound, no window" fix)
