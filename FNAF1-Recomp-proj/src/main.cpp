@@ -50,6 +50,7 @@ static f32               g_goldenScareT = -1.0f;// v2.17: scare flash timer (-1 
 static int               g_scareFlashImg = -1;   // v2.17: image handle for the scare flash
 static f32               g_itsmeT = -1.0f;       // v2.17: IT'S ME hallucination timer (-1 = off)
 static f32               g_itsmeRollTimer = 0.0f; // v2.17: 20 s accumulator for the rare IT'S ME roll
+static f32               g_creepyT = -1.0f;      // v2.36: post-game-over "creepy start" (f14) timer (-1 = off)
 
 // Game reference for callbacks needing state
 static Game* g_gameRef = nullptr;
@@ -926,7 +927,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.35 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.36 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -941,7 +942,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.35 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.36 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1542,21 +1543,39 @@ int main(int argc, char* argv[]){
             // follows the trigger level (0 open .. 1 closed); the logical
             // "closed" (AI block) = amount >= 0.5, so gameplay rules hold.
             // When OFF, the original LT/RT toggle behaviour is used.
+            // v2.36: door/light buttons JAM while an animatronic stands in
+            // the doorway (dump groups 97/101/107/109) — the click plays only
+            // the "error" stinger and does nothing (Bonnie on the left zone,
+            // Chica on the right; Freddy's right-door is separate, no jam).
+            const bool jamL = game.GetAI().IsAnyAnimatronicAtDoor(DOOR_LEFT);
+            const bool jamR = game.GetAI().IsAnyAnimatronicAtDoor(DOOR_RIGHT);
             if (g_devAnalogDoor) {
-                game.SetDoorAmount(DOOR_LEFT,  gi.leftDoorAxis);
-                game.SetDoorAmount(DOOR_RIGHT, gi.rightDoorAxis);
+                if (!jamL) game.SetDoorAmount(DOOR_LEFT,  gi.leftDoorAxis);
+                if (!jamR) game.SetDoorAmount(DOOR_RIGHT, gi.rightDoorAxis);
             } else {
-                if(gi.leftDoorToggle) game.ToggleDoor(DOOR_LEFT);
-                if(gi.rightDoorToggle) game.ToggleDoor(DOOR_RIGHT);
+                if (gi.leftDoorToggle && jamL)
+                    g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
+                else if (gi.leftDoorToggle)
+                    game.ToggleDoor(DOOR_LEFT);
+                if (gi.rightDoorToggle && jamR)
+                    g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
+                else if (gi.rightDoorToggle)
+                    game.ToggleDoor(DOOR_RIGHT);
             }
             // v2.21 hold-lights test (DEV toggle). When ON, the light stays on only
             // while its bumper (LB/RB) is held; when OFF, the original toggle.
             if (g_devHoldLights) {
-                game.SetLight(DOOR_LEFT,  gi.leftShoulderHeld);
-                game.SetLight(DOOR_RIGHT, gi.rightShoulderHeld);
+                if (!jamL) game.SetLight(DOOR_LEFT,  gi.leftShoulderHeld);
+                if (!jamR) game.SetLight(DOOR_RIGHT, gi.rightShoulderHeld);
             } else {
-                if(gi.leftLightToggle) game.ToggleLight(DOOR_LEFT);
-                if(gi.rightLightToggle) game.ToggleLight(DOOR_RIGHT);
+                if (gi.leftLightToggle && jamL)
+                    g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
+                else if (gi.leftLightToggle)
+                    game.ToggleLight(DOOR_LEFT);
+                if (gi.rightLightToggle && jamR)
+                    g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
+                else if (gi.rightLightToggle)
+                    game.ToggleLight(DOOR_RIGHT);
             }
             if(gi.cameraToggle || gi.back){
                 if(game.GetCameras().IsMonitorUp() && gi.back) game.SetCameraUp(false);
@@ -1629,7 +1648,12 @@ int main(int argc, char* argv[]){
                 // v2.7.13: elapsed drives the data "6" roll (nights 1-4)
                 g_render.RenderNightComplete(game.GetCurrentNight(), endFrames/60.0f);
             } else if(state==GAME_STATE_GAME_OVER){
-                if(endFrames<96){
+                if (g_creepyT >= 0.0f) {
+                    // v2.36: the 1/10000 "creepy start" screen (f14: full
+                    // screen face, silent — the same render as Golden Freddy's
+                    // kill, but WITHOUT the force-close; it ends on the title)
+                    g_render.RenderJumpscare(ANIM_COUNT, g_creepyT);
+                } else if(endFrames<96){
                     // v2.7.13: "died" static burst (1.6 s) before the backroom
                     g_render.DrawStaticOverlay(1.0f);
                 } else {
@@ -1669,7 +1693,12 @@ int main(int argc, char* argv[]){
             const bool skipEnd = endFrames>45 &&
                 (gi.cameraToggle||gi.pause||gi.back||gi.cameraUp||gi.cameraDown);
             bool done=false;
-            if(state==GAME_STATE_NIGHT_COMPLETE){
+            if (g_creepyT >= 0.0f) {
+                // v2.36: on the 1/10000 creepy screen — hold ~2.5 s (dump
+                // f14 is silent and simply ends on the title, NO exit)
+                g_creepyT += 1.0f/60.0f;
+                done = g_creepyT >= 2.5f;
+            } else if(state==GAME_STATE_NIGHT_COMPLETE){
                 const i32 c = game.GetCurrentNight();
                 if(c<5) done = (holdSec >= (f32)TimeConstants::NIGHT_COMPLETE_DISPLAY_SEC) || skipEnd;
                 else    done = (holdSec >= 12.0f) || skipEnd;  // paycheck/overtime/pink slip
@@ -1678,6 +1707,16 @@ int main(int argc, char* argv[]){
             }
             if(done){
                 endFrames=0;
+                // v2.36: dump frame 8 groups 2/3/5 — random := Random(10000)+1,
+                // and on the "next" tick random==1 jumps to f14 "creepy start".
+                // We roll once per game over (the port ends the backroom at
+                // 7.6 s, not 200 s — same 1/10000 odds).
+                if (state == GAME_STATE_GAME_OVER && g_creepyT < 0.0f &&
+                    (rand() % 10000) == 0) {
+                    g_creepyT = 0.0f;
+                    g_audio.StopAll();
+                    continue;      // show the creepy screen instead of the title
+                }
                 if(state==GAME_STATE_NIGHT_COMPLETE && game.GetCurrentNight()<5){
                     // nights 1-4: straight into the next night card
                     game.Init(game.GetCurrentNight()+1);
@@ -1712,6 +1751,7 @@ int main(int argc, char* argv[]){
                     Progress::Save(g_prog);
                 }
                 g_audio.StopAll();
+                g_creepyT = -1.0f;   // v2.36: leave the creepy screen (or never enter)
                 RefreshMenuFromProgress(menu);   // unlocks + stars from the save
                 StartTransition(state, GAME_STATE_MENU); menu.Reset(); tickCount=0; accumulator=0;
                 continue;

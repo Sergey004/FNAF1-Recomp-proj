@@ -783,14 +783,15 @@ void GameRender::DrawSharedHud(const Game& game, bool phonePlaying) {
     }
 
     // "Night N" — small row under the clock: word img_447 instance
-    // (754,74) (parking hotspot lands it at ~1148), the night number
-    // COUNTER sits at (1237,89) in the dump — draw the digits exactly
-    // there (bottom-aligned with the word, clear of the screen edge).
+    // (754,74) (parking hotspot -394 lands it at ~1148, 63 px wide →
+    // x..1211, y74..88); the number reads as ONE row right after the
+    // word (the raw counter anchor (1237,89) hangs below-right — that
+    // was the "crooked" look).
     DrawInstance(IMG_NIGHT_WORD_OFC, 754.0f, 74.0f, 0xFFFFFFFF, false);
     {
         char nb[16];
         Snprintf(nb, sizeof(nb), "%d", game.GetCurrentNight());
-        DrawStripText(STRIP_VAR14, 1237.0f, 89.0f, nb, 0xFFFFFFFF, 1.0f);
+        DrawStripText(STRIP_VAR14, 1217.0f, 74.0f, nb, 0xFFFFFFFF, 1.0f);
     }
 
     // power: "Power left:" img_207 @(106,638) + VAR14 digits + img_208 "%"
@@ -1088,8 +1089,14 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
         // v2.7.10: was {211,338,240} = one stage late (closed curtain
         // img_66 never shown!). Canonical: stage0=66 shut, 1=211 peek,
         // 2=338 out, 3=240 gone/running (Active 3 anims 26/48/49/50).
-        static const int COVE[4] = { COVE_CLOSED, COVE_PEEK, COVE_OUT, COVE_EMPTY };
-        feed = COVE[st];
+        // v2.36: at stage 3 the feed splits on the same "random for pic"
+        // roll (dump groups 64/65: 1..100, re-rolled on each monitor drop
+        // — our m_goldenRoll): >10 -> gone (240), <=10 -> the rare
+        // "IT'S ME" sign (anim 73 / img 553).
+        if (st == 3)
+            feed = (GetGoldenRoll() <= 10) ? CAMFEED_1C_ITSME : COVE_EMPTY;
+        else
+            feed = COVE[st];
     } else if (cam >= CAM_1A && cam <= CAM_7) {
         feed = CamFeedFor(game, cam);
         // v2.17: Golden Freddy "LET'S PARTY!" poster easter egg. Groups 41/42:

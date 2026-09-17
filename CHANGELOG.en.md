@@ -6,28 +6,12 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
-# SESSION SUMMARY — 2026-09-12/13: the project became a MULTI-GAME shell
+## v2.36 — FNAF1 is 100% complete: the last three easter eggs
 
-This session turned the FNAF1 recomp into a foundation hosting the whole classic series. Everything below was tested on a REAL Xbox 360 (RGH), not just Xenia.
-
-**Dumps & tooling (CTFAK-CPP)**
-- Full dumps taken for FNAF2/3/4 and Sister Location (assets + event listings + structure JSON) — the authority source for everything below.
-- Restored the lost **Recomp Pack** tool (the .pak repacker existed in the source but was never registered/CMake-listed); generalized per-game pak naming (fnaf2/fnaf3/fnaf4/sisterlocation.pak); built GPU-ready paks for all games; per-game `asset_mapping_<id>.hpp` tables (namespaced, in `include/assets/`).
-- Verified the tool on Fusion builds 288 AND 286 (SL), up to a 1.5 GB pak.
-
-**Architecture**
-- **Core + per-game modules**: `AppModule` contract (Name/PakName/Load/Tick/Render/WantsExit/PrefersStreaming), `AppServices{audio,pak,batch,text,input}`, module registry, soft pak scan at boot.
-- **Renderers split per game**: GameRender = FNAF1 only; FNaF2/FNaF3/FNaF4Render — stateless, fed game state + clocks. Full-stretch 16:9 mapping (X 1.25 / Y 0.9375) like the stretched PC windows.
-- **Streaming pak loader** (`LoadStreaming` + `PreloadAsync` worker thread) — built for SL's 1.5 GB, proven necessary on real HW by FNAF4's OOM crash.
-- **Boot selector** with a soft pak scan; B in module mode returns to it (no more console kill).
-
-**FNAF2 — playable skeleton**: per-game disclaimer → title (the dump's "video FROM Freddy's eyes" bg roll, static X-jitter, Sand Temple drone) → night card → panning dark office (flashlight LB-hold per groups 35/36, battery 7000, BB-steal flag) → camera monitor (12 feeds pinned from groups 100-123, map panel + buttons) → 70 s/hour clock → 6 AM.
-
-**FNAF3 / FNAF4 — test levels**: titles and offices from their dumps (FNAF3: Springtrap scene + static bursts + titlemusic; FNAF4: red-sky title + 1300-wide bedroom, streaming loader, its title theme).
-
-**FNAF1 fixes along the way**: Freddy's 4B entry rule per dump groups 394/395; Golden Freddy kill screen rebuilt from f14; office hallucination per groups 413-419; night-number HUD to (1237,89).
-
-**Roadmap**: FNAF2 → FNAF3 → FNAF4 to FNAF1-level playability; Sister Location last (streaming monster, startup flow already pinned: Warning → Elevator/HandUnit voice → title).
+- **Rare Pirate Cove "IT'S ME" sign** (dump groups 64/65 + 348): at Foxy stage 3 the feed now splits on the shared `random for pic` roll (1..100, re-rolled on every monitor drop) — `> 10` → the gone pose (240), `<= 10` → the rare sign (img 553, `CAMFEED_1C_ITSME`, was defined but never drawn).
+- **Post-Game-Over creepy screen 1/10000** (dump frame 8 groups 2/3/5): when the backroom ends the game rolls `rand()%10000 == 0` and, on a hit, shows the f14 "creepy start" face (~2.5 s, SILENT — no force-close, per the dump it just ends on the title) instead of going straight to the menu.
+- **Door/light button jam** (dump groups 97/101/107/109): while an animatronic stands in the doorway (Bonnie on the left zone, Chica on the right — `IsAnyAnimatronicAtDoor` now finally has callers), door/light clicks play only the "error" stinger and do nothing. Freddy's right-door arrival is separate in the dump and is not jammed.
+- Version → v2.36. FNAF1: 100%.
 
 ---
 
@@ -41,6 +25,7 @@ The Xenia caveat is accepted: Xenia does not render the XMB; if emulator testing
 - **Start+B DEV combo made pad-robust**: the pad reports the two edges a frame or two apart, so a lone Start fell into the pause handler and booted the game back to the title. A ~330 ms window after a B edge now accepts the Start edge (same-frame still works).
 - **Clean exits to the dashboard**: `exit(0)` tears the XDK process down abruptly (kernel threads dying with code 0). `ExitToDashboard()` = `XLaunchNewImage(NULL, NULL)` now ends the missing-pak screen and the import self-close; **Golden Freddy intentionally keeps exit(0)** (it mirrors the original's abrupt close).
 - **Golden Freddy flow restored (DEV item 4 now runs the REAL pipeline)**: the old DEV test drew the CAM 2B pose over the camera view ("just a camera frame"). It now spawns the actual sequence — giggle, he appears IN THE OFFICE (img 573), **IT'S ME flashes accompany the visit** (~0.2 s every ~1.1 s, the wiki's hallucination phase), the full-screen face (f14) and the intentional close. READMEs document the "crash" as a safe feature.
+- **FNAF1 HUD: the in-game night number in the top-right reads as ONE row** — right after the "Night" word (x1217, y74). It was drawn at the raw counter anchor (1237,89), hanging below-right of the word — the "crooked" look. The "12 AM" clock keeps its row (AM at (1198,31), digits right-aligned to it); the menu's "Continue → Night N" position was already inline (unchanged).
 ---
 
 ## v2.34 — message boxes: watchdog + software fallback (the "sound, no window" fix)

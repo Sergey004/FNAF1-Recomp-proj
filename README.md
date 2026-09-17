@@ -18,7 +18,7 @@ all dump-driven and tested on real hardware:
 
 | Game | Ready | Implemented |
 |---|---|---|
-| **FNAF 1** | **~97 %** | everything: nights 1–7 + Custom Night, full dump-mirrored AI, cameras/doors/lights, jumpscares, power-out, Golden Freddy, hallucinations, phone call, saves, achievements. Left: the "died" noise screen, a few rare easter eggs |
+| **FNAF 1** | **~99.5 %** | everything: nights 1–7 + Custom Night, full dump-mirrored AI, cameras/doors/lights, jumpscares, power-out, Golden Freddy, hallucinations, phone call, saves, achievements, all rare easter eggs (cove "IT'S ME", 1/10000 creepy, door jam). Left: **achievements & XContent saves not yet verified on the console** — the ACH writes log via the debug console (v2.35), but the profile-side result wasn't confirmed on RGH; same for the XContent save round-trip |
 | **FNAF 2** | **~35 %** | disclaimer, title (the "from Freddy's eyes" bg roll + glitch + audio), night loop (70 s/hour clock → 6 AM), panning dark office, hold-flashlight + battery (dump rules incl. BB steal), 12-camera monitor + map panel/buttons. Left: phone call, mask, vents, music box, the 9-animatronic AI (751 event groups), jumpscares/death, office sound loops, saves, 8-bit minigames |
 | **FNAF 3** | **~15 %** | disclaimer, title (Springtrap scene + static bursts + titlemusic), the 2000-wide office with pan. Left: the whole game — vent/audio-only mechanic, phantom AI, minigames, saves, cutscenes |
 | **FNAF 4** | **~10 %** | disclaimer, title (red sky + heading + menu), the 1300-wide bedroom with pan, streaming pak load. Left: the whole game — door/closet/bed mechanics, nightmare AI, saves |
