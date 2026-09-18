@@ -182,7 +182,7 @@ void Achievements::SystemWrite(int id) {
     // name/GS/icon shown by the Guide come from the title's SPA config, but the
     // earned flag is written by this call (works on devkit/LIVE and RGH/JTAG).
     XUSER_ACHIEVEMENT a;
-    a.dwUserIndex     = 0;             // first controller (single-profile console)
+    a.dwUserIndex     = 0;             // FIRST player (gamer index 0) — the original binds to him
     a.dwAchievementId = (DWORD)id;
     DWORD res = XUserWriteAchievements(1, &a, NULL);
     printf("ACH %d -> 0x%08X (%s)\n", id, (unsigned)res, AchErrName(res));

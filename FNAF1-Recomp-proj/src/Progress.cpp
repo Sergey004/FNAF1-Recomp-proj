@@ -55,6 +55,35 @@ static const WCHAR kXContentDisplayName[] = L"Five Nights at Freddy's 1 Save";
 static XCONTENTDEVICEID g_saveDevice = XCONTENTDEVICE_ANY;
 static bool g_deviceChosen = false;
 
+// v2.39: XContent functions require the index of a LOCALLY SIGNED-IN gamer.
+// The original game is bound to the FIRST player (gamer index 0) — his profile
+// is where its saves live (confirmed on the user's console: the boot import
+// round-tripped through the player's profile). So we bind to index 0 only;
+// XUserGetSigninState(0) == NOT_SIGNED_IN (e.g. RGH without a profile in
+// slot 0) would make XContent fail with ERROR_ACCESS_DENIED, so the storage
+// skips XContent entirely and falls back to the plain HDD folder.
+static DWORD g_saveUser = 0xFFFFFFFF;
+
+static DWORD PickSignedInUserIndex() {
+    // On the 360 the first player's profile always lands in gamer slot 0.
+    if (XUserGetSigninState(0) != XUSER_NOT_SIGNED_IN) return 0;
+    return 0xFFFFFFFF;   // player 1 has no profile signed in
+}
+
+// v2.37: was the XContent container actually mounted by the current
+// StorageOpen? Controls whether StorageClose must unmount it. When XContent
+// is unavailable (e.g. RGH without a signed-in profile) the storage FALLS
+// BACK to the plain HDD folder game:\save\ — this is what keeps the save
+// and achievements working on such setups (and fixes the "fresh game after
+// game over" bug).
+static bool s_usingXcontent = false;
+
+// Fallback dir for the SYSTEM build (used only when XContent is down):
+// deliberately NOT game:\save\ — that path is both the Live Safe storage
+// AND an import candidate, so our own fallback files must not sit there
+// (otherwise boot would offer to import its own save).
+static void EnsureLocalDirFallback() { _mkdir("game:\\save_fallback"); }
+
 static bool XContentMount(bool create)
 {
     if (!g_deviceChosen) {
@@ -67,7 +96,7 @@ static bool XContentMount(bool create)
         // show up. Same pattern as XShowMessageBoxUI in main.cpp.
         XOVERLAPPED overlapped;
         memset(&overlapped, 0, sizeof(overlapped));
-        DWORD res = XShowDeviceSelectorUI(0, XCONTENTTYPE_SAVEDGAME, dwFlags, bytesRequested, &deviceID, &overlapped);
+        DWORD res = XShowDeviceSelectorUI(g_saveUser, XCONTENTTYPE_SAVEDGAME, dwFlags, bytesRequested, &deviceID, &overlapped);
         if (res == ERROR_IO_PENDING) {
             while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
             res = XGetOverlappedResult(&overlapped, NULL, TRUE);
@@ -96,19 +125,50 @@ static bool XContentMount(bool create)
     DWORD dwDisposition = 0;
     ULARGE_INTEGER uliSize;
     uliSize.QuadPart = XContentCalculateSize(64 * 1024, 1);
-    DWORD res = XContentCreateEx(0, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
+    DWORD res = XContentCreateEx(g_saveUser, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
+    printf("XContent: user=%u create=0x%08X disp=0x%X\n",
+           (unsigned)g_saveUser, (unsigned)res, (unsigned)dwDisposition);
     return res == ERROR_SUCCESS;
 }
 
 // `file` is the short name ("freddy" / "fnaf_ach.ini"); `create`
 // selects XCONTENTFLAG_CREATEALWAYS (save) vs OPENEXISTING (load).
+// v2.37: XContent first (when it mounts); on ANY failure — mount or the
+// file open inside the container — FALL BACK to the plain HDD folder
+// (game:\save\ + file), so saves/achievements survive on RGH setups
+// without a usable XContent/profile.
 static FILE* StorageOpen(const char* file, const char* mode, bool create) {
-    if (!XContentMount(create)) return NULL;
-    char path[128];
-    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, file);
+#if !defined(FNAF_LIVE_SAFE)
+    // Canonical XContent needs a LOCALLY SIGNED-IN gamer index; resolve it
+    // once per boot. With nobody signed in, skip XContent entirely (it would
+    // fail with ERROR_ACCESS_DENIED) and use the local fallback folder.
+    if (g_saveUser == 0xFFFFFFFF) g_saveUser = PickSignedInUserIndex();
+    s_usingXcontent = (g_saveUser != 0xFFFFFFFF) && XContentMount(create);
+    if (s_usingXcontent) {
+        char path[128];
+        fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, file);
+        FILE* f = fopen(path, mode);
+        if (f) { return f; }
+        s_usingXcontent = false;   // container open failed -> local file below
+    }
+    EnsureLocalDirFallback();
+#endif
+    char path[160];
+    fnaf::Snprintf(path, sizeof(path), "game:\\save_fallback\\%s", file);
     return fopen(path, mode);
 }
-static void StorageClose() { XContentClose(kXContentRoot, NULL); }
+static void StorageClose() {
+#if !defined(FNAF_LIVE_SAFE)
+    if (s_usingXcontent) {
+        // commit pattern per the docs: flush buffers, then close — close
+        // must succeed for a write to be considered valid
+        DWORD fres = XContentFlush(kXContentRoot, NULL);
+        DWORD cres = XContentClose(kXContentRoot, NULL);
+        printf("XContent: flush=0x%08X close=0x%08X\n", (unsigned)fres, (unsigned)cres);
+        s_usingXcontent = false;
+    }
+#endif
+}
 
 #else  // FNAF_LIVE_SAFE — local "game:\save\" folder, no Xbox system APIs
 

@@ -6,6 +6,39 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.39 — saves/achievements per the XDK canon
+
+- **Canon XContent flow (docs section in `docs/SAVES_XCONTENT.md`)**: `XShowDeviceSelectorUI` (overlapped) → `XContentCreateEx(signed-in gamer index, "fnaf_save", XCONTENT_DATA{DeviceID, SAVEDGAME, displayName, szFileName}, CREATEALWAYS)` → plain `fopen` inside the mounted root → `XContentFlush` → `XContentClose` (close must succeed for the write to count).
+- **User index is bound to the FIRST player** (`PickSignedInUserIndex`): the original ties its save/achievements to player 1's profile (gamer index 0 — the boot import round-trips through that profile), so we use slot 0 only, no scanning. With nobody signed in at slot 0, XContent would fail with the documented `ERROR_ACCESS_DENIED`, so we skip it entirely and use the v2.38 local fallback; the achievements write is gated the same way (local `fnaf_ach.ini` still counts).
+- **Loud diagnostics**: `XContent: user=N create=0x… disp=0x…` and `XContent: flush=0x… close=0x…` in the debugger log (0 = OK).
+- Version → v2.39.
+
+---
+
+## v2.38 — storage fallback: XContent down ⇒ plain HDD files (fixes the "fresh game after game over" + "ACH save FAILED")
+
+- **Root cause (real-HW logs)**: the system build's XContent storage is unusable on this RGH (no signed-in profile) — `ACH save FAILED` and, worse, the 6 AM save never persisted, so any death/game-over (incl. from the DEV jumpscare) went through `RefreshMenuFromProgress` → `Progress::Load` → read failed → the title showed a fresh game. Exactly the reported bug.
+- **`StorageOpen` in the system build now FALLS BACK to a plain HDD file** when XContent can't mount or the container file open fails: writes/reads `game:\save_fallback\<file>` (`freddy` + `fnaf_ach.ini`). `StorageClose` only unmounts when XContent was actually used. The fallback dir deliberately differs from `game:\save\` (Live Safe + import candidate) so boot never offers to import our own save. Live Safe is untouched.
+- Effects: the save re-read after game over works everywhere; `ACH save FAILED` is replaced by a real write on RGH; achievements persist locally on such setups (the profile-side XUserWriteAchievements write is separate and still needs the SPA for the Guide list).
+- Version → v2.38.
+
+---
+
+## v2.37 — pad rumble (two motors) + Foxy scare safety/diagnostics
+
+- **Rumble service** (`RumbleKick(left, right, seconds)` + `TickRumble`, linear decay, safety cap 5 s, zeros when idle): uses `XInputSetState(0, …)` — both motors, mapped per the recommended card:
+  - Jumpscares (all, incl. Golden Freddy): **both motors at max** for the whole scream (~1.4 s);
+  - Foxy door bang: strong **left-motor thump** at the power-penalty moment;
+  - Air-lock door close (only on close): dull left-motor push;
+  - Freddy's nose honk (Y in the office): micro **right-motor** click in sync with the honk;
+  - Freddy's steps/laugh: faint low-freq pulse per move/laugh;
+  - Power at 0%: dry fading **right-motor** crackle at the cut, then dead silence.
+- **Foxy jumpscare safety**: the `JUMPSCARE → GAME_OVER` handover is now held until the RENDER clock (`scareElapsed`) also passed the scare duration — the logic-timer-only exit could cut the scare short on frame drift (the reported "plays ~1 in 3"). Golden Freddy is excluded (its own exit(0) path).
+- **Diagnostics** in the debug console: `SCARE <name> begin`, `SCARE end: rend=X/Y` (shows if a scare was ever truncated), `FOXY bang #N door=open|closed` (tells the "1 in 3" apart from the correct no-scare-while-door-closed behaviour).
+- Version → v2.37.
+
+---
+
 ## v2.36 — FNAF1 at ~99.5%: the last three easter eggs
 
 - **Rare Pirate Cove "IT'S ME" sign** (dump groups 64/65 + 348): at Foxy stage 3 the feed now splits on the shared `random for pic` roll (1..100, re-rolled on every monitor drop) — `> 10` → the gone pose (240), `<= 10` → the rare sign (img 553, `CAMFEED_1C_ITSME`, was defined but never drawn).
@@ -26,21 +59,6 @@ The Xenia caveat is accepted: Xenia does not render the XMB; if emulator testing
 - **Clean exits to the dashboard**: `exit(0)` tears the XDK process down abruptly (kernel threads dying with code 0). `ExitToDashboard()` = `XLaunchNewImage(NULL, NULL)` now ends the missing-pak screen and the import self-close; **Golden Freddy intentionally keeps exit(0)** (it mirrors the original's abrupt close).
 - **Golden Freddy flow restored (DEV item 4 now runs the REAL pipeline)**: the old DEV test drew the CAM 2B pose over the camera view ("just a camera frame"). It now spawns the actual sequence — giggle, he appears IN THE OFFICE (img 573), **IT'S ME flashes accompany the visit** (~0.2 s every ~1.1 s, the wiki's hallucination phase), the full-screen face (f14) and the intentional close. READMEs document the "crash" as a safe feature.
 - **FNAF1 HUD: the in-game night number in the top-right reads as ONE row** — right after the "Night" word (x1217, y74). It was drawn at the raw counter anchor (1237,89), hanging below-right of the word — the "crooked" look. The "12 AM" clock keeps its row (AM at (1198,31), digits right-aligned to it); the menu's "Continue → Night N" position was already inline (unchanged).
----
-
-## v2.37 — pad rumble (two motors) + Foxy scare safety/diagnostics
-
-- **Rumble service** (`RumbleKick(left, right, seconds)` + `TickRumble`, linear decay, safety cap 5 s, zeros when idle): uses `XInputSetState(0, …)` — both motors, mapped per the recommended card:
-  - Jumpscares (all, incl. Golden Freddy): **both motors at max** for the whole scream (~1.4 s);
-  - Foxy door bang: strong **left-motor thump** at the power-penalty moment;
-  - Air-lock door close (only on close): dull left-motor push;
-  - Freddy's nose honk (Y in the office): micro **right-motor** click in sync with the honk;
-  - Freddy's steps/laugh: faint low-freq pulse per move/laugh;
-  - Power at 0%: dry fading **right-motor** crackle at the cut, then dead silence.
-- **Foxy jumpscare safety**: the `JUMPSCARE → GAME_OVER` handover is now held until the RENDER clock (`scareElapsed`) also passed the scare duration — the logic-timer-only exit could cut the scare short on frame drift (the reported "plays ~1 in 3"). Golden Freddy is excluded (its own exit(0) path).
-- **Diagnostics** in the debug console: `SCARE <name> begin`, `SCARE end: rend=X/Y` (shows if a scare was ever truncated), `FOXY bang #N door=open|closed` (tells the "1 in 3" apart from the correct no-scare-while-door-closed behaviour).
-- Version → v2.37.
-
 ---
 
 ## v2.34 — message boxes: watchdog + software fallback (the "sound, no window" fix)

@@ -1089,6 +1089,7 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
         // v2.7.10: was {211,338,240} = one stage late (closed curtain
         // img_66 never shown!). Canonical: stage0=66 shut, 1=211 peek,
         // 2=338 out, 3=240 gone/running (Active 3 anims 26/48/49/50).
+        static const int COVE[4] = { COVE_CLOSED, COVE_PEEK, COVE_OUT, COVE_EMPTY };
         // v2.36: at stage 3 the feed splits on the same "random for pic"
         // roll (dump groups 64/65: 1..100, re-rolled on each monitor drop
         // — our m_goldenRoll): >10 -> gone (240), <=10 -> the rare
