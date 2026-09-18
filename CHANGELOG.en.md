@@ -6,6 +6,46 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.43 — import without a restart: the same boot reads the imported save (before the disclaimer)
+
+- **Real-HW finding (v2.42 run)**: after a message box closes, XAM keeps refusing ANY new system UI for a long while — the device selector stayed `ACCESS_DENIED` through all 40 retries (10 s) and the "Import complete" box was denied too. Back-to-back system screens are a dead end on this console.
+- **Import flow reworked**: question box (the only system UI in the flow) → Yes → import → **no second box, no dashboard exit** — the import lands BEFORE the disclaimer and `RefreshMenuFromProgress` reads the fresh progress in the SAME boot. The "Import complete. Please restart" box is removed entirely (it was never needed: the read happens after the import by boot order).
+- **Selector cooldown**: once the device selector exhausts its retries, subsequent `StorageOpen`s in the same boot skip the UI (60 s cooldown) instead of stalling 10 s each — the import boot stays fast; the selector is retried again a minute later.
+- Verified on real HW: with the loose save already imported and deleted, boot is clean — no prompt, and the progress + achievements are read from the fallback storage (`SAVE: storage = local fallback` ×2, `Achievements: unlocked=0x3FF`).
+- Version → v2.43.
+
+---
+
+## v2.42 — import chain: device-selector retry after the box, honest storage logs
+
+- **Frame pump verified on real HW (v2.41 run)**: the import question box now appears and completes (`XuiSceneCreate` hooked → `res=0x0 btn=1`) — the "sound only, no window" bug is gone.
+- **New finding — back-to-back system UIs reject each other**: the device selector, called right after the question box was dismissed, failed with `ERROR_ACCESS_DENIED` (XAM was still tearing the previous screen down — the unhook lines land mid-import). The import silently went to the local fallback while the log claimed `-> fnaf_save:\freddy`, and the "Import complete" box stayed busy for the whole 5 s retry window.
+- Fixes: the device selector now retries up to 40 × 250 ms (10 s) on `ACCESS_DENIED` (same pattern as the message box); the message-box retry budget is raised 20 → 40; `StorageOpen` logs which backend actually served the file (`SAVE: storage = XContent|local fallback`); the import log no longer hardcodes the destination.
+- Version → v2.42.
+
+---
+
+## v2.41 — the import prompt works; the "hang" was the storage-device picker; v2.40's cap removed
+
+- **ROOT CAUSE of "sound only, no window" — the frame stream must keep flowing while the box is pending**: the system box is asynchronous and XAM composites it over the title's frame chain; a stalled stream (the v2.35+ bare `Sleep` wait) leaves the box nothing to composite over. `SysPrompt` now pumps a black Clear+Present frame on every iteration of the wait. This is also why the box worked in the v2.34 era: the software fallback unintentionally kept frames flowing; removing it in v2.35 stalled the stream. No timeout cap (the v2.40 cap is gone), `ret`/`res` logging and the `IMPORT:` step logs stay.
+- **UI-busy retry**: `XShowMessageBoxUI` returning `ERROR_ACCESS_DENIED` (another system screen owns the display, e.g. right after boot) is retried up to 20 × 250 ms instead of failing the prompt instantly.
+- **Heartbeat while waiting (v2.41)**: `XMB: waiting N s for the box...` every 5 s — the Sep-18 boots (profile signed in) showed the box AFTER 20 s, which read as "sound only, no window"; the heartbeat proves the wait is alive and measures the actual cold-start time per boot.
+- **What actually read as a hang**: after "Yes" the import path calls `XShowDeviceSelectorUI` — a FULL-SCREEN system picker waiting for the player to choose a storage device. Unlogged, it looks like a freeze. Now loud: `XContent: device selector open (pick a storage device)` before the pump, `XContent: device selector res=0x…` after.
+- **Import UX (documented)**: boot → "Import save?" box → Yes → storage-device picker (choose the HDD) → import runs → "Import complete" box → OK → exit to dashboard for a fresh restart.
+- Version → v2.41.
+
+---
+
+## v2.40 — import hang guard: a message box that never completes can't freeze boot anymore
+
+- **Real-HW repro (with a signed-in profile this time)**: the boot import flow printed two `XMB: ret=0x3E5` (ERROR_IO_PENDING) and froze — a system box that is never presented/completed leaves the old `while(!XHasOverlappedIoCompleted) Sleep(16)` spinning forever. The docs only guarantee completion on a button press; nothing guarantees the box appears at all.
+- **`SysPrompt` hang guard (v2.40)**: a 20 s cap on the pending wait (~2× the documented XUI cold-start of ~10 s, so a slow first box is NOT falsely tripped). On expiry: `XMB: TIMEOUT 20s (box never completed)` + the call is treated as CANCELLED → the caller's safe default applies (import question → "No", so boot proceeds without importing; pak-error → dashboard).
+- **Import flow now logs every step** (`IMPORT: loose freddy found / YES -> importing / done -> restart / FAILED / NO`): the next real-HW log pinpoints the exact branch instead of a silent stop.
+- XContent canon itself is verified on real HW (v2.39 log): `user=0 create=0x0 disp=0x2 (OPENED_EXISTING), flush=0x0, close=0x0` with a signed-in profile, `ACH UI -> 0x0` — the storage round-trip per docs works.
+- Version → v2.40.
+
+---
+
 ## v2.39 — saves/achievements per the XDK canon
 
 - **Canon XContent flow (docs section in `docs/SAVES_XCONTENT.md`)**: `XShowDeviceSelectorUI` (overlapped) → `XContentCreateEx(signed-in gamer index, "fnaf_save", XCONTENT_DATA{DeviceID, SAVEDGAME, displayName, szFileName}, CREATEALWAYS)` → plain `fopen` inside the mounted root → `XContentFlush` → `XContentClose` (close must succeed for the write to count).

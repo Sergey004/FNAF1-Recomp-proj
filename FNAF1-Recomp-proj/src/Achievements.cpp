@@ -178,9 +178,16 @@ static const char* AchErrName(DWORD res) {
 
 void Achievements::SystemWrite(int id) {
 #if !defined(FNAF_LIVE_SAFE)
-    // System build: mark the achievement earned on the signed-in profile. The
-    // name/GS/icon shown by the Guide come from the title's SPA config, but the
-    // earned flag is written by this call (works on devkit/LIVE and RGH/JTAG).
+    // System build: mark the achievement earned on the FIRST player's profile
+    // (gamer index 0 — the original binds to him). Only when a profile is
+    // actually signed in at slot 0; otherwise the XAM call would fail with
+    // ACCESS_DENIED and we'd rather skip it — the local fnaf_ach.ini + the
+    // in-game UI stay the record (as on a profile-less RGH).
+    if (XUserGetSigninState(0) == eXUserSigninState_NotSignedIn) {
+        printf("ACH %d -> skipped (no signed-in profile at slot 0)\n", id);
+        if (m_console) m_console->Print("ACH %d -> skipped (no signed-in profile at slot 0)", id);
+        return;
+    }
     XUSER_ACHIEVEMENT a;
     a.dwUserIndex     = 0;             // FIRST player (gamer index 0) — the original binds to him
     a.dwAchievementId = (DWORD)id;

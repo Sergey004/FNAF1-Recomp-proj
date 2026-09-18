@@ -229,26 +229,51 @@ static void FrameEnd() {
     g_pd3dDevice->Present(NULL, NULL, NULL, NULL);
 }
 
-// v2.34: one XShowMessageBoxUI call with logging + watchdog; returns
-// true only if the system box actually completed (pressedOut valid).
+// v2.34/2.41: one XShowMessageBoxUI call with logging; returns
+// true only if the box actually completed (pressedOut valid).
+// v2.41: NO timeout cap, and the FRAME STREAM KEEPS RUNNING while the
+// box is pending. The box is asynchronous and XAM composites it over
+// the title's frame chain — if the title stops presenting (the bare
+// Sleep wait of v2.35+), the box has nothing to composite over and
+// only the sound plays ("sound only, no window"). The v2.34-era
+// software fallback unintentionally kept frames flowing, which is why
+// the box worked back then. A busy UI (ERROR_ACCESS_DENIED, e.g.
+// another system screen right after boot) is retried, not fatal.
 static bool SysPrompt(const wchar_t* title, const wchar_t* text,
                       const wchar_t** buttons, DWORD nButtons,
                       DWORD focus, DWORD flags, DWORD* pressedOut) {
     MESSAGEBOX_RESULT result;
     XOVERLAPPED overlapped;
-    ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
 
-    DWORD dwRet = XShowMessageBoxUI(XUSER_INDEX_ANY, title, text, nButtons,
-                                    buttons, focus, flags, &result, &overlapped);
+    DWORD dwRet = ERROR_ACCESS_DENIED;
+    for (int attempt = 0; attempt < 40; ++attempt) {
+        ZeroMemory(&overlapped, sizeof(XOVERLAPPED));
+        dwRet = XShowMessageBoxUI(XUSER_INDEX_ANY, title, text, nButtons,
+                                  buttons, focus, flags, &result, &overlapped);
+        if (dwRet != ERROR_ACCESS_DENIED) break;
+        printf("XMB: UI busy (ACCESS_DENIED), retry %d/40\n", attempt + 1);
+        g_debugConsole.Print("XMB: UI busy, retry %d/40", attempt + 1);
+        Sleep(250);
+    }
     printf("XMB: ret=0x%08X\n", dwRet);
     g_debugConsole.Print("XMB: ret=0x%08X", dwRet);
 
     if (dwRet == ERROR_IO_PENDING) {
-        // v2.35: plain blocking wait — real-HW evidence: the box DOES open,
-        // the first call is slow because XAM cold-starts its XUI (10 s+
-        // before "Hooked: HUD: XuiSceneCreate") — a watchdog would fall
-        // back over a box that is about to appear.
-        while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
+        // Blocking wait, but frames keep flowing: pump a black frame every
+        // iteration so XAM can composite the dialog over it. The heartbeat
+        // every 5 s measures the real cold-start time on this console.
+        DWORD waitedMs = 0;
+        DWORD lastBeat = 0;
+        while (!XHasOverlappedIoCompleted(&overlapped)) {
+            if (FrameBegin(D3DCOLOR_XRGB(0, 0, 0))) FrameEnd();
+            Sleep(16);
+            waitedMs += 16;
+            if (waitedMs - lastBeat >= 5000) {
+                lastBeat = waitedMs;
+                printf("XMB: waiting %u s for the box...\n", (unsigned)(waitedMs / 1000));
+                g_debugConsole.Print("XMB: waiting %u s...", (unsigned)(waitedMs / 1000));
+            }
+        }
         DWORD dwRes = XGetOverlappedResult(&overlapped, NULL, TRUE);
         printf("XMB: res=0x%08X btn=%lu\n", dwRes, result.dwButtonPressed);
         g_debugConsole.Print("XMB: res=0x%08X btn=%lu", dwRes, result.dwButtonPressed);
@@ -283,7 +308,7 @@ static bool ShowPakErrorScreen(){
 }
 
 // v2.23: ask whether to import a loose "freddy" save found next to the game
-// into the XContent save container. Same async pattern as ShowPakErrorScreen.
+// into the save storage. Same async pattern as ShowPakErrorScreen.
 static bool ShowImportSavePrompt(){
     LPCWSTR wszTitle = L"Import save";
     LPCWSTR wszText  = L"Do you want to import the save found in the game folder?";
@@ -294,17 +319,6 @@ static bool ShowImportSavePrompt(){
     DWORD pressed = 0;
     SysPrompt(wszTitle, wszText, awszButtons, 2, 1, XMB_WARNINGICON, &pressed);
     return pressed == 1;                   // 1 == "Yes"
-}
-
-// v2.23: informational box after a successful import — tell the player to
-// restart so the imported save is picked up fresh.
-static void ShowImportDonePrompt(){
-    LPCWSTR wszTitle = L"Import complete";
-    LPCWSTR wszText  = L"Import complete. Please restart the game.";
-    LPCWSTR awszButtons[] = { L"OK" };
-
-    DWORD pressed = 0;
-    SysPrompt(wszTitle, wszText, awszButtons, 1, 0, XMB_NOICON, &pressed);
 }
 
 // ============================================================
@@ -983,7 +997,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.39 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.43 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -998,7 +1012,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.39 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.43 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1101,11 +1115,27 @@ int main(int argc, char* argv[]){
     FrameBegin(D3DCOLOR_XRGB(0,0,0));
     FrameEnd();
     // v2.23: if a loose "freddy" save is found next to the game, ask before
-    // importing it into the XContent container.
-    if (Progress::HasLooseSave() && ShowImportSavePrompt()) {
-        if (Progress::ImportSave()) {
-            ShowImportDonePrompt();
-            ExitToDashboard();   // v2.23: leave to the dashboard so the player restarts fresh
+    // importing it into the save storage.
+    // v2.43: NO second box and NO dashboard exit — the import runs BEFORE
+    // the disclaimer, and RefreshMenuFromProgress right below reads the
+    // fresh progress in the SAME boot. Real HW: XAM keeps refusing new UI
+    // for a long while after a box closes, so any follow-up system screen
+    // is denied anyway.
+    if (Progress::HasLooseSave()) {
+        printf("IMPORT: loose freddy found, asking user\n");
+        g_debugConsole.Print("IMPORT: loose freddy found");
+        if (ShowImportSavePrompt()) {
+            printf("IMPORT: user chose YES, importing...\n");
+            g_debugConsole.Print("IMPORT: YES -> importing");
+            if (Progress::ImportSave()) {
+                printf("IMPORT: done, progress re-read this boot (no restart)\n");
+                g_debugConsole.Print("IMPORT: done -> same-boot read");
+            } else {
+                printf("IMPORT: FAILED (no source file or XContent down)\n");
+                g_debugConsole.Print("IMPORT: FAILED");
+            }
+        } else {
+            printf("IMPORT: user chose NO (or box timed out)\n");
         }
     }
     RefreshMenuFromProgress(menu);   // v2.7.13: boot from fnaf_save.bin

@@ -55,18 +55,24 @@ static const WCHAR kXContentDisplayName[] = L"Five Nights at Freddy's 1 Save";
 static XCONTENTDEVICEID g_saveDevice = XCONTENTDEVICE_ANY;
 static bool g_deviceChosen = false;
 
+// v2.43: after the device selector exhausts its retries, XAM keeps refusing
+// new UI for a long while (real HW) — don't re-stall every subsequent
+// StorageOpen in the same boot; cool down, then try the selector again later.
+static DWORD s_selectorCooldownUntilMs = 0;
+
 // v2.39: XContent functions require the index of a LOCALLY SIGNED-IN gamer.
 // The original game is bound to the FIRST player (gamer index 0) — his profile
 // is where its saves live (confirmed on the user's console: the boot import
 // round-tripped through the player's profile). So we bind to index 0 only;
-// XUserGetSigninState(0) == NOT_SIGNED_IN (e.g. RGH without a profile in
-// slot 0) would make XContent fail with ERROR_ACCESS_DENIED, so the storage
-// skips XContent entirely and falls back to the plain HDD folder.
+// an unsigned-in slot 0 (e.g. RGH without a profile) would make XContent fail
+// with ERROR_ACCESS_DENIED, so the storage skips XContent entirely and falls
+// back to the plain HDD folder.
 static DWORD g_saveUser = 0xFFFFFFFF;
 
 static DWORD PickSignedInUserIndex() {
     // On the 360 the first player's profile always lands in gamer slot 0.
-    if (XUserGetSigninState(0) != XUSER_NOT_SIGNED_IN) return 0;
+    // Sign-in check per the XDK docs (XUSER_SIGNIN_STATE enum).
+    if (XUserGetSigninState(0) != eXUserSigninState_NotSignedIn) return 0;
     return 0xFFFFFFFF;   // player 1 has no profile signed in
 }
 
@@ -96,12 +102,34 @@ static bool XContentMount(bool create)
         // show up. Same pattern as XShowMessageBoxUI in main.cpp.
         XOVERLAPPED overlapped;
         memset(&overlapped, 0, sizeof(overlapped));
+        // v2.41: log the picker — it is a FULL-SCREEN system UI that waits
+        // for the player to choose a storage device; unlogged it reads as
+        // a hang (the v2.39 "hang on import").
+        // v2.42: the picker often runs right after a message box was
+        // dismissed, and XAM rejects new UI while the previous screen is
+        // still tearing down (ACCESS_DENIED, seen on real HW: the unhook
+        // lines land mid-import) — retry for up to 10 s before giving up.
+        // v2.43: skip the whole thing while the cooldown from a recent
+        // failure is active.
+        if (GetTickCount() < s_selectorCooldownUntilMs) {
+            printf("XContent: device selector on cooldown, using fallback storage\n");
+            return false;
+        }
+        printf("XContent: device selector open (pick a storage device)\n");
         DWORD res = XShowDeviceSelectorUI(g_saveUser, XCONTENTTYPE_SAVEDGAME, dwFlags, bytesRequested, &deviceID, &overlapped);
+        for (int attempt = 0; res == ERROR_ACCESS_DENIED && attempt < 40; ++attempt) {
+            printf("XContent: device selector busy (ACCESS_DENIED), retry %d/40\n", attempt + 1);
+            Sleep(250);
+            memset(&overlapped, 0, sizeof(overlapped));
+            res = XShowDeviceSelectorUI(g_saveUser, XCONTENTTYPE_SAVEDGAME, dwFlags, bytesRequested, &deviceID, &overlapped);
+        }
         if (res == ERROR_IO_PENDING) {
             while (!XHasOverlappedIoCompleted(&overlapped)) Sleep(16);
             res = XGetOverlappedResult(&overlapped, NULL, TRUE);
         }
+        printf("XContent: device selector res=0x%08X\n", res);
         if (res != ERROR_SUCCESS) {
+            s_selectorCooldownUntilMs = GetTickCount() + 60000;
             return false;   // cancelled/failed: g_deviceChosen stays false -> retry next time
         }
         g_saveDevice = deviceID;
@@ -148,8 +176,19 @@ static FILE* StorageOpen(const char* file, const char* mode, bool create) {
         char path[128];
         fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, file);
         FILE* f = fopen(path, mode);
-        if (f) { return f; }
+        if (f) {
+            // v2.42: honest backend log — the import log used to claim the
+            // container while the write actually went to the fallback
+            printf("SAVE: storage = XContent (%s:\\%s)\n", kXContentRoot, file);
+            return f;
+        }
         s_usingXcontent = false;   // container open failed -> local file below
+        printf("SAVE: container file open failed -> local fallback\n");
+    } else {
+        // mount can fail for several honest reasons: no signed-in profile,
+        // selector denied/cancelled, or the container simply not existing
+        // yet (OPENEXISTING -> ERROR_PATH_NOT_FOUND on a clean setup)
+        printf("SAVE: storage = local fallback (XContent mount failed or no profile)\n");
     }
     EnsureLocalDirFallback();
 #endif
@@ -343,7 +382,9 @@ bool Progress::ImportSave() {
     fclose(dst);
     StorageClose();
     if (put == got) {
-        printf("SAVE imported: %s -> fnaf_save:\\freddy\n", srcPath);
+        // v2.42: the destination is whatever StorageOpen actually served
+        // (see the "SAVE: storage = ..." line) — don't hardcode it here
+        printf("SAVE imported: %s\n", srcPath);
         return true;
     }
     return false;
