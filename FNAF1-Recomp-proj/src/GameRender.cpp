@@ -72,8 +72,15 @@
  *                           to the log + debug console for baking. Defaults are
  *                           the exact serialized values (original look).
  *
- * Counter-font strips: the pak's dynamic digits are 11 identical strip sets
- * whose glyph order is  0 1 2 3 4 5 6 7 8 9 - + . e  (verified visually).
+ * Counter-font strips: glyph order in every set is  0 1 2 3 4 5 6 7 8 9 - + . e .
+ * v2.44: the HUD counters use their OWN picture sets (decoded from the
+ * original exe's counter objects — CTFAK does not export them): clock
+ * 'time of day' 249+252-264 (24x30), 'night number' 187+191-203 (14x17,
+ * also the title menu digit), 'power left 2' [52,81-87,123,128,146,148,150,186]
+ * (18x22), 'usage meter' = whole-meter pictures [212,213,214,456,455]
+ * (103x32, displayType 4). The older guesses belong to other counters:
+ * 457-470 = 'lives left', 372-385 = 'not using tablet', 328-371 ≈ 'loaded
+ * level', 24+26-38 = the hidden logic counters.
  */
 
 #include "GameRender.h"
@@ -317,6 +324,17 @@ static const StripGlyph STRIP_VAR58_G[13] = { {570,31,58},{575,31,58},{577,31,58
 static const StripGlyph STRIP_VAR25_G[14] = { {328,13,25},{353,13,25},{360,13,25},{361,13,25},{362,13,25},{363,13,25},{364,13,25},{365,13,25},{366,13,25},{367,13,25},{368,9,25},{369,17,25},{370,7,25},{371,12,25} };
 static const StripGlyph STRIP_VAR14_G[14] = { {372,8,14},{373,8,14},{374,8,14},{375,8,14},{376,8,14},{377,8,14},{378,8,14},{379,8,14},{380,8,14},{381,8,14},{382,5,14},{383,10,14},{384,4,14},{385,7,14} };
 
+// v2.44: the REAL counter digit sets, decoded from the original exe's
+// counter objects (CTFAK's application.json leaves counter.frames empty,
+// so the old strip-to-counter assignments below were guesses — 457-470 is
+// 'lives left', 372-385 is 'not using tablet'). Glyph order in every set:
+// 0 1 2 3 4 5 6 7 8 9 - + . e
+// 'time of day' (clock): 24x30; handles 249 then 252-264 (250/251 between
+// them are a 1600x720 backdrop and the "AM" word, not digits).
+static const StripGlyph STRIP_HUDCLOCK_G[14] = { {249,24,30},{252,24,30},{253,24,30},{254,24,30},{255,24,30},{256,24,30},{257,24,30},{258,24,30},{259,24,30},{260,24,30},{261,24,30},{262,24,30},{263,24,30},{264,24,30} };
+// 'power left 2': 18x22, deliberately non-contiguous bank handles.
+static const StripGlyph STRIP_HUDPOWER_G[14] = { {52,18,22},{81,18,22},{82,18,22},{84,18,22},{85,18,22},{86,18,22},{87,18,22},{123,18,22},{128,18,22},{146,18,22},{147,18,22},{148,18,22},{150,18,22},{186,18,22} };
+
 static const char STRIP_ALPHABET[15] = "0123456789-+.e";
 
 static const SpriteStrip STRIPS[] = {
@@ -331,13 +349,22 @@ static const SpriteStrip STRIPS[] = {
     { "VAR58  570-587",        STRIP_VAR58_G, 13, 0, 1 },
     { "VAR25  328-371",        STRIP_VAR25_G, 14, 0, 0 },
     { "VAR14  372-385   8x14", STRIP_VAR14_G, 14, 0, 0 },
+    { "HUDCLK 249+252-264 24x30", STRIP_HUDCLOCK_G, 14, 1, 0 },
+    { "HUDPWR 52+81-186  18x22",  STRIP_HUDPOWER_G, 14, 1, 0 },
 };
 static const int STRIP_COUNT = (int)(sizeof(STRIPS)/sizeof(STRIPS[0]));
 
-// Strips used by the HUD
-static const SpriteStrip& STRIP_CLOCK = STRIPS[5];   // office hour digits
-static const SpriteStrip& STRIP_VAR25 = STRIPS[9];   // menu night number
-static const SpriteStrip& STRIP_VAR14 = STRIPS[10];  // power %/night digits
+// Strips used by the HUD (v2.44: clock and power use their own counter
+// fonts decoded from the original exe's counter objects; 'night number'
+// uses the XSMALL set both in the office and on the title menu)
+static const SpriteStrip& STRIP_XSMALL = STRIPS[2];     // 'night number' digits (14x17)
+static const SpriteStrip& STRIP_HUDCLOCK = STRIPS[11];  // 'time of day' digits (24x30)
+static const SpriteStrip& STRIP_HUDPOWER = STRIPS[12];  // 'power left 2' digits (18x22)
+
+// v2.44: the 'usage meter' counter is a displayType-4 (image-index)
+// counter: value 1..5 draws ONE of these whole-meter pictures (103x32)
+// at (120,657) — the cell colors are baked into the art.
+static const int USAGE_METER_IMG[5] = { 212, 213, 214, 456, 455 };
 
 // Standalone text-block candidates (sprite browser, pages 1-6)
 static const int LABEL_CANDIDATES[52] = { 42,50,54,70,71,72,73,74,75,76,77,78,79,189,207,209,212,213,214,251,352,420,433,445,446,447,448,449,453,454,455,456,471,472,473,474,475,477,480,481,524,526,530,531,533,534,535,537,538,572,588,593 };
@@ -349,6 +376,21 @@ static int StripCharIndex(char c) {
     const char* p = STRIP_ALPHABET;
     for (int i = 0; p[i]; ++i) if (p[i] == c) return i;
     return -1;
+}
+
+// Copies the leading digit run of a string ("12 AM" -> "12"). The clock
+// strip draws only the digit prefix; the " AM" tail of the hour string is
+// the separate img_251 image on the same row (and measuring it as strip
+// text adds ~57px of phantom width — space/A/M are not strip glyphs).
+static void StripDigitPrefix(const char* src, char* dst, int cap) {
+    int n = 0;
+    if (cap > 0) {
+        for (const char* p = src; *p && n < cap - 1; ++p) {
+            if (*p < '0' || *p > '9') break;
+            dst[n++] = *p;
+        }
+        dst[n] = '\0';
+    }
 }
 
 // Draw one sprite-strip string. x,y = pen origin (top of the line box);
@@ -719,12 +761,17 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
         DrawInstance(IMG_STAR, sx[i], 338.0f, 0xFFFFFFFF, false);
     }
 
-    // "Night" word + selected night number (VAR25 white digit strip)
+    // "Night" word + selected night number — the GLOBAL 'night number'
+    // counter (objInfo 11, same object as the office HUD digit): title
+    // instance (263,535), XSMALL digits right-aligned at x=263 with the
+    // baseline at y=535. The word img_475 hotspot (-1,-5) lands it at
+    // (175,517); the old VAR25 guess was the hidden 'loaded level' font.
     if (hasSave) {
         DrawInstance(IMG_NIGHT_WORD, 174.0f, 512.0f, 0xFFFFFFFF, false);
         char nb[16];
         Snprintf(nb, sizeof(nb), "%d", menu.GetSelectedNight());
-        DrawStripText(STRIP_VAR25, 246.0f, 515.0f, nb, 0xFFFFFFFF, 1.0f);
+        const f32 nw = MeasureStripText(STRIP_XSMALL, nb, 1.0f);
+        DrawStripText(STRIP_XSMALL, 263.0f - nw, 518.0f, nb, 0xFFFFFFFF, 1.0f);
     }
 
     // ">>" cursor beside the active row
@@ -771,54 +818,61 @@ void GameRender::DrawSharedHud(const Game& game, bool phonePlaying) {
         if (on) DrawInstance(IMG_MUTE_CALL, 87.0f, 37.0f, 0xCDFFFFFF, false);  // v2.7.4: original semi-transparency coeff 50 -> alpha 205/255
     }
 
-    // clock — real-game layout "H AM" on ONE row (reference screenshot):
-    // hour digits right-aligned against the AM image (img_251 @ (1198,31)).
-    // (The 'time of day' counter anchor (1185,59) seen in the raw frame data
-    // is demo-leftover layout; the real game draws the digits beside "AM".)
+    // clock — "H AM" on ONE row: the 'time of day' counter (objInfo 123,
+    // instance (1185,59)) right-aligns its digit cells at x=1185 with the
+    // baseline at y=59 — 24x30 digits ink the 29..59 row, overhanging the
+    // AM image ((1200,31)..(1242,57) via img_251's -2 hotspot) evenly like
+    // the original. Only the digit prefix of the hour string is strip-
+    // drawn: measuring the " AM" tail as strip text added ~57px of phantom
+    // width (space/A/M are not strip glyphs) — that was the huge 12...AM gap.
     DrawInstance(IMG_AM, 1198.0f, 31.0f, 0xFFFFFFFF, false);
     {
-        const char* hrs = game.GetTimer().GetHourString();
-        const f32 hw = MeasureStripText(STRIP_CLOCK, hrs, 1.0f);
-        DrawStripText(STRIP_CLOCK, 1198.0f - hw - 6.0f, 31.0f, hrs, 0xFFFFFFFF, 1.0f);
+        char hs[8];
+        StripDigitPrefix(game.GetTimer().GetHourString(), hs, (int)sizeof(hs));
+        const f32 hw = MeasureStripText(STRIP_HUDCLOCK, hs, 1.0f);
+        DrawStripText(STRIP_HUDCLOCK, 1185.0f - hw, 29.0f, hs, 0xFFFFFFFF, 1.0f);
     }
 
     // "Night N" — small row under the clock: word img_447 instance
-    // (754,74) (parking hotspot -394 lands it at ~1148, 63 px wide →
-    // x..1211, y74..88); the number reads as ONE row right after the
-    // word (the raw counter anchor (1237,89) hangs below-right — that
-    // was the "crooked" look).
+    // (754,74) (parking hotspot -394 lands it at 1148..1211, y74..88);
+    // the 'night number' counter (objInfo 11 @ (1237,89)) right-aligns
+    // its digit cells at x=1237 with the baseline at y=89 — one row with
+    // the word, a ~15px gap after it (nights are single-digit). Its font
+    // is the XSMALL set (14x17), NOT VAR14.
     DrawInstance(IMG_NIGHT_WORD_OFC, 754.0f, 74.0f, 0xFFFFFFFF, false);
     {
         char nb[16];
         Snprintf(nb, sizeof(nb), "%d", game.GetCurrentNight());
-        DrawStripText(STRIP_VAR14, 1217.0f, 74.0f, nb, 0xFFFFFFFF, 1.0f);
+        const f32 nw = MeasureStripText(STRIP_XSMALL, nb, 1.0f);
+        DrawStripText(STRIP_XSMALL, 1237.0f - nw, 72.0f, nb, 0xFFFFFFFF, 1.0f);
     }
 
-    // power: "Power left:" img_207 @(106,638) + VAR14 digits + img_208 "%"
+    // power: "Power left:" img_207 @(106,638) + digits + img_208 "%".
+    // The 'power left 2' counter (objInfo 105 @ (221,646)) right-aligns
+    // its digit cells at x=221 with the baseline at y=646; its font is a
+    // dedicated 18x22 set with non-contiguous handles (STRIP_HUDPOWER) —
+    // the bold font of the original "Power left: 99%" (the old VAR14
+    // 8x14 belonged to the hidden 'not using tablet' counter). img_208
+    // "%" is NOT positioned relative to the digits: instance (-196,632)
+    // with hotspot (-420,0) lands it at a FIXED (224,632), 11x14.
     DrawInstance(IMG_POWER_LABEL, 106.0f, 638.0f, 0xFFFFFFFF, false);
     {
         const PowerSystem& pw = game.GetPower();
         char num[16];
         // v2.7.12: original truncates (999 tenths -> "99" at night start)
         Snprintf(num, sizeof(num), "%d", (i32)(pw.GetPowerTenths() / 10));
-        DrawStripText(STRIP_VAR14, 182.0f, 632.0f, num, 0xFFFFFFFF, 1.0f);
-        const f32 dw = MeasureStripText(STRIP_VAR14, num, 1.0f);
-        // img_208 "%" drawn directly: its data hotspot (-420,0) is a
-        // parking artifact, the glyph itself is 11x14. Real-game layout:
-        // "Power left: NN%" all on one line right after the label.
-        DrawFrame(IMG_PERCENT, 182.0f + dw + 2.0f, 632.0f, 11.0f, 14.0f, 0xFFFFFFFF);
+        const f32 dw = MeasureStripText(STRIP_HUDPOWER, num, 1.0f);
+        DrawStripText(STRIP_HUDPOWER, 221.0f - dw, 624.0f, num, 0xFFFFFFFF, 1.0f);
+        DrawFrame(IMG_PERCENT, 224.0f, 632.0f, 11.0f, 14.0f, 0xFFFFFFFF);
 
-        // usage: "Usage:" img_189 @(74,674) + 5 tinted bar cells
-        // ('usage meter' counter sits at (120,657) in the frame data)
+        // usage: "Usage:" img_189 @(74,674) + the 'usage meter' counter
+        // (objInfo 108 @ (120,657)) — a displayType-4 counter drawing ONE
+        // whole-meter picture (103x32) for the current level 1..5; the
+        // green/yellow/red colors are baked into the art.
         DrawInstance(IMG_USAGE_LABEL, 74.0f, 674.0f, 0xFFFFFFFF, false);
         const int lvl = pw.GetUsageLevel();
-        for (int i = 0; i < 5; ++i) {
-            u32 c;
-            if (i >= lvl)      c = D3DCOLOR_XRGB(38, 38, 42);   // empty slot
-            else if (lvl <= 2) c = D3DCOLOR_XRGB(70, 225, 70);  // green
-            else if (lvl == 3) c = D3DCOLOR_XRGB(235, 210, 40); // yellow
-            else               c = D3DCOLOR_XRGB(225, 50, 40);  // red
-            DrawSolidRect(120.0f + i * 13.0f, 664.0f, 11.0f, 14.0f, c);
+        if (lvl >= 1 && lvl <= 5) {
+            DrawFrame(USAGE_METER_IMG[lvl - 1], 120.0f, 657.0f, 103.0f, 32.0f, 0xFFFFFFFF);
         }
     }}
 
@@ -1126,9 +1180,23 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     }
 
     // v2.7.5: the one and only gameplay home of the animated static --
-    // obj 42 "Active" (img 18/20/12..17, ink 1/100 -> alpha 155/255),
-    // which group 82 SHOWs exactly while viewing>0 (monitor up).
-    DrawStaticOverlay(STATIC_ALPHA);
+    // obj 42 "Active" (img 18/20/12..17), which group 82 SHOWs exactly
+    // while viewing>0 (monitor up).
+    //
+    // v2.45: its alpha is NOT the serialized ink coeff 100 (0.61). Event
+    // group 13 runs EVERY FRAME: act #65 (set alpha coefficient) feeds the
+    // object its own alterable[0], and act #31 re-rolls that alterable as
+    //   alterable[0] = 150 + Random(50) + tier*15,
+    //   tier = Random(3) on game start and every ~20 s (groups 15/14).
+    // So the live coefficient is 150..229 -> alpha = 1 - coeff/255 =
+    // 0.10..0.41 (avg ~0.25), the light breathing grain of the original;
+    // the serialized 100 only applies before the first event tick. The old
+    // fixed 0.61 drowned the feed (console screenshot, Sep 19). The dense
+    // white-out on cam switches is separate (group 16 blip flash above).
+    {
+        const int coeff = 150 + (rand() % 50) + (((int)(m_time / 20.0f)) % 3) * 15;
+        DrawStaticOverlay((f32)(255 - coeff) / 255.0f);
+    }
 
     // v2.7.5: the monitor's blinking red REC light -- obj "Active 2",
     // anim [img_7 red 50x50, img_5 fully transparent] at speed 2
@@ -1156,16 +1224,28 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     // verified) -- the subtle "you are here" blink.
     const int mf = CfAnimFrame(2, m_time, 2, true);
     DrawFrame(mf ? 145 : 164, 848.0f, 313.0f, 400.0f, 400.0f, 0xFFFFFFFF);
-    // v2.21: room/camera name markers drawn ON the map (obj "Active" labels)
+    //
+    // v2.45: in the frame data EVERY map button is TWO stacked instances —
+    // a 60x40 PLATE (obj 75/76/77/81/82/85/86/89/91/94/95, all img_167 gray,
+    // hotspot 29,19; the PakMapButtonOf table IS their instance table) UNDER
+    // the 31x25 white "CAM xA" text (img 165-177). The map outlines
+    // (img_164/145) carry no plates, so the old bare texts had no backing —
+    // the original shows each name on its dark plate. Order: all plates,
+    // then the selected cam's blinking green plate (img_166), then all texts
+    // on top (in the original the name stays visible over the green plate).
     for (int i = 0; i < 11; ++i) {
-        const CamMapLabel& lb = CAM_MAP_LABELS[i];
-        DrawInstance(lb.img, lb.x, lb.y, 0xFFFFFFFF, false);
+        const PakMapBtn mb = PakMapButtonOf(i);
+        DrawInstance(IMG_CAM_BTN_OFF, (f32)mb.x, (f32)mb.y, 0xFFFFFFFF, false);
     }
     if (cam >= CAM_1A && cam <= CAM_7) {
         const PakMapBtn mb = PakMapButtonOf((int)cam);
         const bool on = ((int)(m_time * 2.0f)) % 2 == 0;
         DrawInstance(on ? IMG_CAM_BTN_ON : IMG_CAM_BTN_OFF,
                      (f32)mb.x, (f32)mb.y, 0xFFFFFFFF, false);
+    }
+    for (int i = 0; i < 11; ++i) {
+        const CamMapLabel& lb = CAM_MAP_LABELS[i];
+        DrawInstance(lb.img, lb.x, lb.y, 0xFFFFFFFF, false);
     }
 
     // v2.7.9: shared layer-3 HUD (clock/night/power/usage/mute call).
@@ -1214,10 +1294,12 @@ void GameRender::RenderPowerOut(const Game& game) {
         m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
     }
 
-    // the HUD stays, power reads 0
+    // the HUD stays, power reads 0 — same right-aligned layout as the
+    // live HUD ('power left 2' counter: digits end at x=221, baseline
+    // y=646, own 18x22 font; "%" fixed at (224,632))
     DrawInstance(IMG_POWER_LABEL, 106.0f, 638.0f, 0xFF9A9A9A, false);
-    DrawStripText(STRIP_VAR14, 221.0f, 644.0f, "0", 0xFF9A9A9A, 1.0f);
-    DrawFrame(IMG_PERCENT, 221.0f + 9.0f + 2.0f, 644.0f, 11.0f, 14.0f, 0xFF9A9A9A);
+    DrawStripText(STRIP_HUDPOWER, 221.0f - MeasureStripText(STRIP_HUDPOWER, "0", 1.0f), 624.0f, "0", 0xFF9A9A9A, 1.0f);
+    DrawFrame(IMG_PERCENT, 224.0f, 632.0f, 11.0f, 14.0f, 0xFF9A9A9A);
 }
 
 // ------------------------------------------------------------

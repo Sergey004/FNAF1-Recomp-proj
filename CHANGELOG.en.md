@@ -6,6 +6,31 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.45 — camera static: the alpha is event-driven, not the serialized coeff 100
+
+- **Real-HW finding (v2.44 console screenshot)**: the camera static drowned the feed — dense gray noise everywhere, while the original's monitor shows the room through a light breathing grain.
+- **Root cause — event group 13**: it runs EVERY FRAME and act #65 (set alpha coefficient) feeds the static object (obj 42) its own alterable[0], which act #31 re-rolls as `150 + Random(50) + tier*15` (tier = Random(3), re-rolled on game start and every ~20 s by groups 15/14). The live coefficient is ~150..229 → alpha = 1 − coeff/255 ≈ 0.10..0.41 (avg ~0.25). The serialized ink coeff 100 (0.61) only applies before the first event tick — the old fixed 0.61 was 2-3× too dense. Cross-check: the title's "blip flash 2" is 95% transparent in-game despite opaque object data — only an event-set alpha coefficient explains it (same act #65).
+- The dense white-out on every cam switch is separate (group 16 blip flash, opaque frames) and stays as is.
+- The port now re-rolls the camera static's alpha every frame with the same formula (title static untouched — approved look, different ink effect).
+- **CAM map buttons got their plates back**: in the frame data every map button is TWO stacked instances — a 60x40 plate (img_167 gray; img_166 green for the selected cam, hotspot 29,19 — the `PakMapButtonOf` table IS the plate instance table) UNDER the 31x25 white "CAM xA" text (img 165-177). The map outlines (img_164/145) carry no plates, so the port drew bare texts with no backing, and put the blinking plate OVER the selected cam's text (the name vanished under it). Now: all gray plates → the selected cam's green blink → all texts on top, like the original.
+- Version → v2.45.
+
+---
+
+## v2.44 — HUD counter fonts decoded from the exe: clock / night / power / usage per the counter objects
+
+- **The digit sets were WRONG**: CTFAK's application.json leaves every counter's picture list empty (`counter.frames: []`), so the port's strip-to-counter assignments were guesses. The real lists are decoded from the original exe's OBJ_INFO counter objects ("CNTR" system blocks; glyph order in every set: `0 1 2 3 4 5 6 7 8 9 - + . e`):
+  - clock 'time of day' (objInfo 123 @ (1185,59)): **249, 252-264 (24x30)** — the old 457-470 strip actually belongs to the hidden 'lives left' counter;
+  - 'night number' (objInfo 11 @ (1237,89), GLOBAL — the same object on the title menu): **187+191-203 (14x17)** — the old VAR14 372-385 belongs to the hidden 'not using tablet' counter;
+  - 'power left 2' (objInfo 105 @ (221,646)): **52, 81-87, 123, 128, 146, 147, 148, 150, 186 (18x22, non-contiguous handles)** — the bold font of the original "Power left: 99%";
+  - 'usage meter' (objInfo 108 @ (120,657)): displayType 4 — value 1..5 draws ONE whole-meter picture **[212, 213, 214, 456, 455] (103x32)**; the old tinted-rect cells are removed (the green/yellow/red colors are baked into the art).
+- **The "12 ... AM" clock gap fixed**: `GetHourString()` returns "12 AM" and the old code measured the whole string — the " AM" tail (space, A and M are not strip glyphs) added ~57px of phantom width, pushing the hour digits far left of the AM image. Only the digit prefix is strip-drawn now.
+- **Counters are right-aligned** per the frame data: clock cells end at x=1185 (beside "AM" at 1200, baseline y=59), power digits end at x=221 (baseline y=646), the night digit ends at x=1237 (baseline y=89 — one row with the "Night" word, which closes the v2.32/v2.35 position dispute: the inline look AND the dump anchor at once). img_208 "%" is a FIXED image at (224,632), not positioned relative to the digits.
+- **Title menu**: the "Night N" digit is the same global counter → XSMALL right-aligned at (263,535) baseline, replacing the VAR25 guess (the 'loaded level' font). Power-out "0%" uses the same right-aligned power layout.
+- Version → v2.44.
+
+---
+
 ## v2.43 — import without a restart: the same boot reads the imported save (before the disclaimer)
 
 - **Real-HW finding (v2.42 run)**: after a message box closes, XAM keeps refusing ANY new system UI for a long while — the device selector stayed `ACCESS_DENIED` through all 40 retries (10 s) and the "Import complete" box was denied too. Back-to-back system screens are a dead end on this console.

@@ -72,3 +72,40 @@ screen edges 469/470 px. Consequences for the layer map above:
     FLAT scene stays visible -- exactly like the original's grab+blit;
   * layer 2+ UI (static, REC, bezel, labels, map, HUD) is unaffected.
 Full evidence chain: docs/PERSPECTIVE.md.
+
+------------------------------------------------------------------------------
+v2.45 ADDENDUM -- THE CAMERA STATIC'S ALPHA IS EVENT-DRIVEN (group 13)
+------------------------------------------------------------------------------
+The v2.7.5 note above ("статик 61%") is HALFWAY right: 0.61 is what the
+serialized object data says (obj 42, ink 1, coeff 100), but it is NOT what
+runs. Frame 1 event group 13 has NO trigger condition (ON System = every
+frame) and two actions on obj 42:
+    act #65  "set alpha coefficient" := Ext(42, value 0)   (its alterable[0])
+    act #31  alterable[0] := 150 + Random(50) + (Ext(42, value 1) ? 15)
+    groups 15/14: alterable[1] := Random(3) — on game start and every ~20 s
+So the LIVE coefficient is ~150..229 -> alpha = 1 - coeff/255 ~= 0.10..0.41
+(avg ~0.25): the light breathing grain of the real monitor. The serialized
+coeff 100 applies only before the first event tick. Measured on a real
+original screenshot (Pirate Cove, feed area): mean luma 11.9/255, p95 34 —
+impossible at fixed 0.61 (would be ~24 even over a black feed), matches
+~0.15..0.2 at the capture moment.
+Cross-check that act #65 is the alpha-coefficient setter: the title's
+"blip flash 2" (obj 12) is ~95% transparent in-game (OVERLAY_MAP's own
+observation) although its data says ink 1/0 (opaque) — only a per-frame
+event-set coefficient explains it; the title groups 1/4/5 use the same
+act #65 on 'static'/'Active 2'/'blip flash 2'.
+The dense white-out on cam switches is group 16's blip flash (obj 46,
+FLASH_SEQ, opaque/blip frames) — a different object, unaffected.
+Port: RenderCamera re-rolls the same formula every frame (v2.45). The title
+static keeps the approved look (obj 2 is ink 9 — a different effect id).
+
+CAM MAP BUTTONS (v2.45, same session): the map outlines img_164/145 carry
+NO button plates — the dark backing of each "CAM xA" button is a separate
+60x40 plate instance: obj 75/76/77/81/82/85/86/89/91/94/95, ALL img_167
+(gray, hotspot 29,19), one per camera; the selected cam's plate is blinked
+green img_166 / gray img_167 on top of it. The white texts img 165-177
+(31x25) sit OVER the plates. The port drew the bare texts only (no plates)
+and hid the selected name under its blink plate — fixed: all plates, then
+the blink, then the texts. The big location label ("Pirate Cove", img_73
+family, instance (832,292)) is text-only in the original too — no plate
+(measured: the pixels between its letters are at static level, p50 ~36).
