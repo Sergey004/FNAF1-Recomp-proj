@@ -23,6 +23,7 @@ Game::Game()
     , m_powerOutBlinkOn(false)
     , m_musicBoxPlaying(false)
     , m_debugGodMode(false)
+    , m_feedStaticTicks(0)
     , m_nightStartTimer(0.0f)
     , m_jumpscareTimer(0.0f)
     , m_jumpscareTriggered(false)
@@ -72,6 +73,7 @@ void Game::Init(i32 night) {
     m_facePhase = 0;
     m_powerOutBlinkOn = false;
     m_musicBoxPlaying = false;
+    m_feedStaticTicks = 0;
     m_nightStartTimer = 0.0f;
     m_jumpscareTimer = 0.0f;
     m_jumpscareTriggered = false;
@@ -79,6 +81,17 @@ void Game::Init(i32 night) {
 
     // Start with night start display
     m_state = GAME_STATE_NIGHT_START;
+}
+
+
+// v2.46: Night 7 reads the Customize screen's four levels (frame 3 group
+// 311 copies the global AI counters 141-144 into the activity counters).
+void Game::InitCustomNight(const i32 levels[4]) {
+    Init(7);
+    m_ai.SetAILevel(ANIM_FREDDY, levels[0]);
+    m_ai.SetAILevel(ANIM_BONNIE, levels[1]);
+    m_ai.SetAILevel(ANIM_CHICA,  levels[2]);
+    m_ai.SetAILevel(ANIM_FOXY,   levels[3]);
 }
 
 
@@ -348,6 +361,7 @@ void Game::ProcessPlaying() {
     //    movement opportunity internally (Bonnie 4.97s / Chica 4.98s /
     //    Freddy 3.02s / Foxy 5.01s, groups 188-191).
     {
+        if (m_feedStaticTicks > 0) m_feedStaticTicks--;
         AITickResult results[16];
         i32 count = m_ai.OnTick(
             m_doors, m_cameras, m_power, m_timer, results, 16);
@@ -372,8 +386,27 @@ void Game::ProcessPlaying() {
                 // Foxy force-drops the tablet (groups 321/322)
                 m_cameras.SetMonitorUp(false);
             }
+            if (results[i].event == AI_EVENT_FREDDY_IN_OFFICE) {
+                // v2.46 (groups 406/408-412): Freddy inside the office kills
+                // both door lights — his dark-office kill owns the room now.
+                m_doors.SetLight(DOOR_LEFT, false);
+                m_doors.SetLight(DOOR_RIGHT, false);
+            }
             if (results[i].event == AI_EVENT_FOXY_BANG && m_callbacks.onFoxyDoorBang) {
                 m_callbacks.onFoxyDoorBang(results[i].powerDrained);
+            }
+            // v2.46 (groups 194-198): an animatronic moving while its room
+            // is on screen glitches the monitor — 300-tick static-out, the
+            // feed is hidden ('Active 3' hidden by group 197) and a garble
+            // sample plays (groups 219-222, sound hooked in main.cpp).
+            if (results[i].event == AI_EVENT_MOVED && m_cameras.IsMonitorUp() &&
+                (results[i].animatronic == ANIM_BONNIE ||
+                 results[i].animatronic == ANIM_CHICA) &&
+                results[i].newRoom != ROOM_LEFT_DOOR &&
+                results[i].newRoom != ROOM_RIGHT_DOOR &&
+                RoomSystem::GetCameraRoom(m_cameras.GetCurrentCamera()) ==
+                    results[i].newRoom) {
+                m_feedStaticTicks = 300;
             }
             if (results[i].event == AI_EVENT_MOVED && m_callbacks.onAnimatronicMove) {
                 m_callbacks.onAnimatronicMove(results[i].animatronic,

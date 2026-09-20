@@ -204,3 +204,43 @@ during power-out. Both fixed in v2.7.12.
   1 s (group 245).
 - Footstep volume grows with proximity: 10 → 20 → 30 → 40 (Speaker ch0 volume
   per graph edge), muted while at the door (groups 212–213).
+
+## 11. v2.46 audit addendum (three dump passes: frame 3 + customize + title)
+
+Corrections applied in v2.46:
+- TICK RATE: the port ran its logic at 30 Hz while every constant is
+  denominated in 60 Hz ticks — hours 180 s, power/AI half-speed. Fixed
+  (main.cpp tickDelta = 1/60; the application frameRate is 60).
+- Foxy sprint (group 40): triggered by viewing CAM 2A (viewing==3) at
+  progress 3 — NOT the Cove. On 1C the cove just renders empty (64/65).
+- Freddy office kill (group 406): the 1 s Random(4)==1 roll is gated on
+  fox progress < 5; entering the zone kills both lights (406/408-412) and
+  loops "whispering2" (405); watching his cam resets the delay counter
+  (group 401: freddy bear alterable[13] := 0 while you are on his cam).
+- Door mid-transition (214/215/243/244): door alterable[0] 0=open/1=closing/
+  2=closed/4=opening — enter only at 0, retreat only at 2, hold (retry every
+  tick) at 1/4. The port decided instantly on the analog amount.
+- Night-start AI tables re-verified (groups 305-311): the counters used by
+  the movement events are the "activity" counters 112/121/127/138, written
+  from a hardcoded table per night; night 7 copies the Customize globals
+  141-144 into them. The AI counters are never written on nights 1-6.
+- Custom Night (frame 12, groups 5-17): four global counters 141-144,
+  +/- arrows clamp 0..20; 1987 (1/9/8/7, group 13) jumps to the creepy
+  screen; START -> night 7.
+- 'screen follow 1' (groups 2-12): the feed auto-pan — linear ping-pong
+  1 px/tick over 320, 100-tick dwell at each end, starts at the left edge.
+  'control room follow' (groups 83-88): the office stick pan, clamp
+  X 640..960, 2/5 px per frame; spawns at X=640 (the LEFT edge; 800 = the
+  centered kill close-up, groups 230/231).
+- Move-under-camera static (groups 194-198, 219-222): a move while the
+  room is watched → 300-tick static-out ('you' alterable[0]), 'Active 3'
+  hidden, blip flash storm + garble/digital sample.
+- Title "blip flash 2" (title groups 4-7): anim [430,435,436,434,438,439,
+  437,22] speed 10; visible 1-in-3 six-second windows; alpha coefficient
+  := Random(100)+100 every 1.6 s. The title static alpha := 50+Random(100)
+  every 1.8 s (group 1) — the port keeps its approved 0.61 constant.
+- Extra per-night power drain groups 342-345 (6/5/4/3 s on nights 2/3/4/5+)
+  was already implemented (PowerSystem).
+- "Lives" (lives left = 5, Ini saves at anim 35/44): a Clickteam template
+  leftover, NOT used by FNAF's flow — the scare goes straight to Game Over
+  / title. The port intentionally has no lives (user decision, v2.46).

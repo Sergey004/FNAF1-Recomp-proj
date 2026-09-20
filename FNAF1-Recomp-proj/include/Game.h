@@ -35,6 +35,10 @@ public:
 
     // Initialize for a specific night (1-7)
     void Init(i32 night);
+    // v2.46: Night 7 with the Customize screen's levels (groups 305-311:
+    // the original copies the four global AI counters into the activity
+    // counters on night 7). Call after Init(7)-equivalent setup.
+    void InitCustomNight(const i32 levels[4]);
 
     // Called every logic tick (1/60 second)
     // Returns the current game state after processing.
@@ -98,6 +102,11 @@ public:
     i32  GetPowerOutFaceState() const;
     // Phase 2: buzz blink — office visible for the whole 20 ticks or not
     bool IsPowerOutBlinkOn() const;
+    // v2.46: monitor static-out ticks (groups 194-198): set to 300 when an
+    // animatronic moves while its room is on screen; RenderCamera blanks the
+    // feed and storms static for the window; main.cpp plays the garble on
+    // the rising edge. 0 = idle.
+    i32  GetFeedStaticTicks() const { return m_feedStaticTicks; }
     
     // Jump scare info
     AnimatronicId GetJumpscareAnimatronic() const;
@@ -142,6 +151,7 @@ private:
     bool m_powerOutBlinkOn;     // Phase 2: office visible or hidden
     bool m_musicBoxPlaying;     // callback bookkeeping
     bool m_debugGodMode;        // v2.17 DEV: no power drain, no attacks
+    i32  m_feedStaticTicks;     // v2.46: monitor static-out window (300 ticks)
 
     // Night start display timer
     f32  m_nightStartTimer;

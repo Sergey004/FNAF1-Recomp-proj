@@ -360,6 +360,8 @@ static const int STRIP_COUNT = (int)(sizeof(STRIPS)/sizeof(STRIPS[0]));
 static const SpriteStrip& STRIP_XSMALL = STRIPS[2];     // 'night number' digits (14x17)
 static const SpriteStrip& STRIP_HUDCLOCK = STRIPS[11];  // 'time of day' digits (24x30)
 static const SpriteStrip& STRIP_HUDPOWER = STRIPS[12];  // 'power left 2' digits (18x22)
+static const SpriteStrip& STRIP_NIGHT = STRIPS[7];      // 556-569 (35x75) — the AI
+                                                        // counters' display font
 
 // v2.44: the 'usage meter' counter is a displayType-4 (image-index)
 // counter: value 1..5 draws ONE of these whole-meter pictures (103x32)
@@ -432,7 +434,7 @@ f32 GameRender::MeasureStripText(const SpriteStrip& strip, const char* text, flo
 GameRender::GameRender()
     : m_batch(0), m_text(0), m_pak(0)
     , m_time(0.0f)
-    , m_lookDir(0.0f), m_panX(160.0f)
+    , m_lookDir(0.0f), m_panX(0.0f)
     , m_cacheCount(0)
 {
     // v2.7.8 office FX state + Clickteam animation timers (CfAnimTimer.h).
@@ -462,8 +464,14 @@ void GameRender::Tick(f32 dt) {
     // static cycle: 8 frames (configured at 24 FPS in the ctor). 60 FPS looked
     // like a strobe; 24 FPS reads as "noise" flicker (tunable in the ctor).
     m_static.Tick(dt);
-    // office pan window: stick right -> look right (scene moves left)
-    m_panX += m_lookDir * 480.0f * dt;
+    // office pan window: stick right -> look right (scene moves left).
+    // v2.46: the original pans 2 px/frame in the slow zone and 5 px/frame in
+    // the fast one (groups 83-88 at 60 fps = 120 / 300 px/s); was fixed 480.
+    // m_panX starts at 0 — the original's pan follower starts at its clamp
+    // edge (X=640 of 640..960), i.e. the night begins looking toward the
+    // LEFT door; 800 (= pan 160, center) only appears in the kill close-ups.
+    const f32 panSpeed = (m_lookDir > 0.5f || m_lookDir < -0.5f) ? 300.0f : 120.0f;
+    m_panX += m_lookDir * panSpeed * dt;
     if (m_panX < 0.0f)          m_panX = 0.0f;
     if (m_panX > OFFICE_PAN_MAX) m_panX = OFFICE_PAN_MAX;
 }
@@ -731,11 +739,30 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     // labels (the dump lists it before "Active"/"new game"/…).
     DrawStaticOverlay(STATIC_ALPHA);
 
-    // Rare white-noise blip (object "blip flash 2", dump z-order [02] — over
-    // the static, under the logo/menu).
-    if (((int)(m_time * 3.0f) % 29) == 5) {
-        const int f = MENU_BLIP[((int)(m_time * 15.0f)) % 7];
-        DrawFrame(f, 0, 0, SCREEN_W, SCREEN_H, 0x5AFFFFFF);
+    // v2.46: the subtle band that rolls down the title screen — the
+    // "blip flash 2" object (img_430 is a black frame with one white
+    // horizontal band; frames 434-439 carry it at other heights). The
+    // anim is [430,435,436,434,438,439,437,22] at speed 10 (0.167 s per
+    // frame — the last frame 22 is a dense static flash). Title events:
+    //   group 5 (every 6 s): alterable[0] := Random(3); groups 6/7:
+    //   visible only while alterable[0] == 1 (a 1-in-3 six-second window);
+    //   group 4 (every 1.6 s): alpha coefficient := Random(100)+100 ->
+    //   alpha 0.22..0.61, re-rolled per window.
+    // The old code drew a random band frame at 0.35 alpha every ~10 s.
+    {
+        // v2.46b: Knuth-hash the window index — the first hash
+        // (win*73+win*win*37) % 3 collapsed to win(win+1) % 3, which is
+        // never 1, so the band never showed at all.
+        const unsigned win = static_cast<unsigned>(m_time / 6.0f);
+        if (((win * 2654435761u) >> 13) % 3u == 1) {
+            // anim frame: speed 10 -> (100/10)/60 = 0.167 s per frame
+            static const int BAND_SEQ[8] = { 430, 435, 436, 434, 438, 439, 437, 22 };
+            const int fi = static_cast<int>(m_time * 6.0f) % 8;
+            const unsigned aw = static_cast<unsigned>(m_time / 1.6f); // 1.6 s alpha window
+            const int coeff = 100 + static_cast<int>(((aw * 2654435761u) >> 9) % 100u); // 100..199
+            const u32 a = static_cast<u32>((255 - coeff)) << 24;
+            DrawFrame(BAND_SEQ[fi], 0.0f, 0.0f, SCREEN_W, SCREEN_H, a | 0xFFFFFF);
+        }
     }
 
     // Logo + static labels (hotspot-corrected instance positions)
@@ -1038,7 +1065,11 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
 //  image, map with blinking selected-cam button.
 // ------------------------------------------------------------
 static const f32 CAM_PAN_RANGE  = 320.0f;   // 1600 - 1280
-static const f32 CAM_PAN_PERIOD = 18.0f;    // seconds per full sweep
+// v2.46: the auto-pan is a LINEAR ping-pong ('screen follow 1', groups 2-12):
+// 1 px/tick across the 320 slack, a 100-tick (~1.7 s) dwell at each end,
+// starting at the LEFT edge panning right. Full cycle 840 ticks = 14 s.
+static const i32 CAM_PAN_SWEEP  = 320;      // ticks per one-way sweep
+static const i32 CAM_PAN_DWELL  = 100;      // dwell ticks at each end
 
 static int CamFeedFor(const Game& game, CameraId cam) {
     // presence-aware feed selection (defaults verified from the pak)
@@ -1165,10 +1196,27 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     // Authentic drift: in the original the office view pans with the
     // stick while camera feeds slowly wander left<->right on their own
     // (the 1600x720 renders carry 320 px of slack for exactly that).
-    // Cosine easing = smooth turnaround at both edges, no dead pause.
-    const f32 camPan = 0.5f * CAM_PAN_RANGE
-                     * (1.0f - cosf(m_time * 6.2831853f / CAM_PAN_PERIOD));
-    if (feed >= 0) {   // v2.7.10: >=0 -- img_0 (CAM 2B) must draw too
+    // v2.46: linear ping-pong with end dwells per groups 2-12 (was a
+    // smooth 18 s cosine).
+    f32 camPan = 0.0f;
+    {
+        const i32 c = static_cast<i32>(m_time * 60.0f)
+                    % (CAM_PAN_SWEEP * 2 + CAM_PAN_DWELL * 2);
+        if (c < CAM_PAN_SWEEP)                       camPan = static_cast<f32>(c);
+        else if (c < CAM_PAN_SWEEP + CAM_PAN_DWELL)  camPan = static_cast<f32>(CAM_PAN_SWEEP);
+        else if (c < CAM_PAN_SWEEP * 2 + CAM_PAN_DWELL)
+            camPan = static_cast<f32>(CAM_PAN_SWEEP * 2 + CAM_PAN_DWELL - c);
+        else                                         camPan = 0.0f;
+    }
+    // v2.46 (groups 194-198): while the static-out window runs, the feed is
+    // hidden (group 197 hides 'Active 3') and a blip-flash storm covers the
+    // monitor — group 196 re-arms blip every tick, group 16 re-creates the
+    // 9-frame 'Active 5' flash; we cycle its frames at anim speed 70.
+    const bool feedOut = game.GetFeedStaticTicks() > 0;
+    if (feedOut) {
+        const int bi = FLASH_SEQ[static_cast<int>(m_time * 42.0f) % 9];
+        DrawFrame(bi, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+    } else if (feed >= 0) {   // v2.7.10: >=0 -- img_0 (CAM 2B) must draw too
         // v2.8: the feed is on layer 0 too -- captured and warped with the
         // SAME parabola as the office (this is why camera feeds bulge).
         m_batch->BeginSceneCapture(0xFF000000u);
@@ -1183,20 +1231,16 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     // obj 42 "Active" (img 18/20/12..17), which group 82 SHOWs exactly
     // while viewing>0 (monitor up).
     //
-    // v2.45: its alpha is NOT the serialized ink coeff 100 (0.61). Event
-    // group 13 runs EVERY FRAME: act #65 (set alpha coefficient) feeds the
-    // object its own alterable[0], and act #31 re-rolls that alterable as
-    //   alterable[0] = 150 + Random(50) + tier*15,
-    //   tier = Random(3) on game start and every ~20 s (groups 15/14).
-    // So the live coefficient is 150..229 -> alpha = 1 - coeff/255 =
-    // 0.10..0.41 (avg ~0.25), the light breathing grain of the original;
-    // the serialized 100 only applies before the first event tick. The old
-    // fixed 0.61 drowned the feed (console screenshot, Sep 19). The dense
-    // white-out on cam switches is separate (group 16 blip flash above).
-    {
-        const int coeff = 150 + (rand() % 50) + (((int)(m_time / 20.0f)) % 3) * 15;
-        DrawStaticOverlay((f32)(255 - coeff) / 255.0f);
-    }
+    // v2.46 (user decision): the camera static stays at the serialized
+    // ink coeff 100 -> alpha 0.61, the pre-v2.45 look. The v2.45 decode
+    // of event group 13 (per-frame act #65 sets the coefficient to
+    // alterable[0] = 150+Random(50)+tier*15 -> alpha 0.10..0.41) is the
+    // EVENT truth (docs/OVERLAY_MAP.md v2.45 addendum), but on the dark
+    // room art that flicker reads as almost no noise on hardware; the
+    // user tested both and kept the fixed serialized look. (Deviation
+    // from the events, documented; an explicit label per the project
+    // rule "original behavior = game dump only, label deviations".)
+    DrawStaticOverlay(STATIC_ALPHA);
 
     // v2.7.5: the monitor's blinking red REC light -- obj "Active 2",
     // anim [img_7 red 50x50, img_5 fully transparent] at speed 2
@@ -1382,6 +1426,56 @@ void GameRender::RenderNightComplete(i32 night, f32 elapsed) {
 void GameRender::RenderIntroAd() {
     if (!m_batch) return;
     DrawFrame(IMG_INTRO_AD, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+}
+
+// ------------------------------------------------------------
+//  v2.46: Night 7 setup — the "customize" frame (1280x720). Four character
+//  panels (527/528/529/536) with name plates (537), captions (531/535/533/
+//  534), +/- arrows (541/542), the AI numbers on the NIGHT strip (35x75,
+//  the AI counters' own font, instances (267/550/832/1112, 532)), the hint
+//  strip (593) and START (530). Instance coords straight from
+//  FrameLayout/frame_12_customize.txt (DrawInstance applies the hotspots).
+//  sel: the console cursor (the original was mouse-driven) — a thin frame
+//  around the selected column.
+// ------------------------------------------------------------
+void GameRender::RenderCustomize(const i32 levels[4], i32 sel) {
+    if (!m_batch) return;
+
+    DrawInstance(524, 448.0f, 29.0f, 0xFFFFFFFF, false);   // "Custom Night" heading
+    DrawInstance(527, 118.0f, 187.0f, 0xFFFFFFFF, false);  // Freddy panel
+    DrawInstance(528, 403.0f, 187.0f, 0xFFFFFFFF, false);  // Bonnie panel
+    DrawInstance(529, 682.0f, 187.0f, 0xFFFFFFFF, false);  // Chica panel
+    DrawInstance(536, 957.0f, 187.0f, 0xFFFFFFFF, false);  // Foxy panel
+    DrawInstance(537, 118.0f, 425.0f, 0xFFFFFFFF, false);  // name plates
+    DrawInstance(537, 402.0f, 425.0f, 0xFFFFFFFF, false);
+    DrawInstance(537, 684.0f, 425.0f, 0xFFFFFFFF, false);
+    DrawInstance(537, 960.0f, 425.0f, 0xFFFFFFFF, false);
+    DrawInstance(531, 140.0f, 108.0f, 0xFFFFFFFF, false);  // captions
+    DrawInstance(535, 425.0f, 108.0f, 0xFFFFFFFF, false);
+    DrawInstance(533, 714.0f, 108.0f, 0xFFFFFFFF, false);
+    DrawInstance(534, 1004.0f, 108.0f, 0xFFFFFFFF, false);
+    DrawInstance(593, 116.0f, 654.0f, 0xFFFFFFFF, false);  // hint strip
+    DrawInstance(530, 1044.0f, 603.0f, 0xFFFFFFFF, false); // START
+    for (i32 i = 0; i < 4; ++i) {
+        static const f32 rx[4] = { 311.0f, 593.0f, 876.0f, 1154.0f };
+        static const f32 lx[4] = { 122.0f, 406.0f, 690.0f, 969.0f };
+        DrawInstance(541, rx[i], 470.0f, 0xFFFFFFFF, false);   // "+" arrows
+        DrawInstance(542, lx[i], 470.0f, 0xFFFFFFFF, false);   // "-" arrows
+    }
+    static const f32 nx[4] = { 267, 550, 832, 1112 };
+    char nb[8];
+    for (i32 i = 0; i < 4; ++i) {
+        Snprintf(nb, sizeof(nb), "%d", levels[i]);
+        DrawStripText(STRIP_NIGHT, nx[i], 532, nb, 0xFFFFFFFF, 1.0f);
+    }
+    if (sel >= 0 && sel < 4) {
+        static const f32 cx[4] = { 104, 389, 668, 943 };
+        const u32 ca = 0x30FFFFFF;
+        DrawSolidRect(cx[sel],        180.0f, 254.0f, 6.0f, ca);
+        DrawSolidRect(cx[sel],        620.0f, 254.0f, 6.0f, ca);
+        DrawSolidRect(cx[sel],        180.0f,   6.0f, 446.0f, ca);
+        DrawSolidRect(cx[sel] + 248.0f, 180.0f, 6.0f, 446.0f, ca);
+    }
 }
 
 void GameRender::RenderGameOver() {

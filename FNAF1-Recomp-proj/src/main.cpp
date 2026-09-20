@@ -198,6 +198,7 @@ static u32 ColorForState(GameState state, f32 power) {
         case GAME_STATE_JUMPSCARE: return D3DCOLOR_XRGB(200, 200, 200);
         case GAME_STATE_NIGHT_COMPLETE: return D3DCOLOR_XRGB(5, 40, 5);
         case GAME_STATE_GAME_OVER: return D3DCOLOR_XRGB(40, 0, 0);
+        case GAME_STATE_CUSTOMIZE: return D3DCOLOR_XRGB(0, 0, 0);   // v2.46
         default: return D3DCOLOR_XRGB(0,0,0);
     }
 }
@@ -564,6 +565,13 @@ static bool  s_goldInOffice = false;
 static f32   s_goldTimer = 0.0f;
 static f32   s_goldItsmeT = 0.0f;   // v2.35: IT'S ME burst clock during his visit
 
+// v2.46: Customize screen session state — the original keeps the four AI
+// counters (objInfo 141-144) as Fusion GLOBALS, so they persist across the
+// frame change and a death retry within one app run (cleared on restart).
+static i32  g_custLevels[4] = { 0, 0, 0, 0 };
+static i32  g_custSel = 0;
+static bool g_creepyToMenu = false;   // the 1987 easter egg returns to the title
+
 // v2.35: DEV — spawn the REAL Golden Freddy pipeline in the office
 // (bypasses the 1/100 poster roll): giggle + office appearance (img 573) +
 // IT'S ME flashes + full-screen face + the intentional close.
@@ -695,6 +703,7 @@ void OnJumpscare(AnimatronicId anim){
     // plays XSCREAM2 on f15 "creepy end" (unreachable demo ending) and its
     // f14 "creepy start" is silent. The robots share XSCREAM (ch1).
     g_audio.Play(&g_pak, (anim == ANIM_COUNT) ? Snd::XSCREAM2 : Snd::XSCREAM, false, 1.0f);
+    g_audio.Stop(Snd::WHISPERING);   // v2.46: the office whisper dies with the kill
     // v2.37: the pad shakes at FULL force for the whole scare (both motors)
     RumbleKick(65535, 65535, 1.4f);
     g_debugConsole.Print("SCARE %s begin", nm);
@@ -709,6 +718,7 @@ void OnPowerOut(){
     g_audio.Stop(Snd::COLD_PRESC); g_audio.Stop(Snd::BUZZ_FAN);
     g_audio.Stop(Snd::BALLAST_HUM); g_audio.Stop(Snd::ROBOT_VOICE);
     g_audio.Stop(Snd::EERIE_AMBIENCE); g_audio.Stop(Snd::STATIC_LOOP); g_audio.Stop(Snd::STATIC2);
+    g_audio.Stop(Snd::WHISPERING);   // v2.46: Freddy's office whisper (ch25)
     s_phonePlaying=false;
     g_audio.Play(&g_pak, Snd::POWERDOWN, false, 1.0f);
     // v2.37: dry fading crackle on the high-freq motor at the power cut
@@ -829,6 +839,9 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
         g_audio.PlayOnChannel(&g_pak, Snd::RUNNING_FAST, false, CH_RUNFAST);
         // music box while Freddy is in the kitchen (groups 399/400, ch22)
         if (r==ROOM_KITCHEN) g_audio.PlayOnChannel(&g_pak, Snd::MUSIC_BOX, false, CH_MUSICBOX);
+        // v2.46 (group 405): "whispering2" while Freddy stands inside the
+        // office ("freddy got in") — his dark-office kill ambience.
+        if (r==ROOM_RIGHT_DOOR) g_audio.PlayOnChannel(&g_pak, Snd::WHISPERING, true, CH_WHISPER);
     }
     // v2.14: "No Laughing" — Freddy steps into the East Hall on Night 5
     if(a==ANIM_FREDDY && r==ROOM_EAST_HALL) g_ach.OnFreddyEast();
@@ -997,7 +1010,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.45 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.46 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -1012,7 +1025,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.45 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.46 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1152,7 +1165,12 @@ int main(int argc, char* argv[]){
     static int menuFrameCounter = 0;
     static int adCounter = 0;         // v2.15: separate timer for the newspaper screen
     float accumulator=0.0f;
-    const float tickDelta = 1.0f/30.0f; // logic 30Hz, render 60Hz
+    // v2.46: was 1/30 ("logic 30Hz") while the accumulator gains 1/60 per
+    // frame and EVERY system inside (clock 5400 ticks/hour = 90 s, power
+    // drain per 60 ticks, AI opportunity/delay/foxy timers) is denominated
+    // in 60 Hz ticks -- the whole game ran at HALF the original's speed
+    // (hours took 180 s). Original: application frameRate = 60.
+    const float tickDelta = 1.0f/60.0f; // logic 60Hz, matches TICK_RATE
     s_phoneStarted = false;
     f32 scareElapsed = 0.0f;
     i32 endFrames = 0;
@@ -1321,6 +1339,18 @@ int main(int argc, char* argv[]){
             TickAudioMixer(game);              // v2.16: dynamic channel volumes each frame
             TickRandomEvents(game);            // v2.18: periodic pirate/breaths/circus one-shots
             TickGoldenFreddy(game, g_render);  // v2.22: Golden Freddy summon/appear/kill
+            // v2.46 (groups 219-222): a garble/digital sample on the rising
+            // edge of the camera static-out window (Random(4)+1 -> 1..4).
+            {
+                static i32 prevFeedStatic = 0;
+                const i32 fs = game.GetFeedStaticTicks();
+                if (fs > 0 && prevFeedStatic == 0) {
+                    const int g = rand() % 4;
+                    if (g == 0) g_audio.Play(&g_pak, Snd::COMPUTER_DIG, false, 0.8f);
+                    else        g_audio.Play(&g_pak, Snd::GARBLE[g - 1], false, 0.8f);
+                }
+                prevFeedStatic = fs;
+            }
             // v2.27: the "IT'S ME" office hallucination (obj "Active 21"),
             // dump groups 413-419: every ~20 s Random(1000)==1 opens a
             // 100-tick window; during it the overlay is shown only on
@@ -1536,6 +1566,16 @@ int main(int argc, char* argv[]){
             if(!g_achScreen){
                 if(act==MENU_ACTION_START_NIGHT){
                     i32 night=menu.GetSelectedNight();
+                    // v2.46: Night 7 opens the CUSTOMIZE screen (frame 12):
+                    // the original copies the four global AI counters into
+                    // the activity counters only at night start (group 311);
+                    // the sliders are the 1987-easter-egg input too.
+                    if(night == 7){
+                        g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
+                        state = GAME_STATE_CUSTOMIZE;
+                        tickCount=0; accumulator=0; menuFrameCounter=0;
+                        Sleep(16); continue;
+                    }
                     g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
                     // v2.33: 1:1 with dump group 24 — clicking New Game writes
                     // `level=1` to the ini (the beat flags are KEPT, exactly
@@ -1543,6 +1583,13 @@ int main(int argc, char* argv[]){
                     if (menu.LastStartWasNewGame()) {
                         Progress::Load(g_prog);
                         g_prog.nextNight = 1;
+                        // v2.46: the original's New Game ALSO wipes the unlock
+                        // progress (title groups ~44/49: beatgame/beat6/beat7
+                        // := 0 — a "new save" starts clean; Custom/6th rows and
+                        // stars come back only by beating the nights again).
+                        g_prog.beat5 = false;
+                        g_prog.beat6 = false;
+                        g_prog.beat7 = false;
                         Progress::Save(g_prog);
                     }
                     game.Init(night);
@@ -1560,6 +1607,50 @@ int main(int argc, char* argv[]){
             Sleep(16); tickCount++; continue;
         } else {
             menuFrameCounter = 0;
+        }
+
+        // ---------------- CUSTOMIZE (Night 7 setup, frame 12) ----------------
+        // v2.46: the original is mouse-driven (11 button groups); the console
+        // maps it to up/down = row, left/right = -1/+1 (groups 5-12 clamp
+        // 0..20), A = START (group 2), B = back. The 1987 combo (groups
+        // 13-17: 1/9/8/7) jumps to the creepy screen instead of the night.
+        if(state==GAME_STATE_CUSTOMIZE){
+            if(gi.cameraUp)         { g_custSel = (g_custSel + 3) % 4; g_audio.Play(&g_pak,Snd::BLIP,false,0.8f); }
+            else if(gi.cameraDown)  { g_custSel = (g_custSel + 1) % 4; g_audio.Play(&g_pak,Snd::BLIP,false,0.8f); }
+            else if(gi.cameraLeft || gi.lookDir < -0.5f){
+                if(g_custLevels[g_custSel] > 0){ g_custLevels[g_custSel]--; g_audio.Play(&g_pak,Snd::BLIP,false,0.8f); }
+            }
+            else if(gi.cameraRight || gi.lookDir > 0.5f){
+                if(g_custLevels[g_custSel] < 20){ g_custLevels[g_custSel]++; g_audio.Play(&g_pak,Snd::BLIP,false,0.8f); }
+            }
+
+            if(gi.cameraToggle){
+                const bool e1987 = (g_custLevels[0]==1 && g_custLevels[1]==9 &&
+                                    g_custLevels[2]==8 && g_custLevels[3]==7);
+                g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
+                if(e1987){
+                    // group 3: START with 1987 -> frame 14 "creepy start"
+                    g_creepyToMenu = true;
+                    game.DebugTriggerGoldenFreddy();
+                    state = GAME_STATE_JUMPSCARE; scareElapsed = 0.0f;
+                } else {
+                    game.InitCustomNight(g_custLevels);
+                    g_ach.BeginNight(7);
+                    s_phoneMuted=false; s_phonePlaying=false; s_phoneStarted=false;
+                    s_goldState=0; s_goldInOffice=false; s_goldTimer=0.0f; g_render.SetGoldenFreddyInOffice(false);
+                    tickCount=0; accumulator=0; menuFrameCounter=0; adCounter=0;
+                    StartTransition(state, GAME_STATE_NIGHT_START);
+                }
+            } else if(gi.back){
+                StartTransition(state, GAME_STATE_MENU); menu.Reset();
+            }
+
+            if(FrameBegin(D3DCOLOR_XRGB(0,0,0))){
+                g_render.RenderCustomize(g_custLevels, g_custSel);
+                DrawFadeOverlay();
+                FrameEnd();
+            }
+            Sleep(16); tickCount++; continue;
         }
 
         // ---------------- INTRO AD ("HELP WANTED", v2.7.13) ----------------
@@ -1700,7 +1791,7 @@ int main(int argc, char* argv[]){
             }
         }
 
-        // ---------------- LOGIC TICK (30 Hz) ----------------
+        // ---------------- LOGIC TICK (60 Hz) ----------------
         if(g_fade.phase != 1){
             accumulator += 1.0f/60.0f;
             while(accumulator >= tickDelta){
@@ -1710,9 +1801,11 @@ int main(int argc, char* argv[]){
                 // v2.37: hold the non-Golden scare until the RENDER clock
                 // (scareElapsed, 60 Hz) ALSO passed the duration — the logic
                 // timer alone could cut the scare short on frame drift
-                // (the Foxy scare looked like "1 in 3").
+                // (the Foxy scare looked like "1 in 3"). v2.46: the 1987
+                // creepy scare holds the same way (it routes to the title,
+                // not to the force-close).
                 if (ns == GAME_STATE_GAME_OVER && state == GAME_STATE_JUMPSCARE &&
-                    game.GetJumpscareAnimatronic() != ANIM_COUNT &&
+                    (game.GetJumpscareAnimatronic() != ANIM_COUNT || g_creepyToMenu) &&
                     scareElapsed < (f32)game.GetJumpscareDurationSec())
                     break;
                 if(ns != GAME_STATE_PLAYING){
@@ -1720,7 +1813,15 @@ int main(int argc, char* argv[]){
                         if (state == GAME_STATE_JUMPSCARE)
                             g_debugConsole.Print("SCARE end: rend=%.2f/%.2fs",
                                 scareElapsed, (f32)game.GetJumpscareDurationSec());
-                        StartTransition(state, ns);   // fade-in next-day/game-over
+                        // v2.46: the 1987 creepy scare returns to the title
+                        // (customize START -> frame 14 -> scare -> title).
+                        if (ns == GAME_STATE_GAME_OVER && g_creepyToMenu) {
+                            g_creepyToMenu = false;
+                            scareElapsed = 0.0f;
+                            StartTransition(state, GAME_STATE_MENU); menu.Reset();
+                        } else {
+                            StartTransition(state, ns);   // fade-in next-day/game-over
+                        }
                     }
                     break;
                 }
@@ -1740,8 +1841,18 @@ int main(int argc, char* argv[]){
                 // reboot to the dashboard, but the console is never harmed
                 // and always recovers; README documents this as a feature).
                 if (game.GetJumpscareAnimatronic()==ANIM_COUNT &&
-                    scareElapsed >= (f32)game.GetJumpscareDurationSec())
-                    exit(0);
+                    scareElapsed >= (f32)game.GetJumpscareDurationSec()) {
+                    // v2.46: the 1987 easter egg path returns to the title
+                    // (customize START -> frame 14 creepy -> scare -> title);
+                    // Golden Freddy's own kill keeps the force-close.
+                    if (g_creepyToMenu) {
+                        g_creepyToMenu = false;
+                        scareElapsed = 0.0f;
+                        StartTransition(state, GAME_STATE_MENU); menu.Reset();
+                    } else {
+                        exit(0);
+                    }
+                }
                 scareElapsed += 1.0f/60.0f;   // v2.18: advance AFTER the first frame renders (start on frame 0)
             } else if(state==GAME_STATE_POWER_OUT){
                 g_render.RenderPowerOut(game);

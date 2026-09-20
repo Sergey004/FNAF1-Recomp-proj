@@ -82,6 +82,11 @@ public:
     // Static + GAME OVER
     void RenderGameOver();
 
+    // v2.46: Night 7 setup screen (frame "customize"): four AI counters
+    // 0-20 with +/- arrows, START; levels[4] = freddy/bonnie/chica/foxy,
+    // sel = the console cursor row (0..3, -1 = none).
+    void RenderCustomize(const i32 levels[4], i32 sel);
+
     // Draw the fullscreen static overlay on top of anything
     void DrawStaticOverlay(float alpha);
 

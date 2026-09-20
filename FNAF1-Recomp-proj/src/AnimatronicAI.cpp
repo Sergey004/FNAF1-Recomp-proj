@@ -292,7 +292,12 @@ void AnimatronicAI::MoveBonnie(const DoorSystem& doors, AITickResult* results,
     bool move = false;
 
     if (bonnie.atDoor) {
-        // Groups 214/215: at "ready to attack left"
+        // Groups 214/215: at "ready to attack left". The door state must be
+        // SETTLED: enter only fully open (alterable[0]==0), retreat only
+        // fully closed (==2); mid-slide (1/4) holds the check — move who?
+        // stays set and the groups re-run every tick until the door lands.
+        const f32 amt = doors.GetDoorAmount(DOOR_LEFT);
+        if (amt > 0.0f && amt < 1.0f) return;   // door mid-transition: wait
         if (!doors.IsDoorClosed(DOOR_LEFT)) {
             dest = ROOM_OFFICE;                 // "got you left" -> kill
             move = true;
@@ -345,7 +350,10 @@ void AnimatronicAI::MoveChica(const DoorSystem& doors, AITickResult* results,
     bool move = false;
 
     if (chica.atDoor) {
-        // Groups 243/244: at "ready to attack right"
+        // Groups 243/244: at "ready to attack right" — same settle rule as
+        // Bonnie's side: hold while the door is mid-transition.
+        const f32 amt = doors.GetDoorAmount(DOOR_RIGHT);
+        if (amt > 0.0f && amt < 1.0f) return;   // door mid-transition: wait
         if (!doors.IsDoorClosed(DOOR_RIGHT)) {
             dest = ROOM_OFFICE;                 // "got you right" -> kill
             move = true;
@@ -398,7 +406,13 @@ void AnimatronicAI::UpdateFreddy(const DoorSystem& doors, const CameraSystem& ca
     if (!freddy.active || freddy.aiLevel <= 0 || freddy.hasAttacked) return;
 
     // ---- Door zone: 25%/s kill with the monitor down (group 406) ----
+    // Group 406 also gates on fox progress < 5: while Foxy is sprinting or
+    // at the door (stage >= 5) his kill owns the night and Freddy holds.
     if (m_freddyAtDoorZone) {
+        if (m_foxyStage >= FOXY_STAGE_5) {
+            m_freddyDoorRollAccum = 0;
+            return;
+        }
         if (!cameras.IsMonitorUp() && doors.IsDoorClosed(DOOR_RIGHT) == false) {
             m_freddyDoorRollAccum++;
             if (m_freddyDoorRollAccum >= 60) {      // Timer 1000 = 1 s
@@ -428,6 +442,10 @@ void AnimatronicAI::UpdateFreddy(const DoorSystem& doors, const CameraSystem& ca
                 m_freddyAtDoorZone = true;
                 AddResult(results, count, max, AI_EVENT_MOVED, ANIM_FREDDY, ROOM_RIGHT_DOOR);
                 AddResult(results, count, max, AI_EVENT_AT_DOOR, ANIM_FREDDY, ROOM_RIGHT_DOOR);
+                // v2.46: groups 406/408-412 — inside the office he kills the
+                // lights (both light states := 0); Game zeroes the DoorSystem.
+                AddResult(results, count, max, AI_EVENT_FREDDY_IN_OFFICE,
+                          ANIM_FREDDY, ROOM_RIGHT_DOOR);
             } else if (viewed != CAM_4A) {
                 freddy.currentRoom = ROOM_EAST_HALL;   // retreat to 4A
                 m_freddyPathIndex = 4;
@@ -437,9 +455,17 @@ void AnimatronicAI::UpdateFreddy(const DoorSystem& doors, const CameraSystem& ca
         return; // wait at 4B until the tablet is raised
     }
 
-    // ---- Delay counter (groups 397/398) ----
+    // ---- Delay counter (groups 397/398/401) ----
+    // [13] ticks up every frame (397, unconditional); watching Freddy's
+    // current cam RESETS it to 0 (401); the move fires only with the
+    // monitor down (398's viewing == 0).
     if (m_freddyPending) {
-        m_freddyDelayTicks++;                    // alterable[13] += 1 per frame
+        if (cameras.IsMonitorUp() &&
+            RoomSystem::GetCameraRoom(cameras.GetCurrentCamera()) == freddy.currentRoom) {
+            m_freddyDelayTicks = 0;              // group 401
+        } else {
+            m_freddyDelayTicks++;                // group 397
+        }
         if (!cameras.IsMonitorUp() &&
             m_freddyDelayTicks >= AIConstants::FREDDY_DELAY_BASE
                                 - freddy.aiLevel * AIConstants::FREDDY_DELAY_PER_AI) {
@@ -488,8 +514,12 @@ void AnimatronicAI::UpdateFoxy(const DoorSystem& doors, const CameraSystem& came
     Animatronic& foxy = m_animatronics[ANIM_FOXY];
     if (!foxy.active || foxy.aiLevel <= 0 || foxy.hasAttacked) return;
 
-    // Empty cove seen while lurking -> instant run (group 40)
-    if (m_foxyStage == FOXY_STAGE_3 && ViewingCove(cameras)) {
+    // v2.46 (group 40): the sprint starts when the player watches CAM 2A —
+    // the west hall he runs down — while progress == 3 (either he reached 3
+    // while 2A was open, or 2A is opened after). The old trigger watched the
+    // COVE; at stage 3 the Cove just renders the empty garage (groups 64/65).
+    if (m_foxyStage == FOXY_STAGE_3 &&
+        cameras.IsMonitorUp() && cameras.GetCurrentCamera() == CAM_2A) {
         m_foxyStage = FOXY_STAGE_4;
         foxy.foxyStage = m_foxyStage;
         foxy.foxyRunning = true;

@@ -43,7 +43,9 @@ enum AIEvent {
     AI_EVENT_FOXY_AT_DOOR    = 4,   // stage 5 (tablet must drop)
     AI_EVENT_FOXY_BANG       = 5,
     AI_EVENT_AT_DOOR         = 6,   // Bonnie/Chica/Freddy at a door zone
-    AI_EVENT_ATTACK          = 7
+    AI_EVENT_ATTACK          = 7,
+    AI_EVENT_FREDDY_IN_OFFICE = 8  // v2.46: Freddy stepped to "freddy got in"
+                                   // (group 394) — kills the lights (406/408)
 };
 
 struct AITickResult {

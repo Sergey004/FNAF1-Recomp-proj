@@ -98,6 +98,10 @@ The dense white-out on cam switches is group 16's blip flash (obj 46,
 FLASH_SEQ, opaque/blip frames) — a different object, unaffected.
 Port: RenderCamera re-rolls the same formula every frame (v2.45). The title
 static keeps the approved look (obj 2 is ink 9 — a different effect id).
+v2.46 user decision: the CAMERA static is back to the fixed serialized
+coeff 100 (0.61) — the 0.10..0.41 flicker reads as almost no noise on the
+dark room art on HW. The event truth above (group 13 formula) stays as the
+documented deviation label; RenderCamera carries the note.
 
 CAM MAP BUTTONS (v2.45, same session): the map outlines img_164/145 carry
 NO button plates — the dark backing of each "CAM xA" button is a separate
