@@ -218,6 +218,9 @@ static const int RAISE_SEQ[11] = {142,46,144,132,133,136,137,138,139,140,141};  
 // (different effect id, value 0) and is always visible there.
 static const f32 STATIC_ALPHA    = 155.0f / 255.0f;  // coeff 100
 static const f32 MUTECALL_ALPHA  = 205.0f / 255.0f;  // coeff 50
+// v2.46 rev: the CAMERA static is a touch more transparent than the title's
+// fixed 0.61 — between the old dense look and the group-13 flicker decode.
+static const f32 CAM_STATIC_ALPHA = 0.48f;
 
 // Desk pumpkin (Halloween easter egg, object "Active 28", 7 frames at
 // 143x150) -- in the frame data it is gated by Date&Time/'month'/'day'
@@ -1231,16 +1234,16 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
     // obj 42 "Active" (img 18/20/12..17), which group 82 SHOWs exactly
     // while viewing>0 (monitor up).
     //
-    // v2.46 (user decision): the camera static stays at the serialized
-    // ink coeff 100 -> alpha 0.61, the pre-v2.45 look. The v2.45 decode
-    // of event group 13 (per-frame act #65 sets the coefficient to
+    // v2.46 (user decision): the camera static is FIXED, slightly more
+    // transparent than the title's — CAM_STATIC_ALPHA (0.48). The v2.45
+    // decode of event group 13 (per-frame act #65 sets the coefficient to
     // alterable[0] = 150+Random(50)+tier*15 -> alpha 0.10..0.41) is the
     // EVENT truth (docs/OVERLAY_MAP.md v2.45 addendum), but on the dark
-    // room art that flicker reads as almost no noise on hardware; the
-    // user tested both and kept the fixed serialized look. (Deviation
-    // from the events, documented; an explicit label per the project
-    // rule "original behavior = game dump only, label deviations".)
-    DrawStaticOverlay(STATIC_ALPHA);
+    // room art that flicker reads as almost no noise on hardware; the user
+    // tested the fixed looks and picked 0.48. (Deviation from the events,
+    // documented; an explicit label per the project rule "original
+    // behavior = game dump only, label deviations".)
+    DrawStaticOverlay(CAM_STATIC_ALPHA);
 
     // v2.7.5: the monitor's blinking red REC light -- obj "Active 2",
     // anim [img_7 red 50x50, img_5 fully transparent] at speed 2
