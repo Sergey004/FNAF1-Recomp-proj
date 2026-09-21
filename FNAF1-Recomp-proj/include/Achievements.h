@@ -1,17 +1,21 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
- * Achievements.h: in-game achievement system (v2.14, v2.20 two-build)
+ * Achievements.h: in-game achievement system (v2.14, v2.20 two-build,
+ * v2.47 official SPA ids)
  *
- * The original game is a retail title whose achievements (id, name,
- * description, gamerscore, icon) are baked into an Xbox LIVE SPA game-config
- * produced by the external "Game Configuration" tool; the runtime only calls
- * XUserWriteAchievements to mark an id as earned. This recomp cannot ship a
- * signed SPA, so achievements are implemented IN-GAME, plus an optional system
- * hook:
+ * The game's achievements live in the official game config
+ * FNAF1-Recomp-proj.xlast, compiled by XLAST into FNAF1-Recomp-proj.spa and
+ * embedded into the XEX as a resource section named by the title id (the
+ * system reads it at launch -- no runtime registration call exists). The same
+ * compile produces include/FNAF1-Recomp-proj.spa.h with the ACHIEVEMENT_*
+ * ids this class passes to XUserWriteAchievements; the in-game table in
+ * Achievements.cpp mirrors the config (400 G total).
  *
- *   * a fixed table of 10 achievements (mirrors achievements.xml);
+ *   * a fixed table of 10 achievements using the generated ACHIEVEMENT_* ids;
  *   * an unlock bitmask persisted (see Progress.h) -- to fnaf_save:\fnaf_ach.ini
- *     in the system build, or game:\save\fnaf_ach.ini in the Live Safe build;
+ *     in the system build, or game:\save\fnaf_ach.ini in the Live Safe build.
+ *     The mask encodes "bit (id-1)", so the ids MUST stay the contiguous
+ *     range 1..10 -- static_assert'd in Achievements.cpp;
  *   * v2.20 TWO BUILD FLAVORS controlled by FNAF_LIVE_SAFE in Achievements.cpp
  *     (also gating Progress.cpp's storage backend):
  *       - default (no macro)  -> "обычная": touches the Xbox system --
@@ -33,8 +37,8 @@
 namespace fnaf {
 
 struct AchievementDef {
-    int  id;              // 1..10
-    int  gamerscore;      // 20..100
+    int  id;              // ACHIEVEMENT_* from the generated .spa.h (1..10)
+    int  gamerscore;      // mirrors the .xlast game config (20..100)
     const char* name;
     const char* description;
     const char* icon;     // file under game:\achievements_pics\ (informational)

@@ -1,14 +1,20 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
- * Achievements.cpp: in-game achievement system (v2.14)
+ * Achievements.cpp: in-game achievement system (v2.47: official SPA ids)
  *
- * See Achievements.h for the design. The 10 achievements below mirror
- * achievements.xml 1:1 (id / gamerscore / name / description / icon / secret).
+ * See Achievements.h for the design. The 10 achievements below mirror the
+ * official game config: FNAF1-Recomp-proj.xlast --(XLAST)--> the compiled
+ * .spa embedded into the XEX as a resource section named by the title id,
+ * plus the generated include/FNAF1-Recomp-proj.spa.h whose ACHIEVEMENT_*
+ * constants are the ids used below. XUserWriteAchievements with those ids
+ * matches what the system already knows about the title from the embedded
+ * .spa (names / gamerscore / icons), so no runtime registration is needed.
  */
 
 #include "Achievements.h"
 #include "Progress.h"
 #include "DebugConsole.h"
+#include "FNAF1-Recomp-proj.spa.h"   // v2.47: official ACHIEVEMENT_* ids
 #include <cstdio>
 
 // ---------------------------------------------------------------------------
@@ -32,17 +38,40 @@ namespace fnaf {
 
 static const float kToastSeconds = 4.0f;
 
+// v2.47: the ids MUST stay the contiguous range 1..COUNT — the fnaf_ach.ini
+// bitmask persists "bit (id-1) set = achievement id earned". These asserts
+// pin the official values so that a regenerated spa.h with shifted ids fails
+// THIS build loudly instead of silently re-reading someone else's mask.
+static_assert(ACHIEVEMENT_ONE_NIGHT_AT_FREDDYS   == 1,  "spa.h id 1 must stay 1");
+static_assert(ACHIEVEMENT_TWO_NIGHTS_AT_FREDDYS  == 2,  "spa.h id 2 must stay 2");
+static_assert(ACHIEVEMENT_THREE_NIGHTS_AT_FREDDYS== 3,  "spa.h id 3 must stay 3");
+static_assert(ACHIEVEMENT_FOUR_NIGHTS_AT_FREDDYS == 4,  "spa.h id 4 must stay 4");
+static_assert(ACHIEVEMENT_FIVE_NIGHTS_AT_FREDDYS == 5,  "spa.h id 5 must stay 5");
+static_assert(ACHIEVEMENT_OVERTIME               == 6,  "spa.h id 6 must stay 6");
+static_assert(ACHIEVEMENT_NO_TAMPERING           == 7,  "spa.h id 7 must stay 7");
+static_assert(ACHIEVEMENT_NO_RUNNING             == 8,  "spa.h id 8 must stay 8");
+static_assert(ACHIEVEMENT_NO_LAUGHING            == 9,  "spa.h id 9 must stay 9");
+static_assert(ACHIEVEMENT_NO_HIDING              == 10, "spa.h id 10 must stay 10");
+
+// v2.47: id/gamerscore mirror the official config (the .xlast project); id 4
+// is 50G there (this table used to hand-roll 30 — total is 400 G now). The
+// console has no visibility flag for achievements (the config's
+// showUnachieved does nothing), so in-game `secret` stays hand-picked:
+// 6/7/10 are the hidden ones. Name/description text stays in-game too — the
+// config's language strings are placeholders and its friendly names are
+// restricted (no apostrophes etc.); reading them via XReadStringsFromSpaFile
+// (the SPASTRING_* ids in the spa header) is future work.
 static const AchievementDef kAchievements[Achievements::COUNT] = {
-    { 1,   20, "One Night at Freddy's",   "Survive your first night on the job.",              "ach_night1.png",    false },
-    { 2,   20, "Two Nights at Freddy's",  "Survive a second night.",                           "ach_night2.png",    false },
-    { 3,   30, "Three Nights at Freddy's","Survive a third night.",                            "ach_night3.png",    false },
-    { 4,   30, "Four Nights at Freddy's", "Survive a fourth night.",                           "ach_night4.png",    false },
-    { 5,   50, "Five Nights at Freddy's", "Survive all five nights.",                          "ach_night5.png",    false },
-    { 6,   50, "Overtime",                "Survive the sixth night.",                          "ach_night6.png",    true  },
-    { 7,  100, "No Tampering",            "Complete Custom Night with AI set to 20/20/20/20.","ach_420.png",       true  },
-    { 8,   30, "No Running",              "Prevent Foxy from leaving Pirate Cove on Night 4.", "ach_foxy.png",      false },
-    { 9,   30, "No Laughing",             "Keep Freddy from reaching the East Hall on Night 5.","ach_freddy.png",   false },
-    { 10,  20, "No Hiding",               "Get caught by an animatronic.",                     "ach_jumpscare.png", true  }
+    { ACHIEVEMENT_ONE_NIGHT_AT_FREDDYS,    20, "One Night at Freddy's",   "Survive your first night on the job.",               "ach_night1.png",    false },
+    { ACHIEVEMENT_TWO_NIGHTS_AT_FREDDYS,   20, "Two Nights at Freddy's",  "Survive a second night.",                            "ach_night2.png",    false },
+    { ACHIEVEMENT_THREE_NIGHTS_AT_FREDDYS, 30, "Three Nights at Freddy's","Survive a third night.",                             "ach_night3.png",    false },
+    { ACHIEVEMENT_FOUR_NIGHTS_AT_FREDDYS,  50, "Four Nights at Freddy's", "Survive a fourth night.",                            "ach_night4.png",    false },
+    { ACHIEVEMENT_FIVE_NIGHTS_AT_FREDDYS,  50, "Five Nights at Freddy's", "Survive all five nights.",                           "ach_night5.png",    false },
+    { ACHIEVEMENT_OVERTIME,                50, "Overtime",                "Survive the sixth night.",                           "ach_night6.png",    true  },
+    { ACHIEVEMENT_NO_TAMPERING,           100, "No Tampering",            "Complete Custom Night with AI set to 20/20/20/20.",  "ach_420.png",       true  },
+    { ACHIEVEMENT_NO_RUNNING,              30, "No Running",              "Prevent Foxy from leaving Pirate Cove on Night 4.",  "ach_foxy.png",      false },
+    { ACHIEVEMENT_NO_LAUGHING,             30, "No Laughing",             "Keep Freddy from reaching the East Hall on Night 5.","ach_freddy.png",    false },
+    { ACHIEVEMENT_NO_HIDING,               20, "No Hiding",               "Get caught by an animatronic.",                      "ach_jumpscare.png", true  }
 };
 
 Achievements::Achievements()
@@ -78,19 +107,26 @@ void Achievements::OnFoxyRan()    { m_foxyRan = true; }
 void Achievements::OnFreddyEast() { m_freddyEast = true; }
 
 void Achievements::OnNightComplete(int night, bool perfect) {
+    // Nights 1..5 map to ACHIEVEMENT_*_NIGHT(S)_AT_FREDDYS in order. The
+    // official ids happen to be contiguous — say it with the table, not math.
+    static const int kNightAch[5] = {
+        ACHIEVEMENT_ONE_NIGHT_AT_FREDDYS,   ACHIEVEMENT_TWO_NIGHTS_AT_FREDDYS,
+        ACHIEVEMENT_THREE_NIGHTS_AT_FREDDYS, ACHIEVEMENT_FOUR_NIGHTS_AT_FREDDYS,
+        ACHIEVEMENT_FIVE_NIGHTS_AT_FREDDYS
+    };
     if (night >= 1 && night <= 5) {
-        Unlock(night);                       // survive nights 1..5 -> ids 1..5
+        Unlock(kNightAch[night - 1]);
     } else if (night == 6) {
-        Unlock(6);                           // Overtime
+        Unlock(ACHIEVEMENT_OVERTIME);         // survive the sixth night
     } else if (night == 7 && perfect) {
-        Unlock(7);                           // No Tampering (20/20/20/20)
+        Unlock(ACHIEVEMENT_NO_TAMPERING);     // Custom Night 20/20/20/20
     }
-    if (night == 4 && !m_foxyRan)    Unlock(8);   // No Running
-    if (night == 5 && !m_freddyEast) Unlock(9);   // No Laughing
+    if (night == 4 && !m_foxyRan)    Unlock(ACHIEVEMENT_NO_RUNNING);
+    if (night == 5 && !m_freddyEast) Unlock(ACHIEVEMENT_NO_LAUGHING);
 }
 
 void Achievements::OnJumpscare() {
-    Unlock(10);
+    Unlock(ACHIEVEMENT_NO_HIDING);
 }
 
 // v2.17 DEV helpers (no toast/system-write spam — just flip the bitmask).
@@ -190,7 +226,7 @@ void Achievements::SystemWrite(int id) {
     }
     XUSER_ACHIEVEMENT a;
     a.dwUserIndex     = 0;             // FIRST player (gamer index 0) — the original binds to him
-    a.dwAchievementId = (DWORD)id;
+    a.dwAchievementId = (DWORD)id;     // ACHIEVEMENT_* from the generated spa.h (v2.47)
     DWORD res = XUserWriteAchievements(1, &a, NULL);
     printf("ACH %d -> 0x%08X (%s)\n", id, (unsigned)res, AchErrName(res));
     if (m_console) m_console->Print("ACH %d -> 0x%08X (%s)", id, (unsigned)res, AchErrName(res));

@@ -45,7 +45,7 @@
     <None Include="achievements_pics\аch_jumpscare.png">
       <Filter>achievements_pics</Filter>
     </None>
-    <None Include="fnaf1.spa" />
+    <None Include="FNAF1-Recomp-proj.spa" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\assets\asset_mapping_fnaf1.hpp">
@@ -163,6 +163,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\XdkCompat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNAF1-Recomp-proj.spa.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
