@@ -1,14 +1,14 @@
 ============================================================================
 FNAF1-Recomp -- docs/ACHIEVEMENTS.md
-In-game achievements (v2.14)
+In-game achievements (v2.14; v2.47 official game config)
 ============================================================================
 
 WHAT THIS IS
 ------------
-Ten in-game achievements mirroring `achievements.xml`, unlocked at the same
-gameplay moments the original retail title would, but implemented in-game
-because this recomp cannot ship a signed Xbox LIVE SPA (see "System API +
-two build flavors", below).
+Ten in-game achievements, unlocked at the same gameplay moments the original
+title would, with ids/gamerscore mirroring the official game config
+(`FNAF1-Recomp-proj.xlast`, compiled by XLAST). See "System API" below for
+how the compiled config reaches the console.
 
 The achievements (id / gamerscore / trigger):
 
@@ -17,7 +17,7 @@ The achievements (id / gamerscore / trigger):
 | 1  | One Night …      | 20  | survive Night 1                                              | no     |
 | 2  | Two Nights …     | 20  | survive Night 2                                              | no     |
 | 3  | Three Nights …   | 30  | survive Night 3                                              | no     |
-| 4  | Four Nights …    | 30  | survive Night 4                                              | no     |
+| 4  | Four Nights …    | 50  | survive Night 4                                              | no     |
 | 5  | Five Nights …    | 50  | survive Night 5                                              | no     |
 | 6  | Overtime         | 50  | survive Night 6                                              | yes    |
 | 7  | No Tampering     | 100 | Custom Night complete with all AI == 20 (Night 7)            | yes    |
@@ -25,9 +25,14 @@ The achievements (id / gamerscore / trigger):
 | 9  | No Laughing      | 30  | Night 5 without Freddy reaching the East Hall                | no     |
 | 10 | No Hiding        | 20  | caught by an animatronic (any jumpscare)                     | yes    |
 
-The table lives in `src/Achievements.cpp` (`kAchievements`), not parsed from
-the XML — `achievements.xml` is kept as the human-readable spec and its icon
-file names are recorded in the `icon` field for a future icon pass.
+The table lives in `src/Achievements.cpp` (`kAchievements`), with the ids
+taken from the generated `include/FNAF1-Recomp-proj.spa.h` (`ACHIEVEMENT_*`
+constants) — total 400 G (id 4 is 50 G there; this table's old hand-rolled
+value was 30). The single spec is the config, `FNAF1-Recomp-proj.xlast` (the
+old `achievements.xml` mirror was deleted in v2.47 — one authority instead
+of two); the `icon` field records the PNG file names for a future icon pass.
+The `secret` column is in-game only — the console has no visibility flag for
+achievements, so the config's `showUnachieved` setting does nothing there.
 
 STATE & PERSISTENCE
 -------------------
@@ -89,13 +94,34 @@ Toggle in `src/Achievements.cpp` (same switch also gates `src/Progress.cpp`):
 
 Leave it commented out (the default) for the system/profile build.
 
+v2.48: the dev-menu **Unlock all** now also writes the whole set to the
+profile in ONE batched `XUserWriteAchievements` call (it used to be
+local-only) — that is the quick on-console check that the embedded SPA is
+picked up: the Guide list must show all ten with names, gamerscore and
+icons. Boot logs `ACH p0 signin=N` (0 = nobody signed in → profile writes
+are skipped, 1 = local, 2 = LIVE).
+
 `XUserWriteAchievements` only records "achievement N earned"; the name,
 description, gamerscore, icon and the Guide's "Achievement Unlocked — 10G"
-toast come from the title's SPA game-config. Without a signed SPA, the system
-list/toast still show but may lack localized text/GS — which is why the in-game
-mask in `fnaf_ach.ini` (or `save\fnaf_ach.ini`) remains the persistent source of
-truth and the in-game UI is kept as fallback. `xapilib.lib` is already in the
-project's linker inputs, so nothing else changes to switch flavors.
+toast come from the title's SPA game-config. The config is authored in
+`FNAF1-Recomp-proj.xlast` and compiled by XLAST into `FNAF1-Recomp-proj.spa`,
+which the build links into the XEX as a resource section named by the title
+id (`464E4131` — see `<AdditionalSections>` in the .vcxproj). The system
+reads that section at launch; there is no runtime "register config" call —
+the generated `include/FNAF1-Recomp-proj.spa.h` simply gives the code the
+`ACHIEVEMENT_*` ids to pass. The in-game mask in `fnaf_ach.ini` (or
+`save\fnaf_ach.ini`) remains the persistent source of truth and the in-game
+UI is kept as fallback. `xapilib.lib` is already in the project's linker
+inputs, so nothing else changes to switch flavors.
+
+SPA STRINGS (future work)
+-------------------------
+The generated `include/FNAF1-Recomp-proj.spa.h` also defines `SPASTRING_*`
+ids (2..32) readable via `XReadStringsFromSpaFile`. They are unused for now:
+the config's language strings are placeholders, and its friendly names are
+character-restricted (no apostrophes), so the in-game C strings carry the
+real text. Fill the translations in the .xlast, recompile the .spa, and this
+becomes a way to localize the in-game list too.
 
 ICONS (future work)
 -------------------

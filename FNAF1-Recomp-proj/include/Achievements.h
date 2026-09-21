@@ -105,6 +105,7 @@ private:
 
     void Save();
     void SystemWrite(int id);
+    void SystemWriteAll();   // v2.48: batched profile write (dev UnlockAll)
 };
 
 } // namespace fnaf

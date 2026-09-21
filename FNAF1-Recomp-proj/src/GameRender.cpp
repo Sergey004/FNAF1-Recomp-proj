@@ -270,6 +270,14 @@ static const int SCARE_CHICA_KILL[16] = {
 // door light reveals Bonnie/Chica, NOT during the kill.
 static const int SCARE_BONNIE_WINDOW = 225;   // Active 3 anim 34
 static const int SCARE_CHICA_WINDOW  = 227;   // Active 3 anim 43
+
+// v2.48: the POWER-OUT kill — the "freddy" frame's obj 152: the dark Freddy
+// face flicker, 21 full-screen frames @ speed 60 (36 FPS), backTo 5 (first
+// pass once, then loop from index 5). NOT the in-office lunge (anim 65).
+static const int SCARE_FREDDY_DARK[21] = {
+    326, 307, 348, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317, 318,
+    319, 320, 321, 322, 323, 324, 325
+};
 static const int GOLDEN_FREDDY       = 571;   // Active 3 anim 75
 
 // IT'S ME hallucination flash (frame 3 object "Active 21" anim 0)
@@ -1321,25 +1329,18 @@ void GameRender::RenderPowerOut(const Game& game) {
     const i32 poPhase = game.GetPowerOutPhase();
 
     int flicker = POWEROUT_DARK;                 // anim 46 (dark office)
-    if (poPhase == 0) {
-        flicker = POWEROUT_DARK;
-    } else if (poPhase == 1) {
+    if (poPhase == 1) {
         // face flicker: Game re-rolls 25% lit every 0.5 s (group 289)
         flicker = game.IsFreddyFaceLit() ? POWEROUT_LIT : POWEROUT_DARK;
-    } else if (poPhase == 2) {
-        // buzz blink: office toggles on/off (alterable[7] Random(2)+1)
-        flicker = POWEROUT_DARK;
-    } else {
-        flicker = POWEROUT_DARK; // phase 3 handled below (no draw)
     }
+    // v2.48: no buzz / pitch-black extra phases — the dark Freddy kill fires
+    // the moment the jingle stage ends, so phases >1 never render here.
 
-    if (poPhase < 3 && (poPhase != 2 || game.IsPowerOutBlinkOn())) {
-        m_batch->BeginSceneCapture(0xFF000000u);
-        DrawInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, true);
-        DrawInstance(flicker, 0.0f, 0.0f, 0xFFFFFFFF, true);
-        m_batch->EndSceneCapture();
-        m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
-    }
+    m_batch->BeginSceneCapture(0xFF000000u);
+    DrawInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, true);
+    DrawInstance(flicker, 0.0f, 0.0f, 0xFFFFFFFF, true);
+    m_batch->EndSceneCapture();
+    m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
 
     // the HUD stays, power reads 0 — same right-aligned layout as the
     // live HUD ('power left 2' counter: digits end at x=221, baseline
@@ -1368,6 +1369,16 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
         DrawFrame(IMG_CREEPY_FACE, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
         DrawFrame(IMG_CREEPY_TWINKLE, 510.0f, 192.0f, 32.0f, 32.0f, 0xFFFFFFFF);
         DrawFrame(IMG_CREEPY_TWINKLE, 804.0f, 196.0f, 32.0f, 32.0f, 0xFFFFFFFF);
+        return;
+    }
+
+    // v2.48: power-out kill — the dark face flicker (obj 152). Full-screen
+    // frames @ 36 FPS (speed 60); the first 21 frames play once, then the
+    // loop resumes at index 5 (backTo 5) until the state ends.
+    if (anim == ANIM_FREDDY_DARK) {
+        float f = elapsed * 36.0f;
+        int idx = (f < 21.0f) ? (int)f : 5 + (int)(f - 21.0f) % 16;
+        DrawFrame(SCARE_FREDDY_DARK[idx], 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
         return;
     }
 

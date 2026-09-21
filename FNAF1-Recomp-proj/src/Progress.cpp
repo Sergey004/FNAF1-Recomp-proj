@@ -154,6 +154,15 @@ static bool XContentMount(bool create)
     ULARGE_INTEGER uliSize;
     uliSize.QuadPart = XContentCalculateSize(64 * 1024, 1);
     DWORD res = XContentCreateEx(g_saveUser, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
+    if (res == ERROR_SHARING_VIOLATION || res == ERROR_ALREADY_EXISTS) {
+        // v2.48: a leftover mount of this root from earlier in the boot poisons
+        // every further open with SHARING_VIOLATION/ALREADY_EXISTS (real-HW
+        // log). Close the stale root and retry once.
+        printf("XContent: create hit 0x%08X — closing the stale root and retrying\n", (unsigned)res);
+        XContentClose(kXContentRoot, NULL);
+        dwDisposition = 0;
+        res = XContentCreateEx(g_saveUser, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
+    }
     printf("XContent: user=%u create=0x%08X disp=0x%X\n",
            (unsigned)g_saveUser, (unsigned)res, (unsigned)dwDisposition);
     return res == ERROR_SUCCESS;
@@ -182,8 +191,19 @@ static FILE* StorageOpen(const char* file, const char* mode, bool create) {
             printf("SAVE: storage = XContent (%s:\\%s)\n", kXContentRoot, file);
             return f;
         }
-        s_usingXcontent = false;   // container open failed -> local file below
-        printf("SAVE: container file open failed -> local fallback\n");
+        // v2.48: the container fopen FAILED but the mount succeeded — unmount
+        // RIGHT HERE. The old code dropped s_usingXcontent without closing,
+        // so StorageClose skipped the unmount, the root stayed mounted for
+        // the rest of the boot, and every later XContentCreateEx answered with
+        // 0x20 SHARING_VIOLATION / 0xB7 ALREADY_EXISTS (seen in the HW log).
+        {
+            DWORD ferr = GetLastError();
+            DWORD fres = XContentFlush(kXContentRoot, NULL);
+            DWORD cres = XContentClose(kXContentRoot, NULL);
+            printf("SAVE: container file open failed (err=0x%08X) -> local fallback (flush=0x%08X close=0x%08X)\n",
+                   (unsigned)ferr, (unsigned)fres, (unsigned)cres);
+        }
+        s_usingXcontent = false;   // container closed above -> local file below
     } else {
         // mount can fail for several honest reasons: no signed-in profile,
         // selector denied/cancelled, or the container simply not existing

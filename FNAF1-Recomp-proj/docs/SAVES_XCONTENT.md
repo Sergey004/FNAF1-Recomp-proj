@@ -61,3 +61,14 @@ Key constraints per the docs:
 Diagnostics: `XContent: user=N create=0x… disp=0x…`,
 `XContent: flush=0x… close=0x…`. Expected codes on success — 0
 (ERROR_SUCCESS).
+
+## v2.48 — the mounted-container leak (real-HW bug)
+
+If the container-mounted `fopen` FAILED after a successful
+`XContentCreateEx`, the old code dropped `s_usingXcontent` without closing,
+so `StorageClose` skipped the unmount and the root stayed mounted for the
+rest of the boot — every later `XContentCreateEx` then failed with 0x20
+(`ERROR_SHARING_VIOLATION`) / 0xB7 (`ERROR_ALREADY_EXISTS`). Fixed inside
+`StorageOpen`: on in-container fopen failure the root is flushed+closed
+IMMEDIATELY (and the failing `GetLastError()` is logged), and a mount that
+runs into those codes closes the stale root and retries once.

@@ -6,6 +6,25 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.48 — save-mount leak fixed; power-out gets the real kill screen and the music box; dev unlock-all writes the profile
+
+- **The power-out kill is now the real one** (from the "freddy" kill frame, obj 152): pitch black with Freddy's dark face flickering — 21 full-screen frames (326, 307, 348, 308…325) at 36 FPS, first pass once, then looping from frame 5 (backTo 5). The old code wrongly reused the in-office lunge (anim 65). New sentinel `ANIM_FREDDY_DARK` rides the normal jumpscare state, so the hold-until-render rule, XSCREAM and the Game Over handoff behave as for the other kills.
+- **The music box actually plays now**: at the face phase the real "music box" jingle sounds (dump groups 272/273) — the old callback looped *circus* there by mistake (`OnMusicBoxStart` played `Snd::CIRCUS`). At the buzz phase the jingle and the ambience2 drone die and the fluorescent buzz loops at half volume on the now-idle fan channel (dump groups 294-296, new `onPowerOutBuzz` callback); the fan channel volume is restored on the next office entry. The kill silences everything, like the original.
+- **Save fix — the mounted-container leak**: when the in-container `fopen` failed after a successful mount, the root stayed mounted (the flush/close was skipped) and every later `XContentCreateEx` in the same boot answered 0x20 SHARING_VIOLATION / 0xB7 ALREADY_EXISTS (seen in the v2.47 HW log). Now StorageOpen unmounts immediately on that path, and the mount retries once after `XContentClose` when it sees those codes. The failing fopen also logs `GetLastError()` now.
+- **Achievements: dev "Unlock all" now writes the profile too** (one batched `XUserWriteAchievements(10, …)`) — the Guide list then shows all ten with the embedded-SPA names/scores/icons, which is the one-glance verification that the config is picked up. Boot also logs the slot-0 sign-in state (`ACH p0 signin=N`: 0 = nobody, 1 = local, 2 = LIVE) so a silent no-profile run is visible.
+- Version → v2.48.
+
+---
+
+## v2.47 — achievements wired to the official game config (spa.h / embedded .spa)
+
+- **The achievement ids are now read from the generated `include/FNAF1-Recomp-proj.spa.h`** instead of hardcoded literals: the `kAchievements` table, `OnNightComplete`/`OnJumpscare` and the profile write all use `ACHIEVEMENT_ONE_NIGHT_AT_FREDDYS` … `ACHIEVEMENT_NO_HIDING`. The config (`FNAF1-Recomp-proj.xlast`) is compiled by XLAST and the resulting `.spa` is linked into the XEX as a resource section named by the title id (`464E4131`) — the console reads it at launch, so the Guide-side name/gamerscore/icon all come from it; there is no runtime "register the config" call to make.
+- **"Four Nights at Freddy's" corrected to 50 G** per the config (the hand-rolled table had 30) — the in-game total is now 400 G. The old `achievements.xml` mirror is deleted: the .xlast is the single authority. The docs table updated to match.
+- **Save-mask pinning**: ten `static_assert`s hold the ids at the contiguous 1..10 range — a regenerated spa.h with shifted ids fails the build loudly instead of silently re-reading an existing `fnaf_ach.ini` bitmask. The console has no achievement-visibility flag, so the in-game `secret` marks stay hand-picked (6/7/10); the `SPASTRING_*` ids in the header stay unused (the config's strings are placeholders) — filling them in the .xlast is the documented path to localizing the in-game list later.
+- Version → v2.47.
+
+---
+
 ## v2.46 — the animatronic brains audited against the events: tick-rate fix, Foxy/Freddy/door corrections, panning, Customize screen
 
 - **Full AI audit (3 dump passes: frame 3 events + customize + title)**. Verified ALREADY matching the original (no work): opportunity timers 4.97/4.98/3.02/5.01 s (groups 188-191), the Random(20)+1 <= AI dice, the per-night AI tables 1-6 (305-310, incl. Night 4 Freddy 1+Random(2)), the 2/3/4 AM boosts (335-337), the full Bonnie/Chica room graphs (199-211/232-242 — room-for-room), the door retreat rooms (Bonnie→1B dining, Chica→4A), Freddy's 4B/4A rules (394/395), his wait for BOTH others to leave the stage (389), his 1000−100×AI delay (398), Foxy's tablet cooldown 50+Random(1000) (329/313), the 1500-tick lurk fallback and 100-tick run (315-320), the bang drain 10+50×N (324), and the per-night extra power drain 6/5/4/3 s (342-345 — already implemented).

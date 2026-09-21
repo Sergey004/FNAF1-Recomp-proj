@@ -258,6 +258,7 @@ f64 Game::GetJumpscareDurationSec() const {
         case ANIM_BONNIE: return 1.1;   // 11 frames @ 45 FPS + hold
         case ANIM_CHICA:  return 1.1;   // 16 frames @ 60 FPS + hold
         case ANIM_COUNT:  return 2.5;   // v2.22: Golden Freddy creepy start
+        case ANIM_FREDDY_DARK: return 2.5;   // v2.48: power-out dark face flicker
         default:          return 1.5;
     }
 }
@@ -428,9 +429,9 @@ void Game::ProcessPlaying() {
 //  (docs/AI_MECHANICS.md §8; groups 272-302)
 //
 //   phase 0: dark office; 20%/5s (forced 20 s) -> phase 1
-//   phase 1: music box; face flicker 25%/0.5s; 20%/5s -> phase 2
-//   phase 2: 20-tick buzz blink -> phase 3
-//   phase 3: black; 20%/2s (forced 20 s) -> Freddy kill
+//   phase 1: music box; face flicker 25%/0.5s; 20%/5s (forced 20 s) -> KILL
+//   v2.48: no buzz / pitch-black transition phases — once the jingle stage
+//   ends, the dark Freddy kill fires IMMEDIATELY (face + XSCREAM).
 //   6 AM saves at any point (the clock keeps running).
 // ============================================================
 
@@ -460,6 +461,7 @@ void Game::ProcessPowerOut() {
     const f64 dt = TimeConstants::TICK_INTERVAL_SEC;
     m_powerOutPhaseTimer += dt;
 
+    // Only two phases: dark office (0), jingle + lit-face flicker (1).
     switch (m_powerOutPhase) {
         case 0:
         case 1: {
@@ -499,48 +501,22 @@ void Game::ProcessPowerOut() {
                     if (m_callbacks.onMusicBoxStart) m_callbacks.onMusicBoxStart();
                 }
                 if (m_powerOutPhase == 2) {
-                    // Group 293: alterable[7] = Random(2)+1 rolled at entry;
-                    // 1 = office stays visible with the buzz, 2 = hidden
-                    m_powerOutBlinkOn = (SimpleRandom(1, 2) == 1);
-                }
-            }
-            break;
-        }
-        case 2: {
-            // Phase 2: fixed 20-tick buzz blink (groups 297/298)
-            if (m_powerOutPhaseTimer >= TimeConstants::POWER_OUT_BUZZ_TICKS
-                                      * TimeConstants::TICK_INTERVAL_SEC) {
-                m_powerOutPhase = 3;
-                m_powerOutPhaseTimer = 0.0;
-                m_powerOutRollTimer = 0.0;
-                if (m_musicBoxPlaying && m_callbacks.onMusicBoxStop) {
-                    m_callbacks.onMusicBoxStop();
-                }
-                m_musicBoxPlaying = false;
-            }
-            break;
-        }
-        case 3: {
-            // Phase 3: 20 % per 2 s (group 301), forced at 20 s (group 302)
-            m_powerOutRollTimer += dt;
-            bool kill = false;
-            if (m_powerOutRollTimer >= TimeConstants::POWER_OUT_FINAL_ROLL_SEC) {
-                m_powerOutRollTimer -= TimeConstants::POWER_OUT_FINAL_ROLL_SEC;
-                if (SimpleRandom(1, TimeConstants::POWER_OUT_ROLL_DENOM) == 1) kill = true;
-            }
-            if (m_powerOutPhaseTimer >= TimeConstants::POWER_OUT_PHASE_MAX_SEC) kill = true;
-
-            if (kill) {
-                if (m_musicBoxPlaying && m_callbacks.onMusicBoxStop) {
-                    m_callbacks.onMusicBoxStop();
-                }
-                m_musicBoxPlaying = false;
-                m_state = GAME_STATE_JUMPSCARE;
-                m_jumpscareTimer = 0.0f;
-                m_jumpscareTriggered = true;
-                m_jumpscareAnimatronic = ANIM_FREDDY;
-                if (m_callbacks.onJumpscare) {
-                    m_callbacks.onJumpscare(ANIM_FREDDY);
+                    // v2.48: right after the jingle stage the game goes
+                    // STRAIGHT to the dark Freddy kill (face + XSCREAM) — no
+                    // buzz blink, no extra pitch-black wait.
+                    if (m_musicBoxPlaying && m_callbacks.onMusicBoxStop) {
+                        m_callbacks.onMusicBoxStop();
+                    }
+                    m_musicBoxPlaying = false;
+                    m_state = GAME_STATE_JUMPSCARE;
+                    m_jumpscareTimer = 0.0f;
+                    m_jumpscareTriggered = true;
+                    // the power-out kill is the dark Freddy face flicker
+                    // (the "freddy" kill frame, obj 152), NOT the in-office lunge
+                    m_jumpscareAnimatronic = ANIM_FREDDY_DARK;
+                    if (m_callbacks.onJumpscare) {
+                        m_callbacks.onJumpscare(ANIM_FREDDY_DARK);
+                    }
                 }
             }
             break;

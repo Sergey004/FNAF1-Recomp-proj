@@ -80,7 +80,10 @@ enum AnimatronicId {
     ANIM_BONNIE = 1,
     ANIM_CHICA  = 2,
     ANIM_FOXY   = 3,
-    ANIM_COUNT  = 4
+    // v2.48: ANIM_COUNT doubles as Golden Freddy's sentinel; everything above
+    // it is a scare-only id (never index AI tables with these).
+    ANIM_COUNT  = 4,
+    ANIM_FREDDY_DARK = 5    // power-out kill: the dark face flicker (dark "freddy" frame)
 };
 
 // ============================================================
@@ -232,7 +235,7 @@ struct GameCallbacks {
     
     // Called when Freddy's music box should play during power-out.
     void (*onMusicBoxStart)();
-    
+
     // Called when Freddy's music box stops (either 6 AM or jump scare).
     void (*onMusicBoxStop)();
     

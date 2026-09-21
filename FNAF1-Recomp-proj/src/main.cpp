@@ -690,7 +690,8 @@ void OnPowerUpdate(f32 power){ s_lastPower=power; }
 
 void OnJumpscare(AnimatronicId anim){
     const char* n[]={"Freddy","Bonnie","Chica","Foxy"};
-    const char* nm = (anim >= ANIM_FREDDY && anim < ANIM_COUNT) ? n[anim] : "Golden Freddy";
+    const char* nm = (anim == ANIM_FREDDY_DARK) ? "Freddy (power-out)"
+                   : (anim >= ANIM_FREDDY && anim < ANIM_COUNT) ? n[anim] : "Golden Freddy";
     printf("*** JUMP SCARE by %s! ***\n", nm);
     // group 228/322/408: XSCREAM (voiceover/garble stop too)
     g_audio.Stop(Snd::VOICEOVER[0]); g_audio.Stop(Snd::VOICEOVER[1]);
@@ -729,12 +730,13 @@ void OnPowerOut(){
 }
 void OnMusicBoxStart(){
     printf("(Music box starts...)\n");
-    // group 269: circus loop
-    g_audio.Play(&g_pak, Snd::CIRCUS, true, 0.95f);
+    // v2.48 (groups 272/273): the real "music box" jingle, one-shot. The old
+    // code looped CIRCUS here by mistake.
+    g_audio.Play(&g_pak, Snd::MUSIC_BOX, false, 1.0f);
 }
 void OnMusicBoxStop(){
     printf("(Music box stops...)\n");
-    g_audio.Stop(Snd::CIRCUS);
+    g_audio.Stop(Snd::MUSIC_BOX);
 }
 void OnNightComplete(i32 night){
     printf("\n6 AM -- Night %d Complete!\n",night);
@@ -1010,7 +1012,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.46 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.48 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -1025,7 +1027,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.46 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.48 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists

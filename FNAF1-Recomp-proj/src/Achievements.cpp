@@ -90,6 +90,13 @@ void Achievements::Init() {
     if (Progress::LoadAchieve(&bits)) m_unlocked = bits;
     printf("Achievements: unlocked=0x%03X\n", (unsigned)m_unlocked);
     if (m_console) m_console->Print("Achievements: unlocked=0x%03X", (unsigned)m_unlocked);
+#if !defined(FNAF_LIVE_SAFE)
+    // v2.48: log profile readiness once at boot — the profile write silently
+    // no-ops when nobody is signed in, so state it (0 = nobody, 1 = local,
+    // 2 = also online).
+    printf("Achievements: p0 signin=%d\n", (int)XUserGetSigninState(0));
+    if (m_console) m_console->Print("ACH p0 signin=%d", (int)XUserGetSigninState(0));
+#endif
 }
 
 bool Achievements::IsUnlocked(int id) const {
@@ -129,11 +136,14 @@ void Achievements::OnJumpscare() {
     Unlock(ACHIEVEMENT_NO_HIDING);
 }
 
-// v2.17 DEV helpers (no toast/system-write spam — just flip the bitmask).
+// v2.17 DEV helpers. v2.48: UnlockAll ALSO writes the whole set to the
+// profile in one batch — the Guide list then visibly populates, which is the
+// one-glance check that the embedded SPA was picked up.
 void Achievements::UnlockAll() {
     m_unlocked = 0;
     for (int i = 0; i < COUNT; ++i) m_unlocked |= (1u << i);
     Save();
+    SystemWriteAll();   // v2.48: was local-only
     m_toastId = -1;
     m_toastTime = 0.0f;
 }
@@ -235,6 +245,27 @@ void Achievements::SystemWrite(int id) {
     // in-game UI are the entire record.
     (void)id;
     printf("ACH %d (local only)\n", id);
+#endif
+}
+
+// v2.48: write the WHOLE set in one batched call (XUserWriteAchievements
+// takes an array) — used by the dev "unlock all" so the Guide list actually
+// shows all ten with their SPA names/scores/icons.
+void Achievements::SystemWriteAll() {
+#if !defined(FNAF_LIVE_SAFE)
+    if (XUserGetSigninState(0) == eXUserSigninState_NotSignedIn) {
+        printf("ACH all -> skipped (no signed-in profile at slot 0)\n");
+        if (m_console) m_console->Print("ACH all -> skipped (no profile)");
+        return;
+    }
+    XUSER_ACHIEVEMENT batch[COUNT];
+    for (int i = 0; i < COUNT; ++i) {
+        batch[i].dwUserIndex     = 0;             // FIRST player (gamer slot 0)
+        batch[i].dwAchievementId = (DWORD)kAchievements[i].id;
+    }
+    DWORD res = XUserWriteAchievements(COUNT, batch, NULL);
+    printf("ACH all -> 0x%08X (%s)\n", (unsigned)res, AchErrName(res));
+    if (m_console) m_console->Print("ACH all -> 0x%08X (%s)", (unsigned)res, AchErrName(res));
 #endif
 }
 
