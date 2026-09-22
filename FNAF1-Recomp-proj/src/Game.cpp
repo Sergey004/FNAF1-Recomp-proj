@@ -20,7 +20,6 @@ Game::Game()
     , m_freddyFaceLit(false)
     , m_faceLitTimer(0.0)
     , m_facePhase(0)
-    , m_powerOutBlinkOn(false)
     , m_musicBoxPlaying(false)
     , m_debugGodMode(false)
     , m_feedStaticTicks(0)
@@ -71,7 +70,6 @@ void Game::Init(i32 night) {
     m_freddyFaceLit = false;
     m_faceLitTimer = 0.0;
     m_facePhase = 0;
-    m_powerOutBlinkOn = false;
     m_musicBoxPlaying = false;
     m_feedStaticTicks = 0;
     m_nightStartTimer = 0.0f;
@@ -245,7 +243,6 @@ f32  Game::GetPowerOutTimer() const { return m_powerOutTimer; }
 i32  Game::GetPowerOutPhase() const { return m_powerOutPhase; }
 bool Game::IsFreddyFaceLit() const { return m_freddyFaceLit; }
 i32  Game::GetPowerOutFaceState() const { return m_facePhase; }
-bool Game::IsPowerOutBlinkOn() const { return m_powerOutBlinkOn; }
 AnimatronicId Game::GetJumpscareAnimatronic() const { return m_jumpscareAnimatronic; }
 bool Game::HasJumpscareTriggered() const { return m_jumpscareTriggered; }
 
@@ -331,7 +328,6 @@ void Game::ProcessPlaying() {
         m_powerOutRollTimer = 0.0;
         m_freddyFaceLit = false;
         m_faceLitTimer = 0.0;
-        m_powerOutBlinkOn = false;
         m_musicBoxPlaying = false;
 
         // Force all systems off
@@ -578,7 +574,6 @@ void Game::DebugTriggerPowerOut() {
     m_freddyFaceLit = false;
     m_faceLitTimer = 0.0;
     m_facePhase = 0;
-    m_powerOutBlinkOn = false;
     m_musicBoxPlaying = false;
     m_doors.ForceDoorsOpen();
     m_doors.ForceLightsOff();

@@ -162,12 +162,10 @@ namespace TimeConstants {
     // 6 AM celebration display duration
     static const f64 NIGHT_COMPLETE_DISPLAY_SEC = 5.0;
     
-    // Power-out phase roll chances (groups 272/291/301: Random(5)+1==1)
+    // Power-out phase roll chances (groups 272/291: Random(5)+1==1)
     static const i32 POWER_OUT_ROLL_DENOM = 5;
     static const f64 POWER_OUT_PHASE_MAX_SEC = 20.0;
     static const f64 POWER_OUT_PHASE_ROLL_SEC = 5.0;   // phases 0/1: roll every 5 s
-    static const f64 POWER_OUT_FINAL_ROLL_SEC = 2.0;   // phase 3: roll every 2 s
-    static const i32 POWER_OUT_BUZZ_TICKS = 20;        // phase 2 length (group 297/298)
 }
 
 // ============================================================

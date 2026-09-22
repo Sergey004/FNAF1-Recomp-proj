@@ -90,6 +90,8 @@ static bool s_usingXcontent = false;
 // (otherwise boot would offer to import its own save).
 static void EnsureLocalDirFallback() { _mkdir("game:\\save_fallback"); }
 
+static void MaybeSetThumbnail(const XCONTENT_DATA& content);
+
 static bool XContentMount(bool create)
 {
     if (!g_deviceChosen) {
@@ -165,7 +167,27 @@ static bool XContentMount(bool create)
     }
     printf("XContent: user=%u create=0x%08X disp=0x%X\n",
            (unsigned)g_saveUser, (unsigned)res, (unsigned)dwDisposition);
+    if (res == ERROR_SUCCESS) MaybeSetThumbnail(content);
     return res == ERROR_SUCCESS;
+}
+
+// v2.48: where the 360 gets the save's picture from — the title icon in the
+// device picker comes from the embedded .spa (X_IMAGEID_GAME), and per-content
+// thumbnails are title-written PNGs via XContentSetThumbnail (max 15616 B).
+// Set ours once per boot right after the container mounts, so the storage
+// manager shows the game icon instead of a blank tile.
+static bool s_thumbDone = false;
+static void MaybeSetThumbnail(const XCONTENT_DATA& content) {
+    if (s_thumbDone) return;
+    s_thumbDone = true;
+    FILE* f = fopen("game:\\achievements_pics\\game_icon.png", "rb");
+    if (!f) { printf("XContent: thumbnail skipped (game:\\achievements_pics\\game_icon.png missing)\n"); return; }
+    static BYTE buf[15616];
+    size_t n = fread(buf, 1, sizeof(buf), f);
+    fclose(f);
+    if (n == 0) return;
+    DWORD res = XContentSetThumbnail(g_saveUser, &content, buf, (DWORD)n, NULL);
+    printf("XContent: thumbnail -> 0x%08X (%u bytes)\n", (unsigned)res, (unsigned)n);
 }
 
 // `file` is the short name ("freddy" / "fnaf_ach.ini"); `create`

@@ -688,6 +688,16 @@ void OnTimeUpdate(i32 hour){
 }
 void OnPowerUpdate(f32 power){ s_lastPower=power; }
 
+// v2.48: XSCREAM is NOT always instant in the original — the office kills
+// reach the scream a beat after the scare anim starts: Freddy at frame 7 of
+// the 31-frame lunge (group 409: anim 65 frame 7 → ~0.23 s), Bonnie/Chica
+// when the kill-pan lands (alt2 countdown, ~10 ticks ≈ 0.17 s). Foxy's kill
+// and both special ones (Golden, power-out dark face) scream immediately.
+// The dump has NO fade anywhere — everything is instant channel-volume sets
+// plus hard "stop all" on transitions.
+static bool s_screamPending = false;
+static f32  s_screamDelay   = 0.0f;
+
 void OnJumpscare(AnimatronicId anim){
     const char* n[]={"Freddy","Bonnie","Chica","Foxy"};
     const char* nm = (anim == ANIM_FREDDY_DARK) ? "Freddy (power-out)"
@@ -703,7 +713,14 @@ void OnJumpscare(AnimatronicId anim){
     // DEVIATION from the dump (see CHANGELOG v2.27): the dump itself only
     // plays XSCREAM2 on f15 "creepy end" (unreachable demo ending) and its
     // f14 "creepy start" is silent. The robots share XSCREAM (ch1).
-    g_audio.Play(&g_pak, (anim == ANIM_COUNT) ? Snd::XSCREAM2 : Snd::XSCREAM, false, 1.0f);
+    s_screamPending = false;
+    if (anim == ANIM_FREDDY) {                      // group 409: anim-65 frame 7
+        s_screamPending = true; s_screamDelay = 7.0f / 30.0f;
+    } else if (anim == ANIM_BONNIE || anim == ANIM_CHICA) {   // groups 228/229/231: ~10 ticks
+        s_screamPending = true; s_screamDelay = 10.0f / 60.0f;
+    } else {                                        // Foxy / Golden / dark power-out: at once
+        g_audio.Play(&g_pak, (anim == ANIM_COUNT) ? Snd::XSCREAM2 : Snd::XSCREAM, false, 1.0f);
+    }
     g_audio.Stop(Snd::WHISPERING);   // v2.46: the office whisper dies with the kill
     // v2.37: the pad shakes at FULL force for the whole scare (both motors)
     RumbleKick(65535, 65535, 1.4f);
@@ -1834,6 +1851,12 @@ int main(int argc, char* argv[]){
         if(state!=GAME_STATE_JUMPSCARE) scareElapsed = 0.0f;
         if(FrameBegin(ColorForState(state, game.GetPower().GetPower()))){
             if(state==GAME_STATE_JUMPSCARE){
+                // v2.48: fire the delayed XSCREAM once the scare anim reaches
+                // its beat (Freddy frame 7; Bonnie/Chica after the kill-pan)
+                if (s_screamPending && scareElapsed >= s_screamDelay) {
+                    s_screamPending = false;
+                    g_audio.Play(&g_pak, Snd::XSCREAM, false, 1.0f);
+                }
                 g_render.RenderJumpscare(game.GetJumpscareAnimatronic(), scareElapsed);
                 // v2.26: Golden Freddy — per the original, instead of the normal
                 // Game Over screen the game ABRUPTLY closes (only avoidable

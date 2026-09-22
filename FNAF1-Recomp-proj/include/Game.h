@@ -100,8 +100,6 @@ public:
     // (state 1 = computer-digital, 2/3/4 = garble1/2/3). Advances on each new
     // face flash during phase 1.
     i32  GetPowerOutFaceState() const;
-    // Phase 2: buzz blink — office visible for the whole 20 ticks or not
-    bool IsPowerOutBlinkOn() const;
     // v2.46: monitor static-out ticks (groups 194-198): set to 300 when an
     // animatronic moves while its room is on screen; RenderCamera blanks the
     // feed and storms static for the window; main.cpp plays the garble on
@@ -148,7 +146,6 @@ private:
     bool m_freddyFaceLit;       // Phase 1 flicker state
     f64  m_faceLitTimer;        // 0.5 s re-roll accumulator
     i32  m_facePhase;           // v2.22: "Active 2" face state 0..4 (sound index)
-    bool m_powerOutBlinkOn;     // Phase 2: office visible or hidden
     bool m_musicBoxPlaying;     // callback bookkeeping
     bool m_debugGodMode;        // v2.17 DEV: no power drain, no attacks
     i32  m_feedStaticTicks;     // v2.46: monitor static-out window (300 ticks)
