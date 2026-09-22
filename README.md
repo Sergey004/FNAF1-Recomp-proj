@@ -1,8 +1,10 @@
 # FNAF Recomp — the classic FNAF series for Xbox 360
 
-> ⚠️ **Use a separate/offline Xbox 360 profile for this project.**
+> [!WARNING]
+> **Use a separate/offline Xbox 360 profile for this project.**
 > **This is an unofficial homebrew/clean-room reconstruction and recompilation project. Do not use Xbox Live with it.**
-> ⚠️ **"Crash" during Golden Freddy's kill is a FEATURE.** After his
+>
+> **"Crash" during Golden Freddy's kill is a FEATURE.** After his
 > full-screen face appears, the game intentionally closes the title the same
 > abrupt way the ORIGINAL PC release does — it looks like a crash but is a
 > safe easter egg: only the game quits (for a moment you land at the
@@ -30,6 +32,7 @@ Every game ships its own `.spa` (Xbox identity/achievements, not yet) and its ow
 
 Русская версия: [README.ru.md](README.ru.md).
 
+> [!NOTE]
 > **Project rule:** the only source of truth is the **game dump**, taken with
 > our own clean-room tool **[CTFAK-CPP](https://github.com/Sergey004/ctfak-cpp)**.
 > Wikis, third-party ports and "I remember it being this way" are not
