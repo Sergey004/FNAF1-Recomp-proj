@@ -62,6 +62,21 @@ Diagnostics: `XContent: user=N create=0x… disp=0x…`,
 `XContent: flush=0x… close=0x…`. Expected codes on success — 0
 (ERROR_SUCCESS).
 
+## v2.50 — the device is picked once, up front
+
+`Progress::PrimeStorage()` (called at boot before any message box) runs
+`PickStorageDevice()` — formerly the selector half of `XContentMount`. Per the
+XDK docs, `XShowDeviceSelectorUI` silently returns the only suitable device
+when exactly one exists (Slim-era console with just the internal HDD — no MU
+slots), so on that hardware nothing in the save path ever shows or even
+initializes XAM's selector UI mid-flow: import, saves and achievements ride
+the cached `g_saveDevice`. The remaining retry/cooldown logic only matters if
+development devices with MUs appeared; the mount log now prints
+`device=0x…` for evidence.
+
+There is no documented "enumerate devices silently" API — the selector with
+its single-device auto-answer is the supported route.
+
 ## v2.48 — the mounted-container leak (real-HW bug)
 
 If the container-mounted `fopen` FAILED after a successful

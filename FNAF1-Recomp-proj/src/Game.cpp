@@ -246,16 +246,20 @@ i32  Game::GetPowerOutFaceState() const { return m_facePhase; }
 AnimatronicId Game::GetJumpscareAnimatronic() const { return m_jumpscareAnimatronic; }
 bool Game::HasJumpscareTriggered() const { return m_jumpscareTriggered; }
 
-// Per-animatronic scare length: the real animation (docs/AI_MECHANICS.md §9)
-// plus a short hold on the last frame before the death screen.
+// Per-animatronic scare length: exactly the dump's kill timing
+// (docs/AI_MECHANICS.md §9 appendix) — the anim length for the office kills
+// plus the post-scare exit counters where the original loops.
 f64 Game::GetJumpscareDurationSec() const {
     switch (m_jumpscareAnimatronic) {
-        case ANIM_FREDDY: return 2.7;   // 31 frames @ 30 FPS, repeat 1 + hold
-        case ANIM_FOXY:   return 2.3;   // 25 frames @ 30 FPS, repeat 1 + hold
-        case ANIM_BONNIE: return 1.1;   // 11 frames @ 45 FPS + hold
-        case ANIM_CHICA:  return 1.1;   // 16 frames @ 60 FPS + hold
-        case ANIM_COUNT:  return 2.5;   // v2.22: Golden Freddy creepy start
-        case ANIM_FREDDY_DARK: return 2.5;   // v2.48: power-out dark face flicker
+        // v2.49: scare length = exactly the dump's kill-anim duration; then the
+        // state hands off to the died/static burst and the game-over screen
+        // (no artificial hold on the last frame).
+        case ANIM_FREDDY: return 1.05;  // anim 65: 31 frames @ 30 FPS = 1.03 s (g407)
+        case ANIM_FOXY:   return 0.85;  // anim 52: 25 frames @ 30 FPS = 0.83 s (g325)
+        case ANIM_BONNIE: return 0.65;  // anim 35 loops until alt3==1: 39 ticks (g262/263)
+        case ANIM_CHICA:  return 0.65;  // anim 44 loops until alt3==1: 39 ticks (same)
+        case ANIM_COUNT:  return 1.0;   // v2.49: creepy end = XSCREAM2 + 1000 ms -> app end
+        case ANIM_FREDDY_DARK: return 0.85;  // v2.48/2.49: power-out dark face, one 21-frame pass + a beat
         default:          return 1.5;
     }
 }
@@ -425,9 +429,11 @@ void Game::ProcessPlaying() {
 //  (docs/AI_MECHANICS.md §8; groups 272-302)
 //
 //   phase 0: dark office; 20%/5s (forced 20 s) -> phase 1
-//   phase 1: music box; face flicker 25%/0.5s; 20%/5s (forced 20 s) -> KILL
-//   v2.48: no buzz / pitch-black transition phases — once the jingle stage
-//   ends, the dark Freddy kill fires IMMEDIATELY (face + XSCREAM).
+//   phase 1: music box; face flicker 25%/0.5s; 20%/5s (forced 20 s) -> phase 2
+//   phase 2: dark office, Freddy's steps approach; 1.5 s -> dark kill
+//   v2.48: no buzz / pitch-black wait (user) — the kill fires right after
+//   v2.49: the jingle, with a short footsteps warning between (wiki detail,
+//   user-approved).
 //   6 AM saves at any point (the clock keeps running).
 // ============================================================
 
@@ -497,22 +503,29 @@ void Game::ProcessPowerOut() {
                     if (m_callbacks.onMusicBoxStart) m_callbacks.onMusicBoxStart();
                 }
                 if (m_powerOutPhase == 2) {
-                    // v2.48: right after the jingle stage the game goes
-                    // STRAIGHT to the dark Freddy kill (face + XSCREAM) — no
-                    // buzz blink, no extra pitch-black wait.
+                    // v2.49: jingle cuts off, then Freddy's footsteps approach
+                    // during a short dark window before the kill (the "prepare
+                    // the player" cue).
                     if (m_musicBoxPlaying && m_callbacks.onMusicBoxStop) {
                         m_callbacks.onMusicBoxStop();
                     }
                     m_musicBoxPlaying = false;
-                    m_state = GAME_STATE_JUMPSCARE;
-                    m_jumpscareTimer = 0.0f;
-                    m_jumpscareTriggered = true;
-                    // the power-out kill is the dark Freddy face flicker
-                    // (the "freddy" kill frame, obj 152), NOT the in-office lunge
-                    m_jumpscareAnimatronic = ANIM_FREDDY_DARK;
-                    if (m_callbacks.onJumpscare) {
-                        m_callbacks.onJumpscare(ANIM_FREDDY_DARK);
-                    }
+                    if (m_callbacks.onPowerOutSteps) m_callbacks.onPowerOutSteps();
+                }
+            }
+            break;
+        }
+        case 2: {
+            // The footsteps window ends -> the dark Freddy kill (face + XSCREAM)
+            if (m_powerOutPhaseTimer >= TimeConstants::POWER_OUT_STEPS_SEC) {
+                m_state = GAME_STATE_JUMPSCARE;
+                m_jumpscareTimer = 0.0f;
+                m_jumpscareTriggered = true;
+                // v2.48: the power-out kill is the dark Freddy face flicker
+                // (the "freddy" kill frame, obj 152), NOT the in-office lunge
+                m_jumpscareAnimatronic = ANIM_FREDDY_DARK;
+                if (m_callbacks.onJumpscare) {
+                    m_callbacks.onJumpscare(ANIM_FREDDY_DARK);
                 }
             }
             break;

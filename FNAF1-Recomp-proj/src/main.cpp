@@ -688,13 +688,13 @@ void OnTimeUpdate(i32 hour){
 }
 void OnPowerUpdate(f32 power){ s_lastPower=power; }
 
-// v2.48: XSCREAM is NOT always instant in the original — the office kills
-// reach the scream a beat after the scare anim starts: Freddy at frame 7 of
-// the 31-frame lunge (group 409: anim 65 frame 7 → ~0.23 s), Bonnie/Chica
-// when the kill-pan lands (alt2 countdown, ~10 ticks ≈ 0.17 s). Foxy's kill
-// and both special ones (Golden, power-out dark face) scream immediately.
-// The dump has NO fade anywhere — everything is instant channel-volume sets
-// plus hard "stop all" on transitions.
+// v2.48/2.49: XSCREAM is NOT always instant in the original — the office
+// kills reach the scream a beat after the scare anim starts: Freddy at frame
+// 7 of the 31-frame lunge (group 409: anim 65 frame 7 → 0.233 s), Bonnie/Chica
+// when their alt2 counter runs 10→1 (groups 228/229/231 — 9 ticks, 0.150 s).
+// Foxy's kill and both special ones (Golden, power-out dark face) scream
+// immediately. The dump has NO fade anywhere — only instant channel-volume
+// sets plus hard "stop all" on frame transitions.
 static bool s_screamPending = false;
 static f32  s_screamDelay   = 0.0f;
 
@@ -714,10 +714,10 @@ void OnJumpscare(AnimatronicId anim){
     // plays XSCREAM2 on f15 "creepy end" (unreachable demo ending) and its
     // f14 "creepy start" is silent. The robots share XSCREAM (ch1).
     s_screamPending = false;
-    if (anim == ANIM_FREDDY) {                      // group 409: anim-65 frame 7
+    if (anim == ANIM_FREDDY) {                      // group 409: anim-65 frame 7 (0.233 s)
         s_screamPending = true; s_screamDelay = 7.0f / 30.0f;
-    } else if (anim == ANIM_BONNIE || anim == ANIM_CHICA) {   // groups 228/229/231: ~10 ticks
-        s_screamPending = true; s_screamDelay = 10.0f / 60.0f;
+    } else if (anim == ANIM_BONNIE || anim == ANIM_CHICA) {   // groups 228/229/231: alt2 10->1 = 9 ticks (0.150 s)
+        s_screamPending = true; s_screamDelay = 9.0f / 60.0f;
     } else {                                        // Foxy / Golden / dark power-out: at once
         g_audio.Play(&g_pak, (anim == ANIM_COUNT) ? Snd::XSCREAM2 : Snd::XSCREAM, false, 1.0f);
     }
@@ -754,6 +754,12 @@ void OnMusicBoxStart(){
 void OnMusicBoxStop(){
     printf("(Music box stops...)\n");
     g_audio.Stop(Snd::MUSIC_BOX);
+}
+// v2.49 (wiki detail, user-picked): Freddy's footsteps approach in the dark
+// between the jingle and the kill — the "prepare the player" cue.
+void OnPowerOutSteps(){
+    printf("(Freddy's steps...)\n");
+    g_audio.Play(&g_pak, Snd::DEEP_STEPS, false, 0.9f);
 }
 void OnNightComplete(i32 night){
     printf("\n6 AM -- Night %d Complete!\n",night);
@@ -1029,13 +1035,13 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.48 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.51 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
     GameCallbacks cb; cb.onTimeUpdate=OnTimeUpdate; cb.onPowerUpdate=OnPowerUpdate;
     cb.onJumpscare=OnJumpscare; cb.onPowerOut=OnPowerOut; cb.onMusicBoxStart=OnMusicBoxStart;
-    cb.onMusicBoxStop=OnMusicBoxStop; cb.onNightComplete=OnNightComplete;
+    cb.onMusicBoxStop=OnMusicBoxStop; cb.onPowerOutSteps=OnPowerOutSteps; cb.onNightComplete=OnNightComplete;
     cb.onGameOver=OnGameOver; cb.onCameraChange=OnCameraChange; cb.onDoorChange=OnDoorChange;
     cb.onLightChange=OnLightChange; cb.onAnimatronicMove=OnAnimatronicMove;
     cb.onFoxyStageChange=OnFoxyStageChange; cb.onFoxyDoorBang=OnFoxyDoorBang;
@@ -1044,7 +1050,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.48 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.51 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1146,6 +1152,12 @@ int main(int argc, char* argv[]){
     // "sound without showing" if nothing has been presented yet
     FrameBegin(D3DCOLOR_XRGB(0,0,0));
     FrameEnd();
+    // v2.50: pick the storage device up front — before ANY message box. On a
+    // single-device console (Slim + HDD, no MU slots) the selector answers
+    // silently with the HDD and never shows UI; later saves/mounts (incl. the
+    // import below) then never invoke XAM's UI pipeline mid-flow — that was
+    // the ACCESS_DENIED storm source.
+    Progress::PrimeStorage();
     // v2.23: if a loose "freddy" save is found next to the game, ask before
     // importing it into the save storage.
     // v2.43: NO second box and NO dashboard exit — the import runs BEFORE

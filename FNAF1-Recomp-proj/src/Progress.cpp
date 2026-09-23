@@ -92,9 +92,15 @@ static void EnsureLocalDirFallback() { _mkdir("game:\\save_fallback"); }
 
 static void MaybeSetThumbnail(const XCONTENT_DATA& content);
 
-static bool XContentMount(bool create)
+// v2.50: the device pick as its own step — Progress::PrimeStorage() calls it
+// once at boot (while nothing else is on screen); on a single-device console
+// (Slim + HDD only, no MU slots) the selector auto-answers with the HDD id
+// WITHOUT showing UI, so later saves/mounts never poke XAM's UI pipeline
+// mid-flow (that was the ACCESS_DENIED storm after message boxes).
+static bool PickStorageDevice()
 {
-    if (!g_deviceChosen) {
+    if (g_deviceChosen) return true;
+    {
         ULARGE_INTEGER bytesRequested;
         bytesRequested.QuadPart = XContentCalculateSize(64 * 1024, 1);
         DWORD dwFlags = XCONTENTFLAG_NONE;
@@ -137,6 +143,12 @@ static bool XContentMount(bool create)
         g_saveDevice = deviceID;
         g_deviceChosen = true;
     }
+    return true;
+}
+
+static bool XContentMount(bool create)
+{
+    if (!PickStorageDevice()) return false;
 
     XCONTENT_DATA content;
     memset(&content, 0, sizeof(content));
@@ -165,8 +177,8 @@ static bool XContentMount(bool create)
         dwDisposition = 0;
         res = XContentCreateEx(g_saveUser, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
     }
-    printf("XContent: user=%u create=0x%08X disp=0x%X\n",
-           (unsigned)g_saveUser, (unsigned)res, (unsigned)dwDisposition);
+    printf("XContent: user=%u device=0x%08X create=0x%08X disp=0x%X\n",
+           (unsigned)g_saveUser, (unsigned)g_saveDevice, (unsigned)res, (unsigned)dwDisposition);
     if (res == ERROR_SUCCESS) MaybeSetThumbnail(content);
     return res == ERROR_SUCCESS;
 }
@@ -220,10 +232,16 @@ static FILE* StorageOpen(const char* file, const char* mode, bool create) {
         // 0x20 SHARING_VIOLATION / 0xB7 ALREADY_EXISTS (seen in the HW log).
         {
             DWORD ferr = GetLastError();
+            // v2.50: ERROR_FILE_NOT_FOUND on a READ is expected on a fresh
+            // container (fnaf_ach.ini not written yet) — not an error.
             DWORD fres = XContentFlush(kXContentRoot, NULL);
             DWORD cres = XContentClose(kXContentRoot, NULL);
-            printf("SAVE: container file open failed (err=0x%08X) -> local fallback (flush=0x%08X close=0x%08X)\n",
-                   (unsigned)ferr, (unsigned)fres, (unsigned)cres);
+            if (ferr == ERROR_FILE_NOT_FOUND && mode[0] == 'r')
+                printf("SAVE: no '%s' in the container yet (fresh) -> local fallback (flush=0x%08X close=0x%08X)\n",
+                       file, (unsigned)fres, (unsigned)cres);
+            else
+                printf("SAVE: container file open failed (err=0x%08X) -> local fallback (flush=0x%08X close=0x%08X)\n",
+                       (unsigned)ferr, (unsigned)fres, (unsigned)cres);
         }
         s_usingXcontent = false;   // container closed above -> local file below
     } else {
@@ -264,6 +282,25 @@ static FILE* StorageOpen(const char* file, const char* mode, bool /*create*/) {
 static void StorageClose() { /* nothing mounted to close */ }
 
 #endif // FNAF_LIVE_SAFE
+
+// v2.50: resolve the storage device once up front (called from main right
+// after the first presented frame, BEFORE any message box). On a
+// single-device console (Slim + internal HDD, no MU slots) the selector
+// answers silently with the HDD id — after this, nothing in the save path
+// ever boots XAM's UI pipeline (that pipeline is exactly what broke with
+// ACCESS_DENIED storms when first called right after a box).
+void Progress::PrimeStorage() {
+#if !defined(FNAF_LIVE_SAFE)
+    if (g_saveUser == 0xFFFFFFFF) g_saveUser = PickSignedInUserIndex();
+    if (g_saveUser == 0xFFFFFFFF) {
+        printf("XContent: prime — no signed-in profile, local storage only\n");
+        return;
+    }
+    bool ok = PickStorageDevice();
+    printf("XContent: prime -> %s (device 0x%08X)\n",
+           ok ? "picked" : "not picked yet", (unsigned)g_saveDevice);
+#endif
+}
 
 void Progress::Reset(GameProgress& p) {
     memset(&p, 0, sizeof(p));

@@ -216,10 +216,12 @@ static const int RAISE_SEQ[11] = {142,46,144,132,133,136,137,138,139,140,141};  
 // animated noise: its grain is baked into the pre-rendered room art
 // (img_39, mean luma ~10/255). The title's "static" (obj 2) uses ink=9
 // (different effect id, value 0) and is always visible there.
-static const f32 STATIC_ALPHA    = 155.0f / 255.0f;  // coeff 100
+// v2.51: the TITLE static's alpha is no longer a constant — it re-rolls per
+// group 1 (coeff 50+Random(100) every 1.8 s -> alpha 0.42..0.80); see
+// RenderTitle.
 static const f32 MUTECALL_ALPHA  = 205.0f / 255.0f;  // coeff 50
 // v2.46 rev: the CAMERA static is a touch more transparent than the title's
-// fixed 0.61 — between the old dense look and the group-13 flicker decode.
+// old fixed 0.61 — between the old dense look and the group-13 flicker decode.
 static const f32 CAM_STATIC_ALPHA = 0.48f;
 
 // Desk pumpkin (Halloween easter egg, object "Active 28", 7 frames at
@@ -737,18 +739,26 @@ void GameRender::RenderDisclaimer(bool blinkOn) {
 void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     if (!m_batch) return;
 
-    // Background with rare lit-Freddy twitch ("Active 2" anims)
+    // "Active 2" background — the LAMP flicker on the Freddy backdrop
+    // (groups 4, 8-11): every 1.6 s the roll re-picks the brightness variant.
+    // The dump itself rolls Random(100) with only 97/98/99 lit (so ~once a
+    // minute — too subtle to see); user call: make Freddy visibly breathe
+    // instead (~15% of windows lit, the brightest rarest):
     int bg = IMG_MENU_BG;
-    const int tw = (int)(m_time * 3.0f) % 23;   // ~every 7-8 s, 1-2 frames
-    if (tw == 7)  bg = IMG_MENU_FLICK1;         // 440 lit Freddy
-    if (tw == 15) bg = IMG_MENU_FLICK2;         // 441 lit Freddy
-    if (tw == 3)  bg = IMG_MENU_FLICK3;         // 442 Freddy endo head (rare)
+    const unsigned bw = static_cast<unsigned>(m_time / 1.6f);
+    const unsigned bgRoll = ((bw * 2654435761u) >> 5) % 100u;
+    if      (bgRoll >= 98) bg = IMG_MENU_FLICK3;   // 442 — brightest pop (rare)
+    else if (bgRoll >= 93) bg = IMG_MENU_FLICK2;   // 441
+    else if (bgRoll >= 85) bg = IMG_MENU_FLICK1;   // 440 — soft glow
     DrawFrame(bg, 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
 
-    // Animated static overlay ("static" obj) — z-order index [01] in the frame
-    // dump, i.e. drawn directly OVER the background and UNDER the logo/menu/
-    // labels (the dump lists it before "Active"/"new game"/…).
-    DrawStaticOverlay(STATIC_ALPHA);
+    // Animated static overlay ("static" obj): group 1 re-rolls the alpha
+    // coefficient to 50 + Random(100) every 1.8 s. Kept, but narrowed to
+    // 80 + Random(70) (alpha ≈ 0.49..0.69 around the old 0.61) — the lamp is
+    // supposed to flicker on FREDDY, not the noise (user note).
+    const unsigned sw = static_cast<unsigned>(m_time / 1.8f);
+    const int sCoeff = 80 + (int)(((sw * 2654435761u) >> 7) % 70u);
+    DrawStaticOverlay((255 - sCoeff) / 255.0f);
 
     // v2.46: the subtle band that rolls down the title screen — the
     // "blip flash 2" object (img_430 is a black frame with one white

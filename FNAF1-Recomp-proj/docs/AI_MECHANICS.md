@@ -195,6 +195,45 @@ Historical note: v2.7.11 and earlier used the window poses (34/43) as the
 Bonnie/Chica kills and played anim 51 (Foxy's run) as the "Freddy flicker"
 during power-out. Both fixed in v2.7.12.
 
+## 9a. Kill timings (full scare map, verified from the events)
+
+Timers are raw Clickteam milliseconds (the dump's "~Ns" annotations are a
+50 Hz-scale artifact — 20x off); one "per frame" decrement = one engine tick
+(frame); eff FPS = speed x 0.6.
+
+IMPORTANT reading note: jump actions print the wrong frame NAMES in the dump
+(misaligned name lookup) — the raw jump VALUE is the storyboard slot and is
+correct: 0 office ("Frame 1"), 1 "died", 2 "freddy", 3 "next day",
+4 "what day", 5 "title", 6 "wait", 7 "gameover", 14 "creepy end". So office
+win → 3, night card → 6 → 0, office kills → 1 (died), power-out kill → 2
+(freddy), Golden → 14 (creepy end), gameover → 5 (title), 1/10000 → 14.
+
+| Scare | Trigger (office groups) | Kill presentation | XSCREAM | Exit |
+|---|---|---|---|---|
+| Bonnie | ready-to-attack-left + left door OPEN (214) -> crv=2 (22) -> camera down | Active 3 anim 35 set at 117 (loops); lights off; office pan centred 800 (225/230) | +9 ticks ≈ 0.150 s (228/229: alt2 10→1), ch9 | +39 ticks ≈ 0.650 s → "died" (262/263) |
+| Chica | mirror right side (244, crv=4 via 23, camera down 231) | anim 44 at 118, same | same | 0.650 s → "died" |
+| Foxy | fox progress 5 → camera ripped down (321/322) + left door open | anim 52 at 323, doors hidden | SAME FRAME (323), ch9 | anim 52 ends (0.833 s) → "died" (325) |
+| Freddy | inside "freddy got in" + camera down + power ok + fox<5; 1-in-4 per 1 s tick (406, mean ~4 s) | anim 65 at 406; lights off; normal-view groups all gate bear.alt6==0 | anim 65 frame 7 ≈ 0.233 s (409), ch9 | anim 65 ends (1.033 s) → "died" (407) |
+| Golden | poster roll 1/100000 per s when 2B (425), show (44), appear in office (420) | the "yellow bear" sits in the office, no anim | none in the office | 300 ticks ≈ 5.0 s → "creepy end" (421/422): stop all + XSCREAM2 ch29, +1000 ms → End application. Escape = raise camera (423) |
+| Power-out | power left <= 0 → 286 (stop all, "powerdown" ch1, dark loops, HUD hidden) | anims 46/47 face flicker re-rolled every 50 ms (289 + 287/288); music box ch30 starts 5–20 s in (272/273) | none in the office frame — the kill lives in the "freddy" frame | box ends 5–20 s later (291/292) → 20-frame face/buzz flicker (297/298) → pitch black 2–20 s (301/302) → "freddy" frame: XSCREAM ch1@100 + the obj-152 dark-face anim [326,307,348,308..325] (backTo 5) → static + blip flashes → 12 s → "gameover" (10 s) → title |
+
+Post-scare: "died" = stop all + "static" ch1, 10 s → "gameover"; "gameover"
+stops all, holds 10 s → "title"; 1-in-10000 per second there diverts to
+"creepy end" instead (frame 8 group 3).
+
+The XSCREAM sample is always a one-shot on channel 9 (channel 1 in the
+power-out "freddy" frame). There is NO audio fade anywhere in the original:
+only instantaneous channel-volume sets and hard stop-alls.
+
+Port status (v2.48/2.49): the office kills use dump-exact anims and the
+delays above (Freddy 7/30 s, Bonnie/Chica 9/60 s, Foxy/Golden/dark = instant);
+the scare length = the kill-anim duration (0.65 / 0.83 / 1.03 s / dark 0.85).
+The power-out staging in the port collapses to jingle → dark kill
+(USER DECISION — the dump's buzz/black gap is documented here but not played),
+with ONE wiki detail spliced in between (user-picked): after the jingle cuts,
+Freddy's footsteps (`deep steps`) are heard for a 1.5 s dark warning window
+("before Freddy's jumpscare his footsteps are audible"), then the dark kill.
+
 ## 10. Misc
 
 - Camera IDs (`viewing` counter): 0 office; 1=1A, 2=1B, 3=2A, 4=4A, 5=5,

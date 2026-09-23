@@ -6,6 +6,34 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.51 — the title matches the dump's lamp/static behavior
+
+- **The lamp flicker on the Freddy backdrop** (groups 4, 8-11): every 1.6 s the bg variant re-rolls — the dump maps Random(100) → 97/98/99 = imgs 440/441/442 (≈ a blink every couple of minutes), which read as *almost never*; per user intent the port makes the pips visible: ~15% of 1.6 s windows lit (440 often, 442 the brightest pop rarely) — labeled DELIBERATE deviation from the dump's odds.
+- **Title static breathes gently** (group 1 's re-roll, damped): the original re-rolled coeff 50+Random(100) every 1.8 s; we keep the cadence but accent around the old fixed 0.61 (coeff 80+Random(70) → alpha ≈ 0.49..0.69) so the noise shimmers without stealing the show from the Freddy flap (user note: "it's Freddy who should blink, not the static").
+- Version → v2.51.
+
+---
+
+## v2.50 — storage device picked once, up front (HDD auto-answer)
+
+- **The storage device is now chosen ONCE at boot, before any message box** (`Progress::PrimeStorage`, called right after the first presented frame). Per the XDK docs, `XShowDeviceSelectorUI` silently returns the only suitable device when there is exactly one (an Xbox 360 Slim-era box with just the internal HDD — no MU slots): no UI, no mid-flow picker. Everything downstream (import, saves, achievements) then reuses the cached device id — the selector never runs right after a message box again, which was the whole ACCESS_DENIED-storm failure mode. The mount log now also prints the device id (`device=0x…`).
+- Technical detail: the selector block moved from `XContentMount` into its own `PickStorageDevice()`; the build accidentally shipped broken mid-refactor once — the mount function header is restored and `Progress.cpp` reads clean.
+- Real-HW verified (v2.50 run): prime picks the HDD silently (`device=0x00000001`), import + save/load round-trip through the profile container (`create=0x0 disp=0x2`, `flush=0x0 close=0x0`). A soft log line now covers the "freshly created container has no fnaf_ach.ini yet" read (ERROR_FILE_NOT_FOUND is expected there, not a failure).
+- Version → v2.50.
+
+---
+
+## v2.49 — exact jumpscare timings from the event dump
+
+- **Full kill-path audit of the office frame + the "freddy" kill frame** (all timings now documented in `docs/AI_MECHANICS.md` §9a). While at it, a dump-tool caveat was confirmed and recorded: jump actions there print the WRONG frame names (misaligned lookup) — the raw storyboard VALUE is the truth (office 0 / died 1 / freddy 2 / next day 3 / what day 4 / title 5 / wait 6 / gameover 7 / creepy end 14).
+- **Scare durations now match the original exactly** (they were 2-2.5x too long): Bonnie 1.1→0.65 s, Chica 1.1→0.65 s (alt3 exit counters), Foxy 2.3→0.85 s (anim 52 to the end), Freddy 2.7→1.05 s (anim 65 to the end), the power-out dark face →0.85 s. Right after, the existing static burst + game-over flow continues.
+- **XSCREAM onset matches the dump**: Freddy's office kill screams at scare-anim frame 7 (group 409 ≈ 0.233 s); Bonnie/Chica when the alt2 kill counter hits 1 — 9 ticks = 0.150 s (groups 228/229, was 10 ticks); Foxy, Golden and the power-out dark kill scream instantly, as before.
+- **Golden Freddy aligns with the dump's "creepy end"**: XSCREAM2 and the forced close after 1.0 s (was 2.5 s). The close itself is still our deliberate deviation (the dump really does "End application" there).
+- **Power-out now warns you**: after the music box cuts, Freddy's footsteps (`deep steps`) play for a short 1.5 s dark window before the dark-face kill — the "footsteps prepare the player" cue (documented FNAF behavior; the local dump has a plain black gap there, this addition is an explicit user choice).
+- Version → v2.49.
+
+---
+
 ## v2.48 — save-mount leak fixed; power-out gets the real kill screen and the music box; dev unlock-all writes the profile
 
 - **The power-out kill is now the real one** (from the "freddy" kill frame, obj 152): pitch black with Freddy's dark face flickering — 21 full-screen frames (326, 307, 348, 308…325) at 36 FPS, first pass once, then looping from frame 5 (backTo 5). The old code wrongly reused the in-office lunge (anim 65). New sentinel `ANIM_FREDDY_DARK` rides the normal jumpscare state, so the hold-until-render rule, XSCREAM and the Game Over handoff behave as for the other kills.

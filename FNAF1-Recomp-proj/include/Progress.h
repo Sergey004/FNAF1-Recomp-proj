@@ -60,6 +60,14 @@ public:
     // front-end can prompt first). No-op/false in the Live Safe build.
     static bool HasLooseSave();
 
+    // v2.50: resolve the storage device once up front. On a single-device
+    // console (Slim with just the HDD — no MU slots) the selector silently
+    // returns the HDD (no UI shown per XDK docs), so all later saves/mounts
+    // never invoke XAM's UI pipeline mid-flow (that was the ACCESS_DENIED
+    // storm after boxes). Call soon after boot, before any message box.
+    // No-op in the Live Safe build.
+    static void PrimeStorage();
+
     // Number of title-screen stars (0..3) implied by the flags.
     static i32 StarCount(const GameProgress& p);
 

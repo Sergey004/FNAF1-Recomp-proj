@@ -2,8 +2,8 @@
 //
 // FNAF1-Recomp-proj.spa.h
 //
-// Auto-generated on Monday, 21 September 2026 at 14:05:13
-// Xbox LIVE Game Config project version 1.0.37.0
+// Auto-generated on Tuesday, 22 September 2026 at 18:58:34
+// Xbox LIVE Game Config project version 1.0.41.0
 // SPA Compiler version 1.0.0.0
 //
 ////////////////////////////////////////////////////////////////////

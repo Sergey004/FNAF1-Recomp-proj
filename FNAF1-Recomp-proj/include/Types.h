@@ -166,6 +166,9 @@ namespace TimeConstants {
     static const i32 POWER_OUT_ROLL_DENOM = 5;
     static const f64 POWER_OUT_PHASE_MAX_SEC = 20.0;
     static const f64 POWER_OUT_PHASE_ROLL_SEC = 5.0;   // phases 0/1: roll every 5 s
+    // v2.49: after the jingle ends, Freddy's steps approach before the dark
+    // kill (wiki detail, user-picked; the dump has a black gap there instead)
+    static const f64 POWER_OUT_STEPS_SEC = 1.5;
 }
 
 // ============================================================
@@ -236,6 +239,10 @@ struct GameCallbacks {
 
     // Called when Freddy's music box stops (either 6 AM or jump scare).
     void (*onMusicBoxStop)();
+
+    // v2.49: between the jingle and the power-out kill — Freddy's footsteps
+    // are heard approaching (the "warn the player" cue).
+    void (*onPowerOutSteps)();
     
     // Called when night is completed (6 AM reached).
     // Parameter: which night was completed.
@@ -293,6 +300,7 @@ inline GameCallbacks MakeNullCallbacks() {
     cb.onPowerOut           = 0;
     cb.onMusicBoxStart      = 0;
     cb.onMusicBoxStop       = 0;
+    cb.onPowerOutSteps      = 0;
     cb.onNightComplete      = 0;
     cb.onGameOver           = 0;
     cb.onCameraChange       = 0;
