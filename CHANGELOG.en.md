@@ -6,6 +6,15 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.52 — full dump atlas (documentation only)
+
+- The whole FNAF1 dump is now read end-to-end (all 435 office event groups, every frame's events + layouts, `application.json`/banks.json global tables). Captured forever in a new **`docs/DUMP_ATLAS.md`**: the dump-reading rules (raw-ms timers; the misprinted jump-target names + the corrected storyboard slot map), the corrected frame graph, per-frame digests, the office alterable/channel registries, and the object/animation/sample tables.
+- The same corrected routing was folded into `docs/FRAME_TRANSITIONS.md` (its mermaid graph + edge list were built on the printed names, which turned out misaligned — e.g. New Game really lands on the `ad` newspaper frame, 6 AM exits route by the advanced night number, Golden and 1987 both end at `creepy end`).
+- No code changes.
+- Version → v2.52.
+
+---
+
 ## v2.51 — the title matches the dump's lamp/static behavior
 
 - **The lamp flicker on the Freddy backdrop** (groups 4, 8-11): every 1.6 s the bg variant re-rolls — the dump maps Random(100) → 97/98/99 = imgs 440/441/442 (≈ a blink every couple of minutes), which read as *almost never*; per user intent the port makes the pips visible: ~15% of 1.6 s windows lit (440 often, 442 the brightest pop rarely) — labeled DELIBERATE deviation from the dump's odds.

@@ -34,6 +34,7 @@ Xbox 360 recompilation project (UK/EN code + RU user). The user writes in Russia
 - `fnaf1.pak` textures are referenced by raw image handle `img_<N>`; maps of handles live in `include/PakAssets.h`.
 
 ## Read before touching
+- **Anything dump-derived: `docs/DUMP_ATLAS.md`** — the whole-dump atlas: reading rules (timer units, the misprinted jump-target names + the corrected slot table), the corrected transition graph, per-frame digests, office alterable/channel maps, object/animation/sample tables, junk-not-to-copy.
 - Any AI/movement change: `docs/AI_MECHANICS.md` (event-group evidence) first.
 - Any render/layer change: `docs/OVERLAY_MAP.md` (layer map, static/overlay truth), `docs/PERSPECTIVE.md` (office/feed bend), `docs/CAMERA_FINDINGS.md`.
 - Frame flow: `docs/FRAME_TRANSITIONS.md`. Architecture: `docs/ARCHITECTURE.md`. Saves/achievements: `docs/SAVES_XCONTENT.md`. Audio: `docs/AUDIO.md`.
