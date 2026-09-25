@@ -41,11 +41,11 @@ public:
     void RenderOffice(const FNaF2Game& game, f32 time, f32 pan);
 
     // camera monitor (viewing 1..12): feed from the dump table, switch
-    // static burst, cam strip + HUD.
-    void RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch);
+    // static burst, cam strip + HUD; wide feeds pan with `pan`.
+    void RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch, f32 pan);
 
 private:
-    // pak texture by handle, FNAF2 frame coords (pillarbox 960x720)
+    // pak texture by handle, FNAF2 frame coords (1024x768 -> 1280x720 full-stretch)
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);
     // world-space draw for the panning office (wx 0..1600, pan 0..576)
     void DrawWorld(int handle, float wx, float wy, float fw, float fh,

@@ -138,15 +138,18 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
 
     // TEXT objects (raw instance coords are junk — placement per the
     // composite; debug font stopgap, consolas glyphs later)
+    // v2.56: draw text with the SAME frame->screen transform as the sprites
+    // (kScaleX/kScaleY) — the old "160 + x*0.9375" pillarbox leftover put
+    // the text at coordinates that never matched the stretched art.
     if (m_text) {
-        m_text->DrawText((int)(160.0f +  90.0f * 0.9375f), (int)( 40.0f * 0.9375f), "Five",    0xFFFFFFFF);
-        m_text->DrawText((int)(160.0f +  90.0f * 0.9375f), (int)( 88.0f * 0.9375f), "Nights",  0xFFFFFFFF);
-        m_text->DrawText((int)(160.0f +  90.0f * 0.9375f), (int)(136.0f * 0.9375f), "at",      0xFFFFFFFF);
-        m_text->DrawText((int)(160.0f +  90.0f * 0.9375f), (int)(184.0f * 0.9375f), "Freddy's",0xFFFFFFFF);
-        m_text->DrawText((int)(160.0f +  90.0f * 0.9375f), (int)(232.0f * 0.9375f), "2",      0xFFFFFFFF);
-        m_text->DrawText((int)(160.0f +  25.0f * 0.9375f), (int)(738.0f * 0.9375f), "v 1.033", 0xFFFFFFFF);
-        m_text->DrawText((int)(160.0f + 335.0f * 0.9375f), (int)(737.0f * 0.9375f), "Press and hold delete to reset all data.", 0xFFFFFFFF);
-        m_text->DrawText((int)(160.0f + 845.0f * 0.9375f), (int)(738.0f * 0.9375f), "(c)2014 Scott Cawthon", 0xFFFFFFFF);
+        m_text->DrawText((int)( 90.0f * kScaleX), (int)( 40.0f * kScaleY), "Five",    0xFFFFFFFF);
+        m_text->DrawText((int)( 90.0f * kScaleX), (int)( 88.0f * kScaleY), "Nights",  0xFFFFFFFF);
+        m_text->DrawText((int)( 90.0f * kScaleX), (int)(136.0f * kScaleY), "at",      0xFFFFFFFF);
+        m_text->DrawText((int)( 90.0f * kScaleX), (int)(184.0f * kScaleY), "Freddy's",0xFFFFFFFF);
+        m_text->DrawText((int)( 90.0f * kScaleX), (int)(232.0f * kScaleY), "2",      0xFFFFFFFF);
+        m_text->DrawText((int)( 25.0f * kScaleX), (int)(738.0f * kScaleY), "v 1.033", 0xFFFFFFFF);
+        m_text->DrawText((int)(335.0f * kScaleX), (int)(737.0f * kScaleY), "Press and hold delete to reset all data.", 0xFFFFFFFF);
+        m_text->DrawText((int)(845.0f * kScaleX), (int)(738.0f * kScaleY), "(c)2014 Scott Cawthon", 0xFFFFFFFF);
     }
 }
 
@@ -197,10 +200,11 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan) {
 // ---- camera monitor (viewing 1..12) ------------------------------------
 // Feed per viewing id pinned from the office map-button groups 100-123
 // ("Active 16" set-anim): the EMPTY variants; animatronic frames come
-// with the AI stage. 1600-wide feeds are squeezed into the window for
-// now (TODO: sub-rect crop or scissor in the core batch).
+// with the AI stage. v2.56: a feed IS a 1024x768 (or 1600x768, for the
+// wide pans) world frame — wide feeds pan with the office's pan, narrow
+// pin to the frame. (Was: every feed z-stretched flat to the screen.)
 
-void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch) {
+void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch, f32 pan) {
     if (!m_batch || !m_pak) return;
     static const int kFeedImg[13] = {
         0, 174, 80, 83, 43, 38, 32, 51, 37, 117, 41, 76, 50
@@ -212,8 +216,14 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
     Snprintf(name, sizeof(name), "img_%d", kFeedImg[v]);
     PakLoadedTexture* t = m_pak->FindTexture(name);
     if (t && t->texture && m_batch) {
-        // every feed stretches to fill the screen (PC-window behaviour)
-        m_batch->Draw(t->texture, 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+        // v2.56: the feed IS a 1600x768 (or 1024x768) world frame; the window
+        // is the office's 1024x768 logical frame, so a wide feed pans with
+        // the office's pan rather than being squashed flat.
+        if (t->origWidth > 1024)
+            DrawWorld(kFeedImg[v], 0.0f, 0.0f,
+                      (f32)t->origWidth, 768.0f, pan, 0xFFFFFFFF);
+        else
+            Draw(kFeedImg[v], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     }
 
     // feed-switch interference burst

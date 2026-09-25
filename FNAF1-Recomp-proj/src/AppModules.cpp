@@ -150,7 +150,7 @@ void FNaF2Module::Render() {
             break;
         }
         case FNaF2Game::SCR_OFFICE:
-            if (m_game.GetViewing() != 0) m_render.RenderMonitor(m_game, m_time, m_time - m_lastSwitchT);
+            if (m_game.GetViewing() != 0) m_render.RenderMonitor(m_game, m_time, m_time - m_lastSwitchT, m_pan);
             else                          m_render.RenderOffice(m_game, m_time, m_pan);
             break;
         case FNaF2Game::SCR_6AM: {

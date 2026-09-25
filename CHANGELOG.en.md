@@ -6,6 +6,15 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.56 — FNAF2 rendering: one mapping, feeds pan like the office
+
+- FNAF2's world is 1024x768 with wide 1600x768 office/feed art; the target look is the PC's fullscreen stretch. All drawing now goes through ONE transform (kScaleX = 1280/1024, kScaleY = 720/768) — including the title's debug text, which used to sit at leftover pillarbox coordinates while the sprites stretched.
+- Camera feeds are no longer squashed flat into the window: a 1600-wide feed pans with the office's pan (same window), a 1024-wide one stays pinned; the "needs a scissor" TODO for feeds is gone.
+- Monitor map/buttons/HUD untouched (already frame-coords-aware via the same path).
+- Version → v2.56.
+
+---
+
 ## v2.55 — loose save self-deletes after a successful import (scope-tight)
 
 - After `ImportSave()` copies the loose `freddy` into the save storage, the LOOSE source at `game:\freddy` (next to the .xex) is removed — otherwise every boot re-offered the same import. `game:\save\freddy` is NEVER touched: it is the Live Safe build's own save home. A failed delete logs a non-fatal warning.
