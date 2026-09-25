@@ -464,6 +464,14 @@ bool Progress::ImportSave() {
         // v2.42: the destination is whatever StorageOpen actually served
         // (see the "SAVE: storage = ..." line) — don't hardcode it here
         printf("SAVE imported: %s\n", srcPath);
+        // v2.55: remove the loose source after a successful import — without
+        // it every boot re-offers the same file. Deletion failure is logged
+        // but non-fatal (the import itself already succeeded).
+        if (remove(srcPath) == 0) {
+            printf("SAVE: loose source %s removed after import\n", srcPath);
+        } else {
+            printf("SAVE: WARN could not remove loose source %s after import\n", srcPath);
+        }
         return true;
     }
     return false;

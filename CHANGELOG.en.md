@@ -6,6 +6,13 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.55 — loose save self-deletes after a successful import
+
+- After `ImportSave()` copies the loose `freddy` (game:\ root or game:\save\) into the save storage, the source file is now removed from disk — otherwise every boot re-offered the same import prompt. The deletion runs only when the write fully succeeded; a failed delete is logged as a warning (`SAVE: WARN could not remove loose source …`) and is non-fatal.
+- Version → v2.55.
+
+---
+
 ## v2.54 — save wipe by holding X on the title (confirmed)
 
 - The X button was untouched on the title — **hold it 5 s** there for a system confirmation box (the standard SysPrompt flow, "No" focused): "Delete the whole save? All nights and stars will be reset." → "Yes" wipes the progress save (nights + stars). This version **replaces** the older hidden cheats (USB-keyboard Delete, LT+RT pad hold) — they are removed, the X hold + box is now the single wipe path. The achievements bitmask survives as always. Log on the debug console: `SAVE WIPED (X hold)`.
