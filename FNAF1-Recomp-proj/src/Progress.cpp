@@ -464,13 +464,19 @@ bool Progress::ImportSave() {
         // v2.42: the destination is whatever StorageOpen actually served
         // (see the "SAVE: storage = ..." line) — don't hardcode it here
         printf("SAVE imported: %s\n", srcPath);
-        // v2.55: remove the loose source after a successful import — without
-        // it every boot re-offers the same file. Deletion failure is logged
-        // but non-fatal (the import itself already succeeded).
-        if (remove(srcPath) == 0) {
-            printf("SAVE: loose source %s removed after import\n", srcPath);
+        // v2.55: remove only the truly-loose source (game:\freddy, next to
+        // the .xex) after a successful import — without that every boot
+        // re-offers the same file. game:\save\freddy is NEVER touched: that
+        // path is the Live Safe build's OWN save store, and removing it would
+        // erase that build's progress. Deletion failure is logged, non-fatal.
+        if (strcmp(srcPath, "game:\\freddy") == 0) {
+            if (remove(srcPath) == 0) {
+                printf("SAVE: loose source %s removed after import\n", srcPath);
+            } else {
+                printf("SAVE: WARN could not remove loose source %s after import\n", srcPath);
+            }
         } else {
-            printf("SAVE: WARN could not remove loose source %s after import\n", srcPath);
+            printf("SAVE: keeping %s (Live Safe home) after import\n", srcPath);
         }
         return true;
     }

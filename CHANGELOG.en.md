@@ -6,9 +6,10 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
-## v2.55 — loose save self-deletes after a successful import
+## v2.55 — loose save self-deletes after a successful import (scope-tight)
 
-- After `ImportSave()` copies the loose `freddy` (game:\ root or game:\save\) into the save storage, the source file is now removed from disk — otherwise every boot re-offered the same import prompt. The deletion runs only when the write fully succeeded; a failed delete is logged as a warning (`SAVE: WARN could not remove loose source …`) and is non-fatal.
+- After `ImportSave()` copies the loose `freddy` into the save storage, the LOOSE source at `game:\freddy` (next to the .xex) is removed — otherwise every boot re-offered the same import. `game:\save\freddy` is NEVER touched: it is the Live Safe build's own save home. A failed delete logs a non-fatal warning.
+- Real-HW (user's console): **[achievements verified]** — the profile write works and the Guide shows all ten from the embedded SPA; and the full save chain (import → profile container → reload) round-trips.
 - Version → v2.55.
 
 ---
