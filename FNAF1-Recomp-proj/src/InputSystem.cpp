@@ -93,6 +93,12 @@ void UpdateInput(GameInput& out)
     out.yToggle = yNow && !yPrev;
     yPrev = yNow;
 
+    // v2.54: X button level — the title reads it as hold-to-wipe (5 s)
+#ifndef XINPUT_GAMEPAD_X
+#define XINPUT_GAMEPAD_X 0x4000
+#endif
+    out.xHeld = (state.Gamepad.wButtons & XINPUT_GAMEPAD_X) != 0;
+
     // v2.7.11: L3+R3 TOGETHER = PERSPECTIVE tuner enter/exit. The stick
     // buttons are never used anywhere else in the game, so the combo cannot
     // collide with lights/doors/camera. Fallback defines keep the build

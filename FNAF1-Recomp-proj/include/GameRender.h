@@ -110,6 +110,9 @@ public:
     // v2.22: Golden Freddy ("yellow bear") support
     int  GetGoldenRoll() const;            // this session's 1/100 poster roll (-1 unrolled)
     void SetGoldenFreddyInOffice(bool on); // slumped Golden Freddy (img 573) in the office
+    // v2.53 (dump g43): while the ARM is live, CAM 2B always shows the
+    // Golden poster. Fed by main's golden state machine.
+    void SetGoldenPosterArmed(bool on)    { m_goldenPosterArmed = on; }
 
     // Debug sprite browser (LB+RB hold on menu/disclaimer): pages through
     // the pak's counter-font strips, label candidates and small sprites so
@@ -191,6 +194,7 @@ private:
     int  m_prevCam;       // v2.7.9: cam of the last settled monitor frame (-1 none)
     int  m_goldenRoll;    // v2.17: "random for pic" rolled on each monitor drop
     bool m_goldFredInOffice; // v2.22: Golden Freddy slumped in the office
+    bool m_goldenPosterArmed; // v2.53: kill arm live -> 2B always shows him
     f32  m_lastT;};
 
 } // namespace fnaf

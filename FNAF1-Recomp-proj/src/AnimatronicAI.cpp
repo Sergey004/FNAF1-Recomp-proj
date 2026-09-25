@@ -495,6 +495,12 @@ void AnimatronicAI::UpdateFreddy(const DoorSystem& doors, const CameraSystem& ca
         }
     }
 
+    // v2.53 (group 393): the 4A -> 4B corner step requires the RIGHT door
+    // light OFF. The port used to let Freddy walk the lit corner.
+    if (freddy.currentRoom == ROOM_EAST_HALL && doors.IsLightOn(DOOR_RIGHT)) {
+        return; // next opportunity re-arms
+    }
+
     m_freddyPathIndex++;
     const RoomId newRoom = s_freddyPath[m_freddyPathIndex];
     freddy.currentRoom = newRoom;

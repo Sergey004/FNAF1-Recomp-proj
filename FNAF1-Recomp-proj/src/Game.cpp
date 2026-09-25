@@ -23,6 +23,9 @@ Game::Game()
     , m_musicBoxPlaying(false)
     , m_debugGodMode(false)
     , m_feedStaticTicks(0)
+    , m_bonnieAtDoorPrev(false)
+    , m_chicaAtDoorPrev(false)
+    , m_freddyInOffice(false)
     , m_nightStartTimer(0.0f)
     , m_jumpscareTimer(0.0f)
     , m_jumpscareTriggered(false)
@@ -72,6 +75,9 @@ void Game::Init(i32 night) {
     m_facePhase = 0;
     m_musicBoxPlaying = false;
     m_feedStaticTicks = 0;
+    m_bonnieAtDoorPrev = false;
+    m_chicaAtDoorPrev = false;
+    m_freddyInOffice = false;
     m_nightStartTimer = 0.0f;
     m_jumpscareTimer = 0.0f;
     m_jumpscareTriggered = false;
@@ -128,6 +134,15 @@ void Game::ToggleCamera() {
 
     bool nowUp = m_cameras.ToggleMonitor();
 
+    // v2.53 (dump g326): raising the monitor kills both door lights
+    if (nowUp) {
+        m_doors.ForceLightsOff();
+        if (m_callbacks.onLightChange) {
+            m_callbacks.onLightChange(DOOR_LEFT, false);
+            m_callbacks.onLightChange(DOOR_RIGHT, false);
+        }
+    }
+
     if (m_callbacks.onCameraChange) {
         m_callbacks.onCameraChange(m_cameras.GetCurrentCamera(),
                                    nowUp ? CAM_REASON_UP : CAM_REASON_DOWN);
@@ -139,6 +154,15 @@ void Game::SetCameraUp(bool up) {
     if (m_power.IsPowerOut()) return;
 
     m_cameras.SetMonitorUp(up);
+
+    // v2.53 (dump g326): entering the cameras kills both door lights
+    if (up) {
+        m_doors.ForceLightsOff();
+        if (m_callbacks.onLightChange) {
+            m_callbacks.onLightChange(DOOR_LEFT, false);
+            m_callbacks.onLightChange(DOOR_RIGHT, false);
+        }
+    }
 
     if (m_callbacks.onCameraChange) {
         m_callbacks.onCameraChange(m_cameras.GetCurrentCamera(),
@@ -243,6 +267,12 @@ f32  Game::GetPowerOutTimer() const { return m_powerOutTimer; }
 i32  Game::GetPowerOutPhase() const { return m_powerOutPhase; }
 bool Game::IsFreddyFaceLit() const { return m_freddyFaceLit; }
 i32  Game::GetPowerOutFaceState() const { return m_facePhase; }
+// v2.53 (dump g212/213): true when the monitor is up and its feed points at
+// this room
+bool Game::IsWatchingRoom(RoomId room) const {
+    if (!m_cameras.IsMonitorUp()) return false;
+    return RoomSystem::GetCameraRoom(m_cameras.GetCurrentCamera()) == room;
+}
 AnimatronicId Game::GetJumpscareAnimatronic() const { return m_jumpscareAnimatronic; }
 bool Game::HasJumpscareTriggered() const { return m_jumpscareTriggered; }
 
@@ -308,10 +338,12 @@ void Game::ProcessPlaying() {
         return;
     }
 
-    // 3. Drain power
+    // 3. Drain power — v2.53: the door addends bill when the slide LANDS
+    // (the original's usage meter reads the settled state, not the click),
+    // the lights bill instantly (they have no interval).
     bool cameraUp = m_cameras.IsMonitorUp();
-    bool leftDoor = m_doors.IsDoorClosed(DOOR_LEFT);
-    bool rightDoor = m_doors.IsDoorClosed(DOOR_RIGHT);
+    bool leftDoor = m_doors.IsDoorSettledClosed(DOOR_LEFT);
+    bool rightDoor = m_doors.IsDoorSettledClosed(DOOR_RIGHT);
     bool leftLight = m_doors.IsLightOn(DOOR_LEFT);
     bool rightLight = m_doors.IsLightOn(DOOR_RIGHT);
 
@@ -386,12 +418,19 @@ void Game::ProcessPlaying() {
             if (results[i].event == AI_EVENT_FOXY_AT_DOOR) {
                 // Foxy force-drops the tablet (groups 321/322)
                 m_cameras.SetMonitorUp(false);
+                // v2.53 (group 327): Foxy at stage 5 kills both door lights
+                m_doors.ForceLightsOff();
+                if (m_callbacks.onLightChange) {
+                    m_callbacks.onLightChange(DOOR_LEFT, false);
+                    m_callbacks.onLightChange(DOOR_RIGHT, false);
+                }
             }
             if (results[i].event == AI_EVENT_FREDDY_IN_OFFICE) {
                 // v2.46 (groups 406/408-412): Freddy inside the office kills
                 // both door lights — his dark-office kill owns the room now.
                 m_doors.SetLight(DOOR_LEFT, false);
                 m_doors.SetLight(DOOR_RIGHT, false);
+                m_freddyInOffice = true;   // v2.53: dread/whisper read this
             }
             if (results[i].event == AI_EVENT_FOXY_BANG && m_callbacks.onFoxyDoorBang) {
                 m_callbacks.onFoxyDoorBang(results[i].powerDrained);
@@ -412,6 +451,25 @@ void Game::ProcessPlaying() {
             if (results[i].event == AI_EVENT_MOVED && m_callbacks.onAnimatronicMove) {
                 m_callbacks.onAnimatronicMove(results[i].animatronic,
                                                  results[i].newRoom);
+            }
+            // v2.53 (dump g226/227 + g259/260): arriving at or leaving the
+            // door zone kills that side's light. Rebuilt from the positions
+            // each tick (the last-tick snapshot is what makes it an edge).
+            if (results[i].event == AI_EVENT_MOVED &&
+                (results[i].animatronic == ANIM_BONNIE ||
+                 results[i].animatronic == ANIM_CHICA)) {
+                const bool bNowL = (m_ai.GetAnimatronic(ANIM_BONNIE).currentRoom == ROOM_LEFT_DOOR);
+                const bool cNowR = (m_ai.GetAnimatronic(ANIM_CHICA).currentRoom == ROOM_RIGHT_DOOR);
+                if (bNowL != m_bonnieAtDoorPrev) {
+                    m_doors.SetLight(DOOR_LEFT, false);
+                    if (m_callbacks.onLightChange) m_callbacks.onLightChange(DOOR_LEFT, false);
+                }
+                if (cNowR != m_chicaAtDoorPrev) {
+                    m_doors.SetLight(DOOR_RIGHT, false);
+                    if (m_callbacks.onLightChange) m_callbacks.onLightChange(DOOR_RIGHT, false);
+                }
+                m_bonnieAtDoorPrev = bNowL;
+                m_chicaAtDoorPrev  = cNowR;
             }
             if (results[i].event == AI_EVENT_FOXY_STAGE_UP && m_callbacks.onFoxyStageChange) {
                 m_callbacks.onFoxyStageChange(results[i].foxyStage);

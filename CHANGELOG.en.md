@@ -6,6 +6,31 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.54 — save wipe by holding X on the title (confirmed)
+
+- The X button was untouched on the title — **hold it 5 s** there for a system confirmation box (the standard SysPrompt flow, "No" focused): "Delete the whole save? All nights and stars will be reset." → "Yes" wipes the progress save (nights + stars). This version **replaces** the older hidden cheats (USB-keyboard Delete, LT+RT pad hold) — they are removed, the X hold + box is now the single wipe path. The achievements bitmask survives as always. Log on the debug console: `SAVE WIPED (X hold)`.
+- Plumbing: new `GameInput::xHeld` level (XInput button 0x4000, guard-defined for old XDK headers), `PollTitleXWipe` next to the two older wipe paths.
+- Version → v2.54.
+
+---
+
+## v2.53 — the dump-alignment wave (audit-driven)
+
+A full audit of the port against `docs/DUMP_ATLAS.md` surfaced mostly-cadence and input-routing drift. All fixed:
+
+- **Saves truly fixed as a data bug**: New Game no longer wipes the beat stars (the original only wipes them on the hold-Delete cheat; New Game writes just `level=1`).
+- **Golden Freddy is rare again**: arm = the dump's silent global **1/100000 per second** roll (was fused into the 1/100 monitor-drop poster roll — thousands of times too common); while armed CAM 2B always shows the Golden poster (dump rule).
+- **Freddy 4A→4B now needs the right door light OFF** (his corner step; the port used to advance regardless).
+- **The x20 timer artifact cleaned**: kitchen clatter re-roll 4 s, ITSME arm 1/1000 *per second*, pirate 4 s (Foxy stage 0), circus 5 s, breaths 5 s (intruder inside + cams up), rare pounding 10 s 1/50 at 10..50.
+- **Doors/lights per the dump's input law**: buttons only work with the monitor down; 10-tick click cooldown; lights mutually exclusive; a door mid-slide ignores the toggle; the error stinger answers only a close-attempt onto an occupied doorway (and only Bonnie@left / Chica@right); power-out force-opens go through the animated slide+motor; the doorway pose lights up only at the door zone and the `windowscare` stinger fires on its first reveal.
+- **Audio ladders per the dump**: door-light hum = silent-off / loud-on with the 1/10 strobe; dread EERIE = 0/30/50/75 (+Foxy≥2) and 100 when Freddy is in; `robotvoice` obeys night≥4 + the corner zones + the 1+5r / 1+20r office-vs-cam stairs at 100 ms rolls; hop steps mute while you watch the mover's room and get the missing 20-tier; kitchen audio follows cam-6 watching (0/10/20/75 + tune 0/5/50) with the 300 s camp replay; the flip-up now pairs the whir with blip3+tape-eject (our invented monitor static loop removed); the phone mute button only exists at +20..+40 s.
+- **Foxy**: sprint sound = one-shot `run` on the 3→4 trigger, and the sprint frames show on the CAM 2A feed (the office no longer shows Foxy sprinting through it).
+- **Numbers**: usage can reach 6 (no clamp), a door bills only when the slide lands, and the night is 90+89·5 = 535 s (the dump's minute counter resets to 1).
+- Scare timings (v2.49) untouched; Continue still reaches nights 6/7 (deliberate console-UX deviation, noted in the atlas).
+- Version → v2.53.
+
+---
+
 ## v2.52 — full dump atlas (documentation only)
 
 - The whole FNAF1 dump is now read end-to-end (all 435 office event groups, every frame's events + layouts, `application.json`/banks.json global tables). Captured forever in a new **`docs/DUMP_ATLAS.md`**: the dump-reading rules (raw-ms timers; the misprinted jump-target names + the corrected storyboard slot map), the corrected frame graph, per-frame digests, the office alterable/channel registries, and the object/animation/sample tables.

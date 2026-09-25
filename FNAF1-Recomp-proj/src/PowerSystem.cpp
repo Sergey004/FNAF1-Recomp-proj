@@ -52,13 +52,16 @@ void PowerSystem::CalculateUsageLevel(bool cameraUp, bool leftDoorClosed,
                                        bool rightLightOn) {
     // Group 175: usage = 1 + monitor + left door + right door +
     // left light + right light (all five addends verified).
+    // Group 175: usage = 1 + monitor + left door + right door +
+    // left light + right light (all five addends verified). v2.53: the
+    // original's formula has NO ceiling — the dump's expression is the plain
+    // sum, so 6 (all five on) actually bills 6.
     i32 usage = 1;
     if (cameraUp)        usage++;
     if (leftDoorClosed)  usage++;
     if (rightDoorClosed) usage++;
     if (leftLightOn)     usage++;
     if (rightLightOn)    usage++;
-    if (usage > 5) usage = 5;
     m_usageLevel = usage;
 }
 

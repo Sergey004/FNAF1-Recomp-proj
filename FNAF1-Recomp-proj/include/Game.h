@@ -105,6 +105,11 @@ public:
     // feed and storms static for the window; main.cpp plays the garble on
     // the rising edge. 0 = idle.
     i32  GetFeedStaticTicks() const { return m_feedStaticTicks; }
+    // v2.53 (dump g212/213): true when the monitor is up and its feed points
+    // at this room — hop steps mute on the watched room in the original.
+    bool IsWatchingRoom(RoomId room) const;
+    // v2.53 (groups 359/405): Freddy-in-office window (until his kill lands)
+    bool IsFreddyInOffice() const { return m_freddyInOffice; }
     
     // Jump scare info
     AnimatronicId GetJumpscareAnimatronic() const;
@@ -149,6 +154,13 @@ private:
     bool m_musicBoxPlaying;     // callback bookkeeping
     bool m_debugGodMode;        // v2.17 DEV: no power drain, no attacks
     i32  m_feedStaticTicks;     // v2.46: monitor static-out window (300 ticks)
+    // v2.53: dump g226/227 + g259/260 — a Bonnie/Chica door-zone edge kills
+    // that side's light; needs last-tick snapshots.
+    bool m_bonnieAtDoorPrev;
+    bool m_chicaAtDoorPrev;
+    // v2.53: AI_EVENT_FREDDY_IN_OFFICE sets this until the kill — the dread
+    // and whisper players read it (groups 359/405).
+    bool m_freddyInOffice;
 
     // Night start display timer
     f32  m_nightStartTimer;

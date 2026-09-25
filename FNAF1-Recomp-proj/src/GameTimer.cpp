@@ -41,12 +41,12 @@ bool GameTimer::Update(f64 deltaTimeSec) {
     m_elapsedSeconds += deltaTimeSec;
     m_tickCounter++;
 
-    // v2.7.12: discrete frame counting like the original (minute counter
-    // >= 90 x 1-second timers at 60 FPS => 5400 ticks per hour). Float
-    // accumulation drifts; the original's Timer chain does not.
-    const i64 hourTicks = (i64)(TimeConstants::HOUR_DURATION_SEC * TimeConstants::TICK_RATE);
-    i32 newHour = static_cast<i32>(m_tickCounter / hourTicks);
-    if (newHour > 6) newHour = 6;
+    // v2.53 (groups 264-266): the original's minute counter resets to 1
+    // (not 0) at 90 — so the hours run 90 s, then 89 s each. Hour edges in
+    // ticks (60/s): 0 / 90 / 179 / 268 / 357 / 446 / 535 s.
+    static const i64 kHourEdges[7] = { 0, 5400, 10740, 16080, 21420, 26760, 32100 };
+    i32 newHour = 0;
+    while (newHour < 6 && m_tickCounter >= kHourEdges[newHour + 1]) ++newHour;
 
     bool hourChanged = (newHour != m_currentHour);
     m_currentHour = newHour;

@@ -347,8 +347,20 @@ gaps in the image bank (not "missing", the bank skips them).
 - Golden Freddy kill sound: XSCREAM2 played by OUR scare path at the creepy
   screen (dump: the screen's frame start does it — same net effect).
 - Power-out: our build collapses jingle -> steps window (wiki-sourced,
-  user-approved) -> immediate dark kill; the dump's buzz/black gaps are
-  documented in §1 for reference.
+  user-approved) -> immediate dark kill; the dump's buzz/black gaps (20-frame
+  flicker then 2-20 s black, per §3a alt6/alt7/alt8) are documented here for
+  reference only.
 - v2.51: the title bg lamp flicker runs more often than the dump's 1%-roll
   (user-approved); the static alpha pulse dampened.
+
+v2.53 audit alignment wave (the rest IS the dump now): New Game keeps the
+unlock flags (only the Delete-hold cheat wipes); the Golden arm is the
+dump's silent global 1/100000/s roll; Freddy's 4A->4B step needs the right
+light off; door/light inputs are monitor-down-gated with the 10-tick click
+cooldown and lights are mutually exclusive; the step-mute, dread ladder,
+robotvoice corner law, kitchen view ladder, the 4 s clatter, the 1/1000-per-
+second ITSME arming, the Foxy sprint one-shot at 3->4 shown on the 2A feed,
+power formula ceiling 6, door billing at settle, and the 535 s night are in.
+Saves: Continue keeps night 6/7 by choice (dump caps the saved level at 5 —
+a deliberate console-UX deviation).
 ============================================================================

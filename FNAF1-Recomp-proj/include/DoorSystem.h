@@ -40,6 +40,9 @@ public:
     // Is the specified door closed?
     bool IsDoorClosed(DoorSide side) const;
 
+    // v2.53: closed AND the slide has landed (the dump's usage read-after-settle)
+    bool IsDoorSettledClosed(DoorSide side) const;
+
     // Both doors forced open (power out)
     void ForceDoorsOpen();
 

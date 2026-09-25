@@ -49,8 +49,9 @@ static bool              g_showConsole = true;  // v2.17: DEV toggle for the on-
 static f32               g_goldenScareT = -1.0f;// v2.17: scare flash timer (-1 = off)
 static int               g_scareFlashImg = -1;   // v2.17: image handle for the scare flash
 static f32               g_itsmeT = -1.0f;       // v2.17: IT'S ME hallucination timer (-1 = off)
-static f32               g_itsmeRollTimer = 0.0f; // v2.17: 20 s accumulator for the rare IT'S ME roll
+static f32               g_itsmeRollTimer = 0.0f; // v2.53: 1 s accumulator for the IT'S ME roll (dump g419)
 static f32               g_creepyT = -1.0f;      // v2.36: post-game-over "creepy start" (f14) timer (-1 = off)
+static int               s_clickCooldown = 0;    // v2.53: 10-tick door/light anti-mash (dump g95)
 
 // v2.37: pad RUMBLE — two motors (left = low-freq thump, right = high-freq
 // buzz). XInputSetState with a linear-decay envelope (pattern: the scare-
@@ -463,30 +464,97 @@ static void TickAudioMixer(const Game& game) {
 
     // fan: 25 down / 10 up (groups 143/144)
     g_audio.SetChannelVolume(CH_FAN, CFVolumeToDb(monUp ? 10 : 25));
-    // ballast hum: mute when camera up or a light is on (groups 114-129/326)
-    g_audio.SetChannelVolume(CH_BALLAST, (monUp || lightL || lightR) ? -100.0f : CFVolumeToDb(50));
+    // v2.53 (dump groups 114-129/122/326): the ballast hum is SILENT in a
+    // dark office and FULL while a door light is lit, with a ~1/10 dark-frame
+    // strobe (the old port code had this law inverted). Entering the cams
+    // kills the lights, which zeroes it through the same branch.
+    {
+        const bool litAny = lightL || lightR;
+        const bool strobeOut = (rand() % 10) == 0;
+        g_audio.SetChannelVolume(CH_BALLAST,
+            (litAny && !strobeOut) ? CFVolumeToDb(100) : -100.0f);
+    }
     // phone: 100 office / 50 viewing / 0 mute (groups 360/361/379)
     g_audio.SetChannelVolume(CH_PHONE, s_phoneMuted ? -100.0f : CFVolumeToDb(monUp ? 50 : 100));
     // pirate song2: 15 watching the cove (CAM 1C), 5 otherwise (groups 274/275)
     g_audio.SetChannelVolume(CH_PIRATE,
         CFVolumeToDb((game.GetCameras().GetCurrentCamera() == CAM_1C) ? 15 : 5));
 
-    // proximity ambience (robotvoice ch21, EerieAmbience ch18)
     const AnimatronicAI& ai = game.GetAI();
     const RoomId bonnie = ai.GetAnimatronic(ANIM_BONNIE).currentRoom;
     const RoomId chica  = ai.GetAnimatronic(ANIM_CHICA).currentRoom;
     const RoomId freddy = ai.GetAnimatronic(ANIM_FREDDY).currentRoom;
-    const RoomId foxy   = ai.GetAnimatronic(ANIM_FOXY).currentRoom;
 
-    float watched = 0.0f;
-    if (bonnie == ROOM_WEST_HALL_CORNER || bonnie == ROOM_LEFT_DOOR)  { if (watched < 0.6f) watched = 0.6f; }
-    if (chica  == ROOM_EAST_HALL_CORNER || chica  == ROOM_RIGHT_DOOR) { if (watched < 0.6f) watched = 0.6f; }
-    if (freddy == ROOM_EAST_HALL || freddy == ROOM_EAST_HALL_CORNER || freddy == ROOM_RIGHT_DOOR) { if (watched < 0.4f) watched = 0.4f; }
-    if (foxy   == ROOM_LEFT_DOOR || foxy == ROOM_OFFICE) watched = 1.0f;
-    if (freddy == ROOM_OFFICE) watched = 1.0f;
+    // v2.53 EERIE dread ladder (groups 351-359): presence units =
+    // Bonnie@west-corner zone + Chica@east-corner zone + Foxy progress>=2;
+    // none -> OFF; one -> 30; two -> 50; three -> 75; Freddy inside -> 100.
+    {
+        i32 dread = 0;
+        if (bonnie == ROOM_WEST_HALL_CORNER || bonnie == ROOM_LEFT_DOOR)  dread++;
+        if (chica  == ROOM_EAST_HALL_CORNER || chica  == ROOM_RIGHT_DOOR) dread++;
+        if (ai.GetAnimatronic(ANIM_FOXY).foxyStage >= FOXY_STAGE_2)       dread++;
+        float db;
+        if (game.IsFreddyInOffice())  db = CFVolumeToDb(100);
+        else if (dread == 0)          db = -100.0f;
+        else if (dread == 1)          db = CFVolumeToDb(30);
+        else if (dread == 2)          db = CFVolumeToDb(50);
+        else                          db = CFVolumeToDb(75);
+        g_audio.SetChannelVolume(CH_EERIE, db);
+    }
 
-    g_audio.SetChannelVolume(CH_ROBOTVOICE, AmplitudeToDb(watched));
-    g_audio.SetChannelVolume(CH_EERIE,      AmplitudeToDb(watched * 0.6f));
+    // v2.53 robotvoice corner-mumble (groups 381-385/416): silent before
+    // night 4; lives only while Bonnie@2B-zone / Chica@4B-zone; office reads
+    // 1+5*Random(5), watching their cam 1+20*Random(5) — both re-rolled every
+    // 100 ms; the ITSME flash pins 100.
+    {
+        static f32 s_robT = 0.0f;
+        const f32 rdt = 1.0f / 60.0f;
+        s_robT += rdt;
+        if (g_itsmeT >= 0.0f) {
+            g_audio.SetChannelVolume(CH_ROBOTVOICE, CFVolumeToDb(100));
+        } else if (s_robT >= 0.100f) {
+            s_robT -= 0.100f;
+            const bool zoneB = (bonnie == ROOM_WEST_HALL_CORNER || bonnie == ROOM_LEFT_DOOR);
+            const bool zoneC = (chica  == ROOM_EAST_HALL_CORNER || chica  == ROOM_RIGHT_DOOR);
+            if (game.GetCurrentNight() >= 4 && (zoneB || zoneC)) {
+                const RoomId zroom = zoneB ? ROOM_WEST_HALL_CORNER : ROOM_EAST_HALL_CORNER;
+                const bool watch = game.IsWatchingRoom(zroom) ||
+                                   game.IsWatchingRoom(zoneB ? ROOM_LEFT_DOOR : ROOM_RIGHT_DOOR);
+                const i32 v = watch ? 1 + 20 * (rand() % 5) : 1 + 5 * (rand() % 5);
+                g_audio.SetChannelVolume(CH_ROBOTVOICE, CFVolumeToDb(v));
+            } else {
+                g_audio.SetChannelVolume(CH_ROBOTVOICE, -100.0f);
+            }
+        }
+    }
+
+    // v2.53 kitchen ladder (groups 251-258) + the 300 s camp replay (400):
+    //   clatter ch10: 0 absent / 10 office / 20 some other cam / 75 on CAM 6
+    //   tune    ch22: 0 absent / 5 office / 5 other cam / 50 on CAM 6
+    {
+        static f32 s_kitchenCampT = 0.0f;
+        const bool chicaKitchen = (chica == ROOM_KITCHEN);
+        const bool freddKitchen = (freddy == ROOM_KITCHEN);
+        const bool watchKitchen = game.IsWatchingRoom(ROOM_KITCHEN);
+        i32 ovenDb, tuneDb;
+        if (!chicaKitchen)     ovenDb = 0;
+        else if (watchKitchen) ovenDb = 75;
+        else if (monUp)        ovenDb = 20;
+        else                   ovenDb = 10;
+        if (!freddKitchen)     tuneDb = 0;
+        else if (watchKitchen) tuneDb = 50;
+        else                   tuneDb = 5;
+        g_audio.SetChannelVolume(CH_OVEN,     CFVolumeToDb(ovenDb));
+        g_audio.SetChannelVolume(CH_MUSICBOX, CFVolumeToDb(tuneDb));
+        // music box replays every 300 s while Freddy camps the kitchen (g400)
+        if (freddKitchen) {
+            s_kitchenCampT += 1.0f / 60.0f;
+            if (s_kitchenCampT >= 300.0f) {
+                s_kitchenCampT = 0.0f;
+                g_audio.PlayOnChannel(&g_pak, Snd::MUSIC_BOX, false, CH_MUSICBOX);
+            }
+        } else s_kitchenCampT = 0.0f;
+    }
 }
 
 // v2.18: periodic random one-shot ambience (the "1:1" random events).
@@ -503,22 +571,25 @@ static void TickRandomEvents(const Game& game) {
     const Animatronic& chica  = ai.GetAnimatronic(ANIM_CHICA);
     const bool monUp = game.GetCameras().IsMonitorUp();
 
+    // v2.53 (dump groups 269/270/276/245): these fire far more often than the
+    // port used to think — the dump's "(~Ns)" annotations are the 50 Hz
+    // artifact; the raw numbers (4000/5000 ms) are the truth.
     s_pirateT += dt;
-    if (s_pirateT >= 80.0f) {
+    if (s_pirateT >= 4.0f) {                    // g269: every 4 s, 1/30
         s_pirateT = 0.0f;
-        if (foxy.foxyStage <= FOXY_STAGE_2 && (rand() % 30) == 0)
+        if (foxy.foxyStage == FOXY_STAGE_0 && (rand() % 30) == 0)
             g_audio.PlayOnChannel(&g_pak, Snd::PIRATE_SONG, false, CH_PIRATE);
     }
 
     s_circusT += dt;
-    if (s_circusT >= 100.0f) {
+    if (s_circusT >= 5.0f) {                    // g270: every 5 s, 1/30
         s_circusT = 0.0f;
         if ((rand() % 30) == 0)
             g_audio.PlayOnChannel(&g_pak, Snd::CIRCUS, false, CH_CIRCUS);
     }
 
     s_breathT += dt;
-    if (s_breathT >= 100.0f) {
+    if (s_breathT >= 5.0f) {                    // g276/278: every 5 s, 1/3
         s_breathT = 0.0f;
         if (monUp) {
             if (bonnie.currentRoom == ROOM_LEFT_DOOR  && (rand() % 3) == 0)
@@ -528,14 +599,26 @@ static void TickRandomEvents(const Game& game) {
         }
     }
 
-    // v2.22 kitchen oven (groups 245-250): Chica in the kitchen rattles the
-    // oven drawer every ~80 s (random 1..10 gate -> 4 OVEN-DRA variants).
+    // kitchen oven (groups 245-250): Chica in the kitchen re-rolls the clatter
+    // pick every 4 s (a raw 4000 ms timer, not 80).
     static f32 s_ovenT = 0.0f;
     s_ovenT += dt;
-    if (s_ovenT >= 80.0f) {
+    if (s_ovenT >= 4.0f) {
         s_ovenT = 0.0f;
         if (chica.currentRoom == ROOM_KITCHEN && (rand() % 10) < 5)
             g_audio.PlayOnChannel(&g_pak, Snd::OVEN_DRAW[rand() % 4], false, CH_OVEN);
+    }
+
+    // v2.53 (group 271): the building's rare pounding — every 10 s, 1/50,
+    // volume 10 + Random(40). It used to be stolen for Foxy's bang.
+    static f32 s_poundT = 0.0f;
+    s_poundT += dt;
+    if (s_poundT >= 10.0f) {
+        s_poundT = 0.0f;
+        if ((rand() % 50) == 0) {
+            g_audio.SetChannelVolume(CH_POUNDING, CFVolumeToDb(10 + rand() % 41));
+            g_audio.PlayOnChannel(&g_pak, Snd::DOOR_POUNDING, false, CH_POUNDING);
+        }
     }
 }
 
@@ -585,12 +668,26 @@ static void DebugSpawnGoldenFreddy() {
     g_debugConsole.Print("GOLDEN SPAWNED (debug): appears in the office");
 }
 
+// v2.53 (dump group 425): the Golden Freddy ARM is a silent global roll —
+// 1/100000 once per SECOND, unconditional from the very first night, with no
+// monitor/camera gating at all. The old build armed him 1/100 per monitor
+// drop (fused with the 2B poster art roll) — thousands of times too common.
+static f32 s_goldArmT = 0.0f;
+
 static void TickGoldenFreddy(Game& game, GameRender& render) {
     const bool monUp = game.GetCameras().IsMonitorUp();
     const CameraId cam = game.GetCameras().GetCurrentCamera();
 
-    // 1. summon when the 1/100 "random for pic" roll hits (rolled on drop)
-    if (s_goldState == 0 && render.GetGoldenRoll() == 0) s_goldState = 1;
+    // 1. the rare arm (dump g425) — global seconds roll
+    if (s_goldState == 0) {
+        s_goldArmT += 1.0f / 60.0f;
+        if (s_goldArmT >= 1.0f) {
+            s_goldArmT -= 1.0f;
+            if (rand() % 100000 == 0) s_goldState = 1;
+        }
+    }
+    // The armed state also forces the 2B poster to show Golden (dump g43).
+    render.SetGoldenPosterArmed(s_goldState == 1);
 
     // 2. giggle #38 (Laugh_Giggle_Girl_1) when viewing CAM 2B poster once
     if (monUp && cam == CAM_2B && s_goldState == 1) {
@@ -638,45 +735,41 @@ static void RefreshMenuFromProgress(MenuSystem& menu) {
     menu.SetHasSave(lastDone > 0);
 }
 
-// Original title events: pressing <Delete> on the title screen wipes the Ini
-// (level=1, beatgame/beat6/beat7=0). On the console this arrives from a USB
-// keyboard through XInputGetKeystroke (XINPUT_FLAG_KEYBOARD).
-static void PollTitleKeyboardReset(MenuSystem& menu) {
-    XINPUT_KEYSTROKE ks;
-    while (XInputGetKeystroke(XUSER_INDEX_ANY, XINPUT_FLAG_KEYBOARD, &ks) == ERROR_SUCCESS) {
-        if ((ks.Flags & XINPUT_KEYSTROKE_KEYDOWN) && ks.VirtualKey == VK_DELETE) {
-            Progress::Reset(g_prog);
-            if (Progress::Save(g_prog)) {
-                RefreshMenuFromProgress(menu);
-                g_debugConsole.Print("SAVE WIPED (Delete)");
-            } else {
-                g_debugConsole.Print("SAVE WIPE FAILED");
-            }
-        }
-    }
-}
+// v2.54: X-button save wipe on the title — hold 5 s, then a system
+// confirmation box (the same SysPrompt pipeline as the import box); "Yes"
+// wipes progress. v2.54 removed the older cheats this replaces (USB-keyboard
+// Delete, LT+RT pad hold) — the X version is the one wipe path.
+static f32 g_titleXWipeHoldT = 0.0f;
+static bool g_titleXWipePending = false;
 
-// v2.33: the same wipe from the PAD — hold LT+RT ~2.5 s on the title (the
-// triggers do nothing on that screen; Start+B/LB+RB are taken by DEV and
-// the sprite browser).
-static f32 g_titleWipeHoldT = 0.0f;
-static void PollTitlePadReset(MenuSystem& menu, const GameInput& gi, f32 dt) {
-    const bool combo = gi.leftDoorAxis > 0.5f && gi.rightDoorAxis > 0.5f;
-    if (combo) {
-        g_titleWipeHoldT += dt;
-        if (g_titleWipeHoldT >= 2.5f) {
-            g_titleWipeHoldT = 0.0f;
-            Progress::Reset(g_prog);
-            if (Progress::Save(g_prog)) {
-                RefreshMenuFromProgress(menu);
-                g_debugConsole.Print("SAVE WIPED (LT+RT hold)");
-            } else {
-                g_debugConsole.Print("SAVE WIPE FAILED");
-            }
-        }
-    } else {
-        g_titleWipeHoldT = 0.0f;
+static void PollTitleXWipe(MenuSystem& menu, const GameInput& gi, f32 dt) {
+    if (g_titleXWipePending) return;   // the box is up; wait for its answer
+    if (!gi.xHeld) {
+        g_titleXWipeHoldT = 0.0f;
+        return;
     }
+    g_titleXWipeHoldT += dt;
+    if (g_titleXWipeHoldT < 5.0f) return;
+
+    g_titleXWipeHoldT = 0.0f;
+    g_titleXWipePending = true;
+    static const wchar_t* btns[] = { L"No", L"Yes" };
+    DWORD pressed = 0;
+    // SysPrompt returns "the box completed", not the choice — read the index
+    // ("Yes" is index 1; focus sits on "No"=0 so a stray A can't wipe).
+    SysPrompt(L"Save wipe",
+        L"Delete the whole save? All nights and stars will be reset.",
+        btns, 2, 0, XMB_WARNINGICON, &pressed);
+    if (pressed == 1) {
+        Progress::Reset(g_prog);
+        if (Progress::Save(g_prog)) {
+            RefreshMenuFromProgress(menu);
+            g_debugConsole.Print("SAVE WIPED (X hold)");
+        } else {
+            g_debugConsole.Print("SAVE WIPE FAILED");
+        }
+    }
+    g_titleXWipePending = false;
 }
 
 void OnTimeUpdate(i32 hour){
@@ -804,11 +897,13 @@ void OnCameraChange(CameraId cam, int reason){
     }
     else if(reason==CAM_REASON_UP){
         printf("[Camera UP: %s]\n",CameraSystem::GetCameraName(cam));
-        // group 130: monitor flip-up whir + static while up
+        // v2.53 (groups 130 + 144 + 16): the flip-up plays whir (ch7), the
+        // camcorder tape-eject (ch6) when the feed commits, and the blip3 of
+        // the content-commit frame. The port's invented monitor static bed
+        // is removed — no such loop exists in the original soundscript.
         g_audio.Play(&g_pak, Snd::CAMERA_SWITCH, false, 0.8f);
-        g_audio.Play(&g_pak, Snd::STATIC_LOOP, true, 0.5f);
-        // group 144: camcorder tape-eject (ch6) when the feed commits
         g_audio.Play(&g_pak, Snd::TAPE_EJECT, false, 0.8f);
+        g_audio.Play(&g_pak, Snd::BLIP, false, 0.8f);
     }
     else { // CAM_REASON_SWITCH
         printf("[Camera: %s]\n",CameraSystem::GetCameraName(cam));
@@ -821,7 +916,8 @@ void OnDoorChange(DoorSide s,bool c){
     printf("[Door %s: %s]\n",s==DOOR_LEFT?"Left":"Right",c?"CLOSED":"OPEN");
     // v2.37: dull heavy left-motor push when the door lands (close only)
     if (c) RumbleKick(18000, 0, 0.15f);
-    // door slam (SFXBible_12478) on close
+    // v2.53: door motor (SFXBible_12478, ch4) plays on BOTH close (g96/100)
+    // and open (g102-105) — the port used to slam close-only.
     g_audio.Play(&g_pak, Snd::DOOR_SLAM, false, 1.0f);
 }
 void OnLightChange(DoorSide s,bool o){
@@ -837,14 +933,20 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
     // v2.17: deep steps for Bonnie/Chica; Freddy's laugh is the _1d/_2d/_8d
     // giggle family (#56/57/58), NOT Laugh_Giggle_Girl_1 (#38 = Golden Freddy).
     if(a==ANIM_BONNIE||a==ANIM_CHICA) {
-        // v2.19: footsteps volume by distance (groups 198-244), expressed as
-        // Clickteam values: far 10, mid 30, near 40 (muted when overlapping).
-        float v = CFVolumeToDb(10);
-        if (r==ROOM_WEST_HALL || r==ROOM_SUPPLY_CLOSET || r==ROOM_EAST_HALL) v = CFVolumeToDb(30);
-        else if (r==ROOM_WEST_HALL_CORNER || r==ROOM_EAST_HALL_CORNER ||
-                 r==ROOM_LEFT_DOOR || r==ROOM_RIGHT_DOOR) v = CFVolumeToDb(40);
-        g_audio.SetChannelVolume(CH_DEEPSTEPS, v);
-        g_audio.PlayOnChannel(&g_pak, Snd::DEEP_STEPS, false, CH_DEEPSTEPS);
+        // v2.53 (dump groups 199-244): the full loudness ladder of the step
+        // sound — 10 for the far hops, 20 for dining/restrooms/kitchen, 30
+        // the mid halls & closet, 40 the corners and the door zones; and the
+        // steps are MUTED while you watch the room (groups 212/213).
+        const bool watched = g_gameRef && g_gameRef->IsWatchingRoom(r);
+        if (!watched) {
+            float v = CFVolumeToDb(10);
+            if (r==ROOM_DINING_AREA || r==ROOM_RESTROOMS || r==ROOM_KITCHEN) v = CFVolumeToDb(20);
+            else if (r==ROOM_WEST_HALL || r==ROOM_SUPPLY_CLOSET || r==ROOM_EAST_HALL) v = CFVolumeToDb(30);
+            else if (r==ROOM_WEST_HALL_CORNER || r==ROOM_EAST_HALL_CORNER ||
+                     r==ROOM_LEFT_DOOR || r==ROOM_RIGHT_DOOR) v = CFVolumeToDb(40);
+            g_audio.SetChannelVolume(CH_DEEPSTEPS, v);
+            g_audio.PlayOnChannel(&g_pak, Snd::DEEP_STEPS, false, CH_DEEPSTEPS);
+        }
     }
     else if(a==ANIM_FREDDY) {
         // v2.19: "got in" laugh (groups 390-405): a RANDOM giggle variant
@@ -874,11 +976,9 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
 void OnFoxyStageChange(FoxyStage s){
     const char* t[]={"Curtain Closed","Peeking","Gone","Lurking","RUNNING!","AT DOOR!"};
     printf("[AI] Foxy: %s\n",t[s]);
-    if(s==FOXY_STAGE_3){
-        // group 39: Foxy run down the hall
-        g_audio.Play(&g_pak, Snd::RUN, true, 1.0f);
-        g_audio.Play(&g_pak, Snd::RUNNING_FAST, true, 1.0f);
-    }
+    // v2.53 (group 40): the sprint sound is a ONE-SHOT "run" at the 3->4
+    // trigger while you watch CAM 2A — the port used to loop it from stage 3.
+    if(s==FOXY_STAGE_4) g_audio.Play(&g_pak, Snd::RUN, false, 1.0f);
     // v2.14: "No Running" — Foxy leaves the cove (stage 4 sprint)
     if(s==FOXY_STAGE_4) g_ach.OnFoxyRan();
 }
@@ -893,26 +993,30 @@ void OnFoxyDoorBang(f32 p){
     if (bangIdx < 1) bangIdx = 1;
     const bool doorClosed = g_gameRef ? g_gameRef->GetDoors().IsDoorClosed(DOOR_RIGHT) : false;
     g_debugConsole.Print("FOXY bang #%d door=%s", bangIdx, doorClosed ? "closed" : "open");
-    // group 270/323: pounding + knock
+    // v2.53 (group 324): the bang is just knock2 ch9 — the pounding sample
+    // returned to its ambience home (the periodic door-pounding, group 271,
+    // got restored in the random-event pass).
     g_audio.Stop(Snd::RUN); g_audio.Stop(Snd::RUNNING_FAST);
-    g_audio.Play(&g_pak, Snd::DOOR_POUNDING, false, 1.0f);
     g_audio.Play(&g_pak, Snd::KNOCK, false, 0.9f);
 }
 
 // Start the Phone Guy call for the current night (frame 3 groups 361-365)
+static f32 s_phoneT = 0.0f;   // v2.53: call elapsed (for the mute-button window)
 static void StartPhoneCall(i32 night) {
     if (night < 1 || night > 5) return;           // nights 6/7: no call
     if (s_phoneMuted) return;
     g_audio.SetChannelVolume(CH_PHONE, CFVolumeToDb(100));   // office, monitor down (100 = unity)
     g_audio.PlayOnChannel(&g_pak, Snd::VOICEOVER[night-1], false, CH_PHONE);
     s_phonePlaying = true;
+    s_phoneT = 0.0f;
 }
 
 // Phone Guy call (frame 3 groups 361-365): the original plays AT OFFICE START
 // (night number == N, "play voice N" == 0) — no 2.5 s delay. Nights 6/7 silent.
+// The mute button exists only for the call's +20..+40 s window (groups 380/378).
 static bool s_phoneStarted = false;
 static void TickPhoneCall(Game& game, f32 dt) {
-    (void)dt;
+    if (s_phonePlaying) s_phoneT += dt;
     if (s_phoneStarted) return;
     s_phoneStarted = true;
     StartPhoneCall(game.GetCurrentNight());
@@ -1035,7 +1139,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.52 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.54 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -1050,7 +1154,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.52 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.54 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1370,6 +1474,22 @@ int main(int argc, char* argv[]){
             TickAudioMixer(game);              // v2.16: dynamic channel volumes each frame
             TickRandomEvents(game);            // v2.18: periodic pirate/breaths/circus one-shots
             TickGoldenFreddy(game, g_render);  // v2.22: Golden Freddy summon/appear/kill
+            // v2.53 (dump groups 333/334 + 386/387): the doorway-pose reveal
+            // stinger — "windowscare" plays once per arrival when the pose
+            // first shows under the light; the latch resets when they leave.
+            {
+                static bool s_poseLATL = false;
+                static bool s_poseRATR = false;
+                const AnimatronicAI& lai = game.GetAI();
+                const DoorSystem&  ds  = game.GetDoors();
+                const bool office = !game.GetCameras().IsMonitorUp();
+                const bool poseL = office && ds.IsLightOn(DOOR_LEFT)  && lai.IsAnimatronicAtDoor(ANIM_BONNIE, DOOR_LEFT);
+                const bool poseR = office && ds.IsLightOn(DOOR_RIGHT) && lai.IsAnimatronicAtDoor(ANIM_CHICA, DOOR_RIGHT);
+                if (poseL && !s_poseLATL) { g_audio.Play(&g_pak, Snd::WINDOW_SCARE, false, 0.9f); s_poseLATL = true; }
+                if (poseR && !s_poseRATR) { g_audio.Play(&g_pak, Snd::WINDOW_SCARE, false, 0.9f); s_poseRATR = true; }
+                if (!lai.IsAnimatronicAtDoor(ANIM_BONNIE, DOOR_LEFT))  s_poseLATL = false;
+                if (!lai.IsAnimatronicAtDoor(ANIM_CHICA, DOOR_RIGHT)) s_poseRATR = false;
+            }
             // v2.46 (groups 219-222): a garble/digital sample on the rising
             // edge of the camera static-out window (Random(4)+1 -> 1..4).
             {
@@ -1382,13 +1502,12 @@ int main(int argc, char* argv[]){
                 }
                 prevFeedStatic = fs;
             }
-            // v2.27: the "IT'S ME" office hallucination (obj "Active 21"),
-            // dump groups 413-419: every ~20 s Random(1000)==1 opens a
-            // 100-tick window; during it the overlay is shown only on
-            // frames where Random(10)==1 (~10 % duty flicker, groups
-            // 416-418) and robotvoice (ch21) goes FULL while it flashes.
+            // v2.53: the "IT'S ME" arm roll is once per SECOND (dump group
+            // 419: timer 1000, 1/1000) — the port used to roll once per 20 s
+            // (the "(~20.00s)" annotation misread). The 100-tick show window
+            // and the decade-view flicker below match (g415/416).
             g_itsmeRollTimer += 1.0f/60.0f;
-            if (g_itsmeRollTimer >= 20.0f) {
+            if (g_itsmeRollTimer >= 1.0f) {
                 g_itsmeRollTimer = 0.0f;
                 if ((rand() % 1000) == 0) g_itsmeT = 0.0f;
             }
@@ -1564,8 +1683,8 @@ int main(int argc, char* argv[]){
         // ---------------- TITLE MENU ----------------
         if(state==GAME_STATE_MENU){
             if(menuFrameCounter < 30){ menuFrameCounter++; }
-            PollTitleKeyboardReset(menu);   // hidden Delete-key save wipe (original title events)
-            PollTitlePadReset(menu, gi, 1.0f / 60.0f);   // v2.33: same from the pad (LT+RT hold)
+            // the save wipe lives ONLY on the X hold (v2.54)
+            PollTitleXWipe(menu, gi, 1.0f / 60.0f);
 
             MenuAction act = MENU_ACTION_NONE;
             // v2.14/v2.20: achievements — Y opens the SYSTEM list in the system build
@@ -1614,13 +1733,9 @@ int main(int argc, char* argv[]){
                     if (menu.LastStartWasNewGame()) {
                         Progress::Load(g_prog);
                         g_prog.nextNight = 1;
-                        // v2.46: the original's New Game ALSO wipes the unlock
-                        // progress (title groups ~44/49: beatgame/beat6/beat7
-                        // := 0 — a "new save" starts clean; Custom/6th rows and
-                        // stars come back only by beating the nights again).
-                        g_prog.beat5 = false;
-                        g_prog.beat6 = false;
-                        g_prog.beat7 = false;
+                        // v2.53 (audit): the original wipes beatgame/beat6/beat7
+                        // ONLY on the hold-Delete cheat (title group 49) — New
+                        // Game touches just level=1. Stars survive a New Game.
                         Progress::Save(g_prog);
                     }
                     game.Init(night);
@@ -1748,28 +1863,37 @@ int main(int argc, char* argv[]){
             if(gi.yToggle)     g_render.PerspTunerReset(g_tunerSel);
         }
         else if(state==GAME_STATE_PLAYING){
-            // v2.21 analog-door test (DEV toggle). When ON, the door position
-            // follows the trigger level (0 open .. 1 closed); the logical
-            // "closed" (AI block) = amount >= 0.5, so gameplay rules hold.
-            // When OFF, the original LT/RT toggle behaviour is used.
-            // v2.36: door/light buttons JAM while an animatronic stands in
-            // the doorway (dump groups 97/101/107/109) — the click plays only
-            // the "error" stinger and does nothing (Bonnie on the left zone,
-            // Chica on the right; Freddy's right-door is separate, no jam).
-            const bool jamL = game.GetAI().IsAnyAnimatronicAtDoor(DOOR_LEFT);
-            const bool jamR = game.GetAI().IsAnyAnimatronicAtDoor(DOOR_RIGHT);
+            // v2.53 (dump g95-109): door/light buttons listen only while the
+            // monitor is DOWN; every press pays the 10-tick click cooldown;
+            // buttons "jam" (error click, no action) only while an intruder
+            // stands at that door — Bonnie on the left, Chica on the right
+            // (Freddy/Foxy never jam). LIGHTS stay pressable like the dump
+            // (the light-up IS how you verify the doorway pose); only closing
+            // a door onto an occupant errors (a reopen plays the motor as usual).
+            if (s_clickCooldown > 0) s_clickCooldown--;
+            const bool inputOk = !game.GetCameras().IsMonitorUp() && s_clickCooldown == 0;
+            const bool jamL = game.GetAI().IsAnimatronicAtDoor(ANIM_BONNIE, DOOR_LEFT);
+            const bool jamR = game.GetAI().IsAnimatronicAtDoor(ANIM_CHICA, DOOR_RIGHT);
             if (g_devAnalogDoor) {
                 if (!jamL) game.SetDoorAmount(DOOR_LEFT,  gi.leftDoorAxis);
                 if (!jamR) game.SetDoorAmount(DOOR_RIGHT, gi.rightDoorAxis);
             } else {
-                if (gi.leftDoorToggle && jamL)
-                    g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
-                else if (gi.leftDoorToggle)
-                    game.ToggleDoor(DOOR_LEFT);
-                if (gi.rightDoorToggle && jamR)
-                    g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
-                else if (gi.rightDoorToggle)
-                    game.ToggleDoor(DOOR_RIGHT);
+                if (gi.leftDoorToggle && inputOk) {
+                    // the error answers only a CLOSE onto an occupied doorway
+                    // (dump g97/101); reopening plays the motor like always
+                    if (jamL && !game.GetDoors().IsDoorClosed(DOOR_LEFT))
+                        g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
+                    else
+                        game.ToggleDoor(DOOR_LEFT);
+                    s_clickCooldown = 10;
+                }
+                if (gi.rightDoorToggle && inputOk) {
+                    if (jamR && !game.GetDoors().IsDoorClosed(DOOR_RIGHT))
+                        g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
+                    else
+                        game.ToggleDoor(DOOR_RIGHT);
+                    s_clickCooldown = 10;
+                }
             }
             // v2.21 hold-lights test (DEV toggle). When ON, the light stays on only
             // while its bumper (LB/RB) is held; when OFF, the original toggle.
@@ -1777,14 +1901,14 @@ int main(int argc, char* argv[]){
                 if (!jamL) game.SetLight(DOOR_LEFT,  gi.leftShoulderHeld);
                 if (!jamR) game.SetLight(DOOR_RIGHT, gi.rightShoulderHeld);
             } else {
-                if (gi.leftLightToggle && jamL)
-                    g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
-                else if (gi.leftLightToggle)
+                if (gi.leftLightToggle && inputOk) {
                     game.ToggleLight(DOOR_LEFT);
-                if (gi.rightLightToggle && jamR)
-                    g_audio.Play(&g_pak, Snd::DOOR_ERROR, false, 0.9f);
-                else if (gi.rightLightToggle)
+                    s_clickCooldown = 10;
+                }
+                if (gi.rightLightToggle && inputOk) {
                     game.ToggleLight(DOOR_RIGHT);
+                    s_clickCooldown = 10;
+                }
             }
             if(gi.cameraToggle || gi.back){
                 if(game.GetCameras().IsMonitorUp() && gi.back) game.SetCameraUp(false);
@@ -1911,7 +2035,9 @@ int main(int argc, char* argv[]){
             } else if(game.GetCameras().IsMonitorUp()){
                 g_render.RenderCamera(game, s_phonePlaying);
             } else {
-                g_render.RenderOffice(game, s_phonePlaying);
+                // v2.53 (groups 380/378): the mute button exists only in the
+                // +20..+40 s window of the call
+                g_render.RenderOffice(game, s_phonePlaying && s_phoneT >= 20.0f && s_phoneT < 40.0f);
             }
             // v2.7.11: tuner HUD on top of the bent scene (office/monitor)
             if(g_tunerMode && state==GAME_STATE_PLAYING){

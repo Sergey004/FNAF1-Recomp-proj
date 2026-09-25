@@ -26,6 +26,9 @@ void DoorSystem::Reset() {
 
 bool DoorSystem::ToggleDoor(DoorSide side) {
     if (side < 0 || side >= DOOR_COUNT) return false;
+    // v2.53: dead zone mid-slide — a second click while the door travels is
+    // ignored (the dump has no group that matches the anim-in-flight states).
+    if (m_doorAnimating[side]) return m_doorClosed[side];
     m_doorClosed[side] = !m_doorClosed[side];
     // v2.22: logical state flips instantly (AI reads it); the visual slide
     // is driven by Tick() toward this target.
@@ -84,18 +87,27 @@ bool DoorSystem::IsDoorClosed(DoorSide side) const {
     return m_doorClosed[side];
 }
 
+bool DoorSystem::IsDoorSettledClosed(DoorSide side) const {
+    if (side < 0 || side >= DOOR_COUNT) return false;
+    return m_doorClosed[side] && !m_doorAnimating[side];
+}
+
 void DoorSystem::ForceDoorsOpen() {
     for (int side = 0; side < DOOR_COUNT; ++side) {
+        // v2.53 (dump g103/105): power-out force-open goes through the
+        // animated slide + the motor sound (was an instant snap in the port).
         m_doorClosed[side] = false;
-        m_doorAmount[side] = 0.0f;
         m_doorTarget[side] = 0.0f;
-        m_doorAnimating[side] = false;   // snap open (power out / night reset)
+        m_doorAnimating[side] = true;
     }
 }
 
 bool DoorSystem::ToggleLight(DoorSide side) {
     if (side < 0 || side >= DOOR_COUNT) return false;
     m_lightOn[side] = !m_lightOn[side];
+    // v2.53 (dump g106/108): the two lights are mutually exclusive — turning
+    // one on kills the other.
+    if (m_lightOn[side]) m_lightOn[side == DOOR_LEFT ? DOOR_RIGHT : DOOR_LEFT] = false;
     return m_lightOn[side];
 }
 

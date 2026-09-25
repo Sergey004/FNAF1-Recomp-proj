@@ -460,6 +460,7 @@ GameRender::GameRender()
     m_prevCam = -1;        // v2.7.9: no settled monitor cam yet
     m_goldenRoll = -1;     // v2.17: no "random for pic" roll yet
     m_goldFredInOffice = false;   // v2.22: Golden Freddy not in the office
+    m_goldenPosterArmed = false;  // v2.53: kill not armed at start
     m_lastT = 0.0f;
 }
 
@@ -991,29 +992,31 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     int bg = IMG_OFFICE_BG;
     {
         const AnimatronicAI& ai = game.GetAI();
-        const Animatronic& foxy = ai.GetAnimatronic(ANIM_FOXY);
-        if (foxy.foxyRunning && !foxy.foxyAtDoor) {
-            int idx = CfAnimFrame(65, (f32)foxy.foxyRunTimer / 60.0f, 33, false);  // dump anim 51: 33 frames @ 65 = 39 FPS, hold last
-            bg = FOXY_RUN[idx];
-        } else {
+        // v2.53 (dump g40): Foxy's sprint lives on the CAM 2A FEED (the dump
+        // switches the scene object to anim 51 while you watch 2A) — the
+        // office itself never shows it; the port used to draw it as the
+        // office backdrop.
+        {
             const bool ll = doors.IsLightOn(DOOR_LEFT);
             const bool rl = doors.IsLightOn(DOOR_RIGHT);
             if (ll || rl) {
                 // group 122 re-rolls the flicker counter every frame;
-                // groups 119/127: <= 1 (of 0..9) -> dark frame 0 (img_39),
-                // the ~20% off-duty of the fluorescent strobe.
-                const bool dark = (rand() % 10) <= 1;
+                // groups 119/127: == 1 (of 1..10) -> dark frame 0 (img_39),
+                // the ~10% off-duty of the fluorescent strobe. (The port used
+                // to give 2/10.)
+                const bool dark = (rand() % 10) == 0;
                 if (ll) {
+                    // v2.53 (dump g120/121): the pose is drawn only when they
+                    // stand AT the door zone — at the corner the lit view is
+                    // the EMPTY hall (anim 18/19).
                     const Animatronic& b = ai.GetAnimatronic(ANIM_BONNIE);
-                    const bool atDoor = (b.currentRoom == ROOM_WEST_HALL_CORNER ||
-                                         b.currentRoom == ROOM_LEFT_DOOR);
+                    const bool atDoor = (b.currentRoom == ROOM_LEFT_DOOR);
                     bg = dark ? IMG_OFFICE_BG
                               : (atDoor ? IMG_LIGHT_L_BONNIE : IMG_LIGHT_L_HALL);
                 }
                 if (rl) {
                     const Animatronic& c = ai.GetAnimatronic(ANIM_CHICA);
-                    const bool atDoor = (c.currentRoom == ROOM_EAST_HALL_CORNER ||
-                                         c.currentRoom == ROOM_RIGHT_DOOR);
+                    const bool atDoor = (c.currentRoom == ROOM_RIGHT_DOOR);
                     bg = dark ? IMG_OFFICE_BG
                               : (atDoor ? IMG_LIGHT_R_CHICA : IMG_LIGHT_R_HALL);
                 }
@@ -1206,12 +1209,26 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
             feed = COVE[st];
     } else if (cam >= CAM_1A && cam <= CAM_7) {
         feed = CamFeedFor(game, cam);
+        // v2.53 (dump g40): Foxy's sprint shows ON the CAM 2A feed — the
+        // monitor scene-object plays anim 51 (33 frames @39 FPS, holds the
+        // last frame) instead of the hall's stills for the run's length.
+        if (cam == CAM_2A) {
+            const Animatronic& foxy = game.GetAI().GetAnimatronic(ANIM_FOXY);
+            if (foxy.foxyRunning && !foxy.foxyAtDoor) {
+                const int fidx = CfAnimFrame(65, (f32)foxy.foxyRunTimer / 60.0f, 33, false);
+                feed = FOXY_RUN[fidx];
+            }
+        }
         // v2.17: Golden Freddy "LET'S PARTY!" poster easter egg. Groups 41/42:
         // when CAM 2B shows the empty corner and this monitor session's
         // "random for pic" roll hit (<2 of 1..100), swap the poster for
         // Golden Freddy's face (anim 75, handle 571). Only when the corner
         // is empty -- Bonnie/Chica presence wins (CAMFEED_2B_BONNIE/CHICA).
-        if (cam == CAM_2B && feed == CAMFEED_2B_EMPTY && m_goldenRoll == 0)
+        // v2.53: dump g41-44 — the armed kill always shows the Golden poster
+        // on 2B; without the arm the art roll (per monitor session) still
+        // surfaces it 1/100 as pure decor.
+        if (cam == CAM_2B && feed == CAMFEED_2B_EMPTY &&
+            (m_goldenPosterArmed || m_goldenRoll == 0))
             feed = CAMFEED_2B_GOLDENFREDDY;
     }
     // Authentic drift: in the original the office view pans with the

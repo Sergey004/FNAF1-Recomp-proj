@@ -137,7 +137,9 @@ namespace TimeConstants {
     // CF2.5 frameRate = 60, minute counter >= 90 -> hour++, 6 hours per night.
     static const f64 TICK_RATE           = 60.0;  // Logic updates per second
     static const f64 HOUR_DURATION_SEC   = 90.0;  // Real seconds per in-game hour (group 264-265)
-    static const f64 NIGHT_DURATION_SEC  = 6.0 * HOUR_DURATION_SEC; // 540s total
+    // v2.53: the dump's minute counter RESETS TO 1 past 90 (group 265) —
+    // hour 1 lasts 90 s, every later hour 89 s; the night is 90+89*5 = 535 s.
+    static const f64 NIGHT_DURATION_SEC  = 535.0;
     static const f64 TICK_INTERVAL_SEC   = 1.0 / TICK_RATE; // ~0.0167s per tick
     
     // Movement opportunities: each animatronic has its OWN interval
