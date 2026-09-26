@@ -1139,7 +1139,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.56 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.57 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;

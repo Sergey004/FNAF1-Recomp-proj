@@ -751,7 +751,14 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     if      (bgRoll >= 98) bg = IMG_MENU_FLICK3;   // 442 — brightest pop (rare)
     else if (bgRoll >= 93) bg = IMG_MENU_FLICK2;   // 441
     else if (bgRoll >= 85) bg = IMG_MENU_FLICK1;   // 440 — soft glow
-    DrawFrame(bg, 0, 0, SCREEN_W, SCREEN_H, 0xFFFFFFFF);
+    // v2.57 (dump group 5, title frame): the background coefficient re-rolls
+    // to Random(250) every ~6 s — this is the real "lamp" effect (the Freddy
+    // backdrop breathes, dim-to-bright, sometimes near-black). The same
+    // coefficient→alpha mapping as the title's static (alpha = (255-c)/255).
+    const unsigned lw = static_cast<unsigned>(m_time / 6.0f);
+    const int lampCoeff = (int)(((lw * 2654435761u) >> 3) % 250u);      // 0..249
+    const u32  lampAlpha = static_cast<u32>(255 - lampCoeff);          // coeff → alpha
+    DrawFrame(bg, 0, 0, SCREEN_W, SCREEN_H, (lampAlpha << 24) | 0x00FFFFFFu);
 
     // Animated static overlay ("static" obj): group 1 re-rolls the alpha
     // coefficient to 50 + Random(100) every 1.8 s. Kept, but narrowed to

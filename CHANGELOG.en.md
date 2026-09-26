@@ -6,6 +6,13 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.57 — the title's Freddy "lamp" from the dump's own semantics
+
+- The missing effect from the title: the background brightness breathes. Dump group 5 re-rolls the Active 2 alpha coefficient to `Random(250)` every ~6 s, mapped via the project's coefficient rule (on-screen alpha = (255 − coeff)/255 — the same one the title static uses) — the Freddy backdrop breathes dim↔bright with deep dips like the original. No clamps invented this time (my earlier version narrowed the range against the dump's full swing).
+- Version → v2.57.
+
+---
+
 ## v2.56 — FNAF2 rendering: one mapping, feeds pan like the office
 
 - FNAF2's world is 1024x768 with wide 1600x768 office/feed art; the target look is the PC's fullscreen stretch. All drawing now goes through ONE transform (kScaleX = 1280/1024, kScaleY = 720/768) — including the title's debug text, which used to sit at leftover pillarbox coordinates while the sprites stretched.
