@@ -448,6 +448,24 @@ void SpriteBatch::End()
     Flush();
 }
 
+// v2.57: point-sampled single quad. Paint order stays exact: queued LINEAR
+// quads flush first, the sampler switches to POINT for this one quad, then
+// back to LINEAR. (The static overlay is one quad per frame, so the state
+// churn is negligible.)
+void SpriteBatch::DrawPoint(void* tex, float x, float y, float w, float h,
+                            float u0, float v0, float u1, float v1,
+                            u32 color) {
+    if (!m_ready) return;
+    Flush();
+    D3DDeviceX* dev = (D3DDeviceX*)m_device;
+    dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_POINT);
+    dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_POINT);
+    Draw(tex, x, y, w, h, u0, v0, u1, v1, color);
+    Flush();
+    dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+    dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+}
+
 void SpriteBatch::SetupRenderState()
 {
     D3DDeviceX* dev = (D3DDeviceX*)m_device;

@@ -156,6 +156,20 @@ static f32 g_perspCurve   = PERSP_CURVE;     // 4.0
 // Title/office static cycle — object "static" anim 0 (8 frames)
 static const int STATIC_FRAMES[8] = { 18, 20, 12, 13, 14, 15, 16, 17 };
 
+// v2.57: title window-hash with a murmur3-style finalizer. The raw Knuth
+// low bits CLUMPED — the bg variant flashed "once, then gone" for a minute
+// straight (the low bits of the multiplicative sequence run long same-mod
+// stretches). The finalizer spreads every window's roll independently.
+static u32 TitleWinHash(u32 win) {
+    u32 r = win * 2654435761u + 0x9E3779B9u;
+    r ^= r >> 16;
+    r *= 0x85EBCA6Bu;
+    r ^= r >> 13;
+    r *= 0xC2B2AE35u;
+    r ^= r >> 16;
+    return r;
+}
+
 // White-noise blip flash cycle (object "blip flash", what-day/died frames)
 static const int BLIP_FRAMES[9] = { 4, 6, 8, 9, 10, 21, 22, 23, 25 };
 
@@ -595,7 +609,14 @@ void GameRender::DrawStaticOverlay(float alpha) {
     u32 color = (a << 24) | 0xFFFFFF;
     char name[32];
     StaticFrame(name);
-    DrawTex(name, 0, 0, SCREEN_W, SCREEN_H, color);
+    // v2.57: POINT sampling — the static's coarse 1024px grain survives the
+    // stretch to 1280 exactly like the original's nearest-neighbour look
+    // (linear filtering softened it).
+    PakLoadedTexture* t = Tex(name);
+    if (!t || !t->texture || !m_batch) return;
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+    m_batch->DrawPoint(t->texture, 0.0f, 0.0f, SCREEN_W, SCREEN_H, 0.0f, 0.0f, u1, v1, color);
 }
 
 // Full-screen black fade overlay for frame-to-frame transitions. Reuses the
@@ -747,7 +768,7 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     // instead (~15% of windows lit, the brightest rarest):
     int bg = IMG_MENU_BG;
     const unsigned bw = static_cast<unsigned>(m_time / 1.6f);
-    const unsigned bgRoll = ((bw * 2654435761u) >> 5) % 100u;
+    const unsigned bgRoll = TitleWinHash(bw) % 100u;
     if      (bgRoll >= 98) bg = IMG_MENU_FLICK3;   // 442 — brightest pop (rare)
     else if (bgRoll >= 93) bg = IMG_MENU_FLICK2;   // 441
     else if (bgRoll >= 85) bg = IMG_MENU_FLICK1;   // 440 — soft glow
@@ -756,7 +777,7 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     // backdrop breathes, dim-to-bright, sometimes near-black). The same
     // coefficient→alpha mapping as the title's static (alpha = (255-c)/255).
     const unsigned lw = static_cast<unsigned>(m_time / 6.0f);
-    const int lampCoeff = (int)(((lw * 2654435761u) >> 3) % 250u);      // 0..249
+    const int lampCoeff = (int)(TitleWinHash(lw) % 250u);              // 0..249
     const u32  lampAlpha = static_cast<u32>(255 - lampCoeff);          // coeff → alpha
     DrawFrame(bg, 0, 0, SCREEN_W, SCREEN_H, (lampAlpha << 24) | 0x00FFFFFFu);
 
@@ -765,7 +786,7 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     // 80 + Random(70) (alpha ≈ 0.49..0.69 around the old 0.61) — the lamp is
     // supposed to flicker on FREDDY, not the noise (user note).
     const unsigned sw = static_cast<unsigned>(m_time / 1.8f);
-    const int sCoeff = 80 + (int)(((sw * 2654435761u) >> 7) % 70u);
+    const int sCoeff = 80 + (int)(TitleWinHash(sw) % 70u);
     DrawStaticOverlay((255 - sCoeff) / 255.0f);
 
     // v2.46: the subtle band that rolls down the title screen — the
@@ -783,12 +804,12 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
         // (win*73+win*win*37) % 3 collapsed to win(win+1) % 3, which is
         // never 1, so the band never showed at all.
         const unsigned win = static_cast<unsigned>(m_time / 6.0f);
-        if (((win * 2654435761u) >> 13) % 3u == 1) {
+        if (TitleWinHash(win) % 3u == 1) {
             // anim frame: speed 10 -> (100/10)/60 = 0.167 s per frame
             static const int BAND_SEQ[8] = { 430, 435, 436, 434, 438, 439, 437, 22 };
             const int fi = static_cast<int>(m_time * 6.0f) % 8;
             const unsigned aw = static_cast<unsigned>(m_time / 1.6f); // 1.6 s alpha window
-            const int coeff = 100 + static_cast<int>(((aw * 2654435761u) >> 9) % 100u); // 100..199
+            const int coeff = 100 + static_cast<int>(TitleWinHash(aw) % 100u); // 100..199
             const u32 a = static_cast<u32>((255 - coeff)) << 24;
             DrawFrame(BAND_SEQ[fi], 0.0f, 0.0f, SCREEN_W, SCREEN_H, a | 0xFFFFFF);
         }

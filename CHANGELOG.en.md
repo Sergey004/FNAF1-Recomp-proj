@@ -6,9 +6,11 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
-## v2.57 — the title's Freddy "lamp" from the dump's own semantics
+## v2.57 — the title's Freddy "lamp" + point-sampled static
 
 - The missing effect from the title: the background brightness breathes. Dump group 5 re-rolls the Active 2 alpha coefficient to `Random(250)` every ~6 s, mapped via the project's coefficient rule (on-screen alpha = (255 − coeff)/255 — the same one the title static uses) — the Freddy backdrop breathes dim↔bright with deep dips like the original. No clamps invented this time (my earlier version narrowed the range against the dump's full swing).
+- **Static is point-sampled now** (`SpriteBatch::DrawPoint`): the dump's coarse 1024px noise frames keep their grain when stretched to 1280 — the original's Clickteam default is nearest-neighbour, and our linear sampler was softening the noise. Applies to every `DrawStaticOverlay` user (title, office static-out, camera-switch interference).
+- **Window-hash fix (real-HW bug)**: the title rolls used the LOW bits of a Knuth multiplicative hash, whose sequence CLUMPS — on the console the Freddy variant flashed exactly once and then nothing for a minute ("акк раз и нету"). All four title rolls (bg variant, lamp, static alpha, band) now run through a murmur3-style finalizer (`TitleWinHash`) that spreads every window independently; simulated spread matches the designed odds (~15% lit, lamp dips ~1/min, band ~1/18 s).
 - Version → v2.57.
 
 ---

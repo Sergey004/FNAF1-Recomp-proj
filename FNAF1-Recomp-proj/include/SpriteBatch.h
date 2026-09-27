@@ -56,6 +56,13 @@ public:
     // Draw with default UVs 0,0,1,1
     void Draw(void* tex, float x, float y, float w, float h, u32 color);
 
+    // v2.57: POINT-sampled draw (nearest neighbour) — the title/camera static
+    // keeps its coarse 1024px grain when stretched to 1280 (the original's
+    // Clickteam default is point sampling; linear blurs the noise soft).
+    void DrawPoint(void* tex, float x, float y, float w, float h,
+                   float u0, float v0, float u1, float v1,
+                   u32 color);
+
     // General-purpose explicit triangle list in screen space (same vertex
     // layout as the quad path); one DrawPrimitiveUP for a whole mesh.
     // Flushes any queued quads first, so paint order stays exact.
