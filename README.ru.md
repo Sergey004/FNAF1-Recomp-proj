@@ -101,10 +101,11 @@ FNaF1Module (активна)   FNaF2Module   FNaF3Module   … (FNAF4/SL/UCN)
 | Браузер спрайтов | LB+RB (в меню) |
 | Perspective-тюнер | L3+R3 (Y — сброс ручки) |
 
-## Конвейер ассетов (CTFAK-CPP)
+## Конвейер ассетов (CTFAK-CPP) (Он будет доступен в ближайшее время в связи с юридическими вопросами)
 
-Инструмент: `/home/user/FNAF1-Recomp/ctfak-cppnew/ctfak-cpp` (clean-room C++,
-Readme внутри). Полный цикл для любой игры серии:
+Инструмент: **[ctfak-cpp](https://github.com/Sergey004/ctfak-cpp)** — «чистая»
+переработка на C++ дампера/репакера среды выполнения Clickteam Fusion. Полный
+цикл для любой игры серии:
 
 ```bash
 # 1) дамп (картинки/звуки/packed data):
