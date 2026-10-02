@@ -333,7 +333,9 @@
     <ClInclude Include="include\FNAF1-Recomp-proj.spa.h" />
     <ClInclude Include="include\FNaF2Game.h" />
     <ClInclude Include="include\FNaF2Render.h" />
+    <ClInclude Include="include\FNaF3Game.h" />
     <ClInclude Include="include\FNaF3Render.h" />
+    <ClInclude Include="include\FNaF4Game.h" />
     <ClInclude Include="include\FNaF4Render.h" />
     <ClInclude Include="include\font_atlas.h" />
     <ClInclude Include="include\Game.h" />
@@ -363,7 +365,9 @@
     <ClCompile Include="src\DoorSystem.cpp" />
     <ClCompile Include="src\FNaF2Game.cpp" />
     <ClCompile Include="src\FNaF2Render.cpp" />
+    <ClCompile Include="src\FNaF3Game.cpp" />
     <ClCompile Include="src\FNaF3Render.cpp" />
+    <ClCompile Include="src\FNaF4Game.cpp" />
     <ClCompile Include="src\FNaF4Render.cpp" />
     <ClCompile Include="src\Game.cpp" />
     <ClCompile Include="src\GameRender.cpp" />
