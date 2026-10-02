@@ -462,6 +462,7 @@ GameRender::GameRender()
     : m_batch(0), m_text(0), m_pak(0)
     , m_time(0.0f)
     , m_lookDir(0.0f), m_panX(0.0f)
+    , m_camHighlight(-1)
     , m_cacheCount(0)
 {
     // v2.7.8 office FX state + Clickteam animation timers (CfAnimTimer.h).
@@ -1354,6 +1355,15 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
         DrawInstance(on ? IMG_CAM_BTN_ON : IMG_CAM_BTN_OFF,
                      (f32)mb.x, (f32)mb.y, 0xFFFFFFFF, false);
     }
+    // v2.62: the pre-selection plate for the official-console camera model —
+    // the green plate at low alpha over the highlighted button (the current
+    // cam already blinks opaque, so it is skipped). The console's own
+    // highlight art was never dumped — labeled approximation.
+    if (m_camHighlight >= (i32)CAM_1A && m_camHighlight <= (i32)CAM_7 &&
+        m_camHighlight != (i32)cam) {
+        const PakMapBtn hb = PakMapButtonOf(m_camHighlight);
+        DrawInstance(IMG_CAM_BTN_ON, (f32)hb.x, (f32)hb.y, 0x50FFFFFF, false);
+    }
     for (int i = 0; i < 11; ++i) {
         const CamMapLabel& lb = CAM_MAP_LABELS[i];
         DrawInstance(lb.img, lb.x, lb.y, 0xFFFFFFFF, false);
@@ -1556,8 +1566,33 @@ void GameRender::RenderGameOver() {
     // v2.7.5: no static. The original "gameover" frame = backdrop img_358 +
     // img_471 + parked Text/counter -- no noise objects at all. (The LOUD
     // noise burst is the separate "died" frame -- static + opaque blip
-    // flash over black -- shown between the jumpscare and game over; we do
-    // not render that screen yet, see docs/OVERLAY_MAP.md.)
+    // flash over black -- shown between the jumpscare and game over; the
+    // screen itself renders through RenderDiedBurst since v2.62.)
+}
+
+// ------------------------------------------------------------
+//  v2.62: the "died" screen's blip flash (frame 4 obj 35, img 23):
+//  one anim pass [23,23,23,4,25,6,8,9,10,21,22] at speed 75 -> 45 fps —
+//  three FULLSCREEN WHITE frames (img_23 is plain white) flashing into
+//  noise frames — then the object is destroyed (anim-finished condition).
+//  t = seconds since the died screen began; the pass lasts 11/45 s.
+//  Drawn point-sampled like the static overlay so the noise grain
+//  survives the upscale.
+// ------------------------------------------------------------
+
+void GameRender::RenderDiedBurst(f32 t) {
+    if (!m_batch) return;
+    static const int kSeq[11] = { 23, 23, 23, 4, 25, 6, 8, 9, 10, 21, 22 };
+    const int idx = (int)(t * 45.0f);
+    if (idx < 0 || idx >= 11) return;
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", kSeq[idx]);
+    PakLoadedTexture* tex = Tex(name);
+    if (!tex || !tex->texture) return;
+    const f32 u1 = tex->alignedWidth  ? (f32)tex->origWidth  / (f32)tex->alignedWidth  : 1.0f;
+    const f32 v1 = tex->alignedHeight ? (f32)tex->origHeight / (f32)tex->alignedHeight : 1.0f;
+    m_batch->DrawPoint(tex->texture, 0.0f, 0.0f, SCREEN_W, SCREEN_H,
+                       0.0f, 0.0f, u1, v1, 0xFFFFFFFF);
 }
 
 // ------------------------------------------------------------

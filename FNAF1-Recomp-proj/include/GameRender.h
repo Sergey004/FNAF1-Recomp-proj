@@ -69,6 +69,17 @@ public:
     // Camera monitor: screen frame, room feed, static, map, cam label
     void RenderCamera(const Game& game, bool phonePlaying);
 
+    // v2.62: the "died" screen's blip flash (frame 4 obj 35): one anim pass
+    // [23,23,23,4,25,6,8,9,10,21,22] @ 45 fps — three white frames flashing
+    // into noise — then the object is destroyed (anim-finished condition)
+    void RenderDiedBurst(f32 t);
+
+    // v2.62: the official-console camera model — the D-pad moves a
+    // pre-selection over the cam strip, A confirms; -1 = none. The
+    // console's highlight art was never dumped, so the green plate
+    // (img_166) draws at low alpha over the highlighted button
+    void SetCamHighlight(i32 camId) { m_camHighlight = camId; }
+
     // Power out: dark office + flickering Freddy sequence
     void RenderPowerOut(const Game& game);
 
@@ -178,6 +189,7 @@ private:
     CfAnimTimer m_static;   // static noise cycle (loop, 8 frames)
     f32  m_lookDir;         // left stick X (-1..1)
     f32  m_panX;            // office pan window offset 0..320
+    i32  m_camHighlight;    // v2.62: pre-selected cam (CameraId) or -1
 
     // tiny cache: last 64 lookups
     struct TexCacheEntry { char name[64]; PakLoadedTexture* tex; };

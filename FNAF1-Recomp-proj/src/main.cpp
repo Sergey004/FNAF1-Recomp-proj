@@ -52,6 +52,7 @@ static f32               g_itsmeT = -1.0f;       // v2.17: IT'S ME hallucination
 static f32               g_itsmeRollTimer = 0.0f; // v2.53: 1 s accumulator for the IT'S ME roll (dump g419)
 static f32               g_creepyT = -1.0f;      // v2.36: post-game-over "creepy start" (f14) timer (-1 = off)
 static int               s_clickCooldown = 0;    // v2.53: 10-tick door/light anti-mash (dump g95)
+static int               s_camHighlight = -1;    // v2.62: pre-selected cam (CameraId) while the monitor is up (-1 = none)
 
 // v2.37: pad RUMBLE — two motors (left = low-freq thump, right = high-freq
 // buzz). XInputSetState with a linear-decay envelope (pattern: the scare-
@@ -499,6 +500,14 @@ static void TickAudioMixer(const Game& game) {
     // v2.53 EERIE dread ladder (groups 351-359): presence units =
     // Bonnie@west-corner zone + Chica@east-corner zone + Foxy progress>=2;
     // none -> OFF; one -> 30; two -> 50; three -> 75; Freddy inside -> 100.
+    // v2.62 EQUIVALENCE PROOF (closes the old "heuristic" caveat): the dump
+    // tests bonnie/chica SPRITES overlapping the invisible "vol zone"
+    // (objInfo 136, parked at the doorways) and foxy progress <2/>=2, per
+    // groups 351-358 -> volumes 0/30/50/75 exactly when 0/1/2/3 units are
+    // present — the additive model reproduces the table row-for-row, and a
+    // sprite sits in the doorway zone exactly when its AI room is the
+    // corner/door room, so the room test IS the zone test. Freddy-in -> 100
+    // (group 359). No behavioral gap remains.
     {
         i32 dread = 0;
         if (bonnie == ROOM_WEST_HALL_CORNER || bonnie == ROOM_LEFT_DOOR)  dread++;
@@ -1921,18 +1930,36 @@ int main(int argc, char* argv[]){
                     s_clickCooldown = 10;
                 }
             }
-            if(gi.cameraToggle || gi.back){
-                if(game.GetCameras().IsMonitorUp() && gi.back) game.SetCameraUp(false);
-                else game.ToggleCamera();
-            }
-            if(game.GetCameras().IsMonitorUp() && (gi.cameraUp||gi.cameraDown||gi.cameraLeft||gi.cameraRight)){
-                CameraId cur=game.GetCameras().GetCurrentCamera();
-                int idx=-1; for(int i=0;i<cameraSequenceLen;++i) if(cameraSequence[i]==cur) idx=i;
-                if(idx>=0){
-                    if(gi.cameraUp||gi.cameraLeft) idx=(idx-1+cameraSequenceLen)%cameraSequenceLen;
-                    if(gi.cameraDown||gi.cameraRight) idx=(idx+1)%cameraSequenceLen;
-                    game.SwitchCamera(cameraSequence[idx]);
+            // v2.62: the official FNAF1 console scheme for the monitor —
+            // A raises it; in camera mode the D-pad moves a PRE-SELECTION
+            // over the cam strip and A confirms the switch; B exits camera
+            // mode. (Was: the D-pad switched instantly and A lowered.)
+            if(game.GetCameras().IsMonitorUp()){
+                if(gi.back){
+                    game.SetCameraUp(false);
+                    s_camHighlight = -1;
+                } else {
+                    if(s_camHighlight < 0){
+                        const CameraId cur = game.GetCameras().GetCurrentCamera();
+                        s_camHighlight = (int)cur;
+                        if(s_camHighlight < (int)CAM_1A || s_camHighlight > (int)CAM_7)
+                            s_camHighlight = (int)cameraSequence[0];
+                    }
+                    int idx = -1;
+                    for(int i = 0; i < cameraSequenceLen; ++i)
+                        if(cameraSequence[i] == (CameraId)s_camHighlight) idx = i;
+                    if(idx < 0) idx = 0;
+                    if(gi.cameraUp || gi.cameraLeft)
+                        idx = (idx - 1 + cameraSequenceLen) % cameraSequenceLen;
+                    if(gi.cameraDown || gi.cameraRight)
+                        idx = (idx + 1) % cameraSequenceLen;
+                    s_camHighlight = (int)cameraSequence[idx];
+                    if(gi.cameraToggle && s_camHighlight != (int)game.GetCameras().GetCurrentCamera())
+                        game.SwitchCamera((CameraId)s_camHighlight);
                 }
+            } else if(gi.cameraToggle){
+                game.ToggleCamera();       // A raises the monitor
+                s_camHighlight = -1;       // re-seeded to the current cam on open
             }
             // v2.22: Freddy nose honk easter egg (group 349, click "Active 26").
             // The official console maps it to Y; gated to the office (monitor down)
@@ -1986,6 +2013,14 @@ int main(int argc, char* argv[]){
                             scareElapsed = 0.0f;
                             StartTransition(state, GAME_STATE_MENU); menu.Reset();
                         } else {
+                            // v2.62 dump frame 4 "died" group 1: StopAll, then
+                            // the STATIC loop rides the died screen (ch1, vol
+                            // 100). The blip flash is render-only (see below).
+                            if (ns == GAME_STATE_GAME_OVER) {
+                                g_audio.StopAll();
+                                g_audio.SetChannelVolume(1, CFVolumeToDb(100));
+                                g_audio.PlayOnChannel(&g_pak, Snd::STATIC_LOOP, true, 1);
+                            }
                             StartTransition(state, ns);   // fade-in next-day/game-over
                         }
                     }
@@ -2037,15 +2072,25 @@ int main(int argc, char* argv[]){
                     // screen face, silent — the same render as Golden Freddy's
                     // kill, but WITHOUT the force-close; it ends on the title)
                     g_render.RenderJumpscare(ANIM_COUNT, g_creepyT);
-                } else if(endFrames<96){
-                    // v2.7.13: "died" static burst (1.6 s) before the backroom
+                } else if(endFrames<600){
+                    // v2.62 dump frame 4 "died" (was 1.6 s): fullscreen static
+                    // (the static object's own 8-frame cycle) + ONE blip-flash
+                    // pass ([23,23,23,4,25,6,8,9,10,21,22] @ 45 fps, then the
+                    // object is destroyed). The phase lasts 10 s (group 4's
+                    // timer 10000 ms) before the gameover frame. The burst is
+                    // shifted past the transition fade (frame 4 has no fade
+                    // of its own — the port's StartTransition fade is the
+                    // only reason not to fire at endFrames 0).
                     g_render.DrawStaticOverlay(1.0f);
+                    g_render.RenderDiedBurst(((f32)endFrames - 45.0f) / 60.0f);
                 } else {
                     g_render.RenderGameOver();
                 }
             } else if(game.GetCameras().IsMonitorUp()){
+                g_render.SetCamHighlight(s_camHighlight);   // v2.62: pre-selection
                 g_render.RenderCamera(game, s_phonePlaying);
             } else {
+                g_render.SetCamHighlight(-1);
                 // v2.53 (groups 380/378): the mute button exists only in the
                 // +20..+40 s window of the call
                 g_render.RenderOffice(game, s_phonePlaying && s_phoneT >= 20.0f && s_phoneT < 40.0f);
@@ -2089,20 +2134,21 @@ int main(int argc, char* argv[]){
                 if(c<5) done = (holdSec >= (f32)TimeConstants::NIGHT_COMPLETE_DISPLAY_SEC) || skipEnd;
                 else    done = (holdSec >= 12.0f) || skipEnd;  // paycheck/overtime/pink slip
             } else {
-                done = (holdSec >= 7.6f) || skipEnd;           // 1.6 static + 6.0 backroom
+                // v2.62 dump chain: "died" (static + blip flash + the static
+                // loop) holds 10 s (frame 4 group 4 timer 10000 ms), then the
+                // "gameover" backroom holds 10 s (frame 8 group 4's own
+                // timer 10000). Frame 8 group 1 StopAlls on entry (the static
+                // loop ends), group 5 re-rolls random := Random(10000)+1 EVERY
+                // second, and a roll of 1 routes to the creepy start (f14).
+                if (endFrames == 600) g_audio.StopAll();
+                if (endFrames >= 600 && (endFrames % 60) == 0 &&
+                    g_creepyT < 0.0f && (rand() % 10000) == 0) {
+                    g_creepyT = 0.0f;   // the face replaces the backroom at once
+                }
+                done = (holdSec >= 20.0f) || skipEnd;
             }
             if(done){
                 endFrames=0;
-                // v2.36: dump frame 8 groups 2/3/5 — random := Random(10000)+1,
-                // and on the "next" tick random==1 jumps to f14 "creepy start".
-                // We roll once per game over (the port ends the backroom at
-                // 7.6 s, not 200 s — same 1/10000 odds).
-                if (state == GAME_STATE_GAME_OVER && g_creepyT < 0.0f &&
-                    (rand() % 10000) == 0) {
-                    g_creepyT = 0.0f;
-                    g_audio.StopAll();
-                    continue;      // show the creepy screen instead of the title
-                }
                 if(state==GAME_STATE_NIGHT_COMPLETE && game.GetCurrentNight()<5){
                     // nights 1-4: straight into the next night card
                     game.Init(game.GetCurrentNight()+1);
