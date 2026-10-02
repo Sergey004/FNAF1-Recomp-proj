@@ -782,11 +782,12 @@ void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     DrawFrame(bg, 0, 0, SCREEN_W, SCREEN_H, (lampAlpha << 24) | 0x00FFFFFFu);
 
     // Animated static overlay ("static" obj): group 1 re-rolls the alpha
-    // coefficient to 50 + Random(100) every 1.8 s. Kept, but narrowed to
-    // 80 + Random(70) (alpha ≈ 0.49..0.69 around the old 0.61) — the lamp is
-    // supposed to flicker on FREDDY, not the noise (user note).
+    // coefficient to 50 + Random(100) every 1.8 s. v2.61: narrowed further
+    // to 130 + Random(60) (alpha ≈ 0.25..0.50) — user call: the menu noise
+    // is noticeably MORE TRANSPARENT than the dump's (the lamp carries the
+    // mood, the noise stays a light veil).
     const unsigned sw = static_cast<unsigned>(m_time / 1.8f);
-    const int sCoeff = 80 + (int)(TitleWinHash(sw) % 70u);
+    const int sCoeff = 130 + (int)(TitleWinHash(sw) % 60u);
     DrawStaticOverlay((255 - sCoeff) / 255.0f);
 
     // v2.46: the subtle band that rolls down the title screen — the

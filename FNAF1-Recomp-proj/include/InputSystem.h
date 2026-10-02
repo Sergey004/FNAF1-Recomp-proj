@@ -15,6 +15,7 @@ namespace fnaf {
 
 struct GameInput {
     float lookDir;          // -1.0 left, 0 center, 1.0 right (Left Stick X)
+    float lookDirY;         // v2.60: Left Stick Y (-1 down, +1 up; deadzoned)
     bool leftLightToggle;   // LB toggle
     bool rightLightToggle;  // RB toggle
     bool leftDoorToggle;    // LT toggle (>128)
@@ -33,6 +34,7 @@ struct GameInput {
     bool tunerToggle;       // v2.7.11: L3+R3 edge (PERSPECTIVE tuner enter/exit)
     bool yToggle;           // v2.7.11: Y button edge (tuner knob reset)
     bool xHeld;             // v2.54: X button level (title hold-to-wipe save)
+    bool aHeld;             // v2.60: A button level (FNAF2 cursor click/hold)
 
     GameInput() : lookDir(0), leftLightToggle(false), rightLightToggle(false),
                   leftDoorToggle(false), rightDoorToggle(false),
@@ -40,7 +42,7 @@ struct GameInput {
                   cameraToggle(false), cameraUp(false), cameraDown(false),
                   cameraLeft(false), cameraRight(false), pause(false), back(false),
                   leftShoulderHeld(false), rightShoulderHeld(false),
-                  tunerToggle(false), yToggle(false), xHeld(false) {}
+                  tunerToggle(false), yToggle(false), xHeld(false), aHeld(false) {}
 };
 
 // Poll XInput and fill GameInput with toggle detection (edge)

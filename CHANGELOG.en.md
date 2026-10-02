@@ -6,6 +6,59 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.61 — FNAF2 title dump-exact + FNAF3/FNAF4 night loops
+
+- **FNAF2 title reworked to the dump** (frame_1_title.txt + 71 groups):
+  - The invented "Freddy glitch" (imgs 65/73/210 every ~7 s) is REMOVED — those images are THE PUPPET (full body / head), the title dump never fires the static object's anims 12-15 (they are office cam events). That was the "Puppet appearing out of nowhere" on the title.
+  - The debug-font stacked words are gone — img 469 IS the real stacked "Five Nights at Freddy's 2" art (verified the PNG), already drawn at (96,39).
+  - The static draws with the dump's alpha coefficient 50+Random(100) per 1.8 s (the old draw was OPAQUE — the eye-view background drowned); point-sampled like FNAF1's overlay, no X jitter (the dump sets only the alpha).
+  - The background got FNAF2's "lamp": alpha coefficient Random(250) re-rolled every 6 s (group 5 — the mirror of FNAF1's v2.57 title lamp).
+  - "blip flash 2" (img 68, the fullscreen band flash) added: visible only in the 1-in-3 six-second windows, alpha 200+Random(50).
+  - Menu rows fixed to the dump layout: Continue is img **303** at (86,507) — the old draw used img 449, FNAF1's own continue art; 6th Night (90,582), Custom (89,650), the selector rides {442,512,587,655}. Stars (img 593) for beatgame/beat6. The "Night N" row (img 270 + digits at 185,567) shows while Continue is selected (groups 51/52).
+  - The footer is the real art now: img 294 "v 1.033" (26,738) + img 631 "Press and hold delete to reset all data." (335,736); "(c)2014 Scott Cawthon" stays debug-font text. No Demo tag (full game, DEMO? = 0).
+  - Continue is ALWAYS visible per the dump rows (boot optionCount = 2); after 6 AM the count is 2 + unlocks and the selector opens on Continue when a night was played (dump groups 43/44).
+- **FNAF1 title static is more transparent** (user call): coefficient 130+Random(60) → alpha ≈ 0.25..0.50 (was 80+Random(70) → 0.42..0.69).
+- **FNAF3 night loop** (new FNaF3Game, office frame 773 groups): the hour clock (raw-ms timers — 40 s/hour night 1, 60 s nights 2+), AI 0/2-5/7 per night; the Springtrap room graph (10 rooms + 5 vents + the four attack stages that only advance while a screen is open), vent sealing with the bounce table, the audio lure (charge 7, 1/7 fizzle, the adjacency table, Random(100) completion), the five phantoms + Golden Freddy's walk + Shadow Freddy's cam overrides, the maintenance panel (audio/camera/vent meters, the per-AI decay, reboots, the vent-error blackout with hallucinations), 15 cams with the dump feed table, jumpscares 778/792 and the IN-PLACE night restart (group 606 reloads frame 3 — no game-over screen in this build). Console map (no cursor): LB = monitor, D-pad = map highlight, A = cam, X = lure (room map) / seal (vent map), RB = room↔vent map, Y = the maintenance panel, LS/LT/RT = office pan.
+- **FNAF4 night loop** (new FNaF4Game, bedroom frame 480 groups): the follow-state machine over five positions (center/left door/right door/closet/bed), the four threat lanes — Bonnie/Chica at the doors with the listen-for-breathing defense, the shut-door visits (3 s), the linger bedroom attacks; Foxy's closet counter (3+R5, watched-drain) with the forced flashlight and the non-fatal bite; Freddy's bed counter (+= AI/4 s, −1/s watched, minis at 10/20/30, the attack at 60); Fredbear from night 5 (replaces the closet, kills through the scare), the paranoia black-flash pipeline (5/4/3/2 s by total danger), 60 s hours with the per-night/hour AI tables, the night-win clock → title. View art comes from the dump's anim tables: halls 89/88 and 255/375 (open/shut), the closet 422 + Foxy stages 304/286/288/290 (Fredbear 266), the bed 511 + states 492/423/386/391, the walk darks 45/160/57, the flash 99. Console map: D-pad walks (up = to bed, down/B = out), A (hold) = peek, X (hold) = door, standing still at a door = listening.
+- **Build note**: FNaF3Game.cpp/.h and FNaF4Game.cpp/.h are NEW files — add them to the .vcxproj (like FNaF2Game back in v2.31).
+- Version → v2.61.
+
+---
+
+## v2.60 — FNAF2 title navigation (FNAF1-style) + Puppet office warning
+
+- **The title menu navigates like FNAF1**: up/down moves the selector (img 229) through the four dump rows — New Game (301), Continue (449), 6th Night (298), Custom Night (438) — wrapping inside the visible list; A confirms. Visibility rides the session unlocks until the FNAF2 save system lands: Continue appears after any night (caps at 5 per the dump), 6th Night after beating night 5, Custom after night 6. A mid-wave cursor experiment (mouse-parity) was tried and REMOVED at the user's call — console games use buttons, no pointers.
+- **Puppet presentation**: the office now shows the "danger 1" face (img_494/495, angry 496/497 at gauge ≤200) while the box gauge is low and the Puppet is out — the monitor already had "danger 2". The Puppet still emerges by the dump's stage rolls at gauge 0 and never re-boxes.
+- **Image bugs from the first HW run**: the on-screen debug console no longer draws over the FNAF2+ titles (it stays on FNAF1's flow, where it is the log sink, and returns everywhere via the DEV menu's Console item — Start+B); the title's stacked words are spaced 64 world-px apart so the debug font stops overlapping (real fonts remain a later wave).
+- Plumbing: `GameInput::lookDirY` (stick Y, deadzoned) and `aHeld` (A level) added for future use.
+- Version → v2.60.
+
+---
+
+## v2.59 — FNAF2 real feed views (scene selector) + DLC-achievements research
+
+- **The cameras now show WHO is there.** The dump's cam-view groups (g44-136) were transcribed into a scene selector: `FNaF2Game::ComputeSceneValue()` mirrors the "Active 16" value per (viewing, lit?, presence) with the dump's group order (last match wins); the renderer maps the value to the feed image through Active 16's own anim table. Value 0 = "no matching view" and the feed KEEPS its previous image — the dump's own stick-behavior (cam 1 lit-empty, cam 3/4/2 unlit-empty cases). The office follows the same selector: dark office (35) keeps the panned world; lit hall views (36/55/56/58/73/76/84/93/97/99) replace the room image full-frame, with Freddy-under-table, toy-Bonnie and BB sprites, the danger darkening and the mask overlay on top.
+- **DLC achievements research** (docs/FNAF2_DLC_ACHIEVEMENTS.md): new achievements may ship in a game add-on — a "Game Add-on" classified config compiles to spa.bin inside a content package (XLAST Content Package Wizard); the add-on config must be a SUPERSET of the base and carry a HIGHER version (the console loads the highest-version SPA). Fallback for offline: extend the base .xlast with FNAF2's ids (11..20) and rebuild the base spa — ids stay the same either way.
+- Version → v2.59.
+
+---
+
+## v2.58 — FNAF2 wave 1: the playable office core
+
+FNAF2's office (751 event groups) was fully decoded into docs/FNAF2_MECHANICS.md, and the port implements it:
+
+- **AI for 11 characters** (old/toy Freddy/Bonnie/Chica, old Foxy, Mangle, BB, Puppet, Golden): the 5 s opportunity rolls (old Foxy weighted by dark-charge, strict `<` for Mangle/BB/Golden), the per-night/hour AI schedule with caps (15/17/10), arming gates (stage pairs, watched-stage freeze, Mangle unwatched-only), and the movement graphs one node per arming — office entry only with the monitor up and the office unoccupied.
+- **Danger pipeline**: time allowed 100/80/60/55/50/50/45 frames per night, got-you stages (mask during the window = saved), the darkening overlay with the flicker ramp, the box race 50%/s kill vs 10% mask escape, monitor-up-too-long rule, forced-drop semantics via the encounter stages.
+- **Mask**: on/off machine with the FENCING sounds and breathing loop; closes the monitor/flashlight; per-character defenses (Puppet immune); the toxic bar is cosmetic, exactly like the dump.
+- **Music box**: gauge 0..2000, wind on CAM 11 (+5/frame, windup2 ticks), per-night drain (2..6 per 50 ms), night-1 freeze during 12-1 AM, the Puppet's emerge stages -> walk -> office -> kill, danger faces at 400/200.
+- **Flashlight/Foxy**: battery per night (7000..3000, -1/frame), hall-light freeze on entries, Foxy's dark-charge (doubles while masked in a clear office) and the light-push retreat at 100+night frames.
+- **Jumpscares**: attack animation values 12..21 per attacker (frame lists verbatim from application.json) + Xscream3, then the night restarts in place (the dump's own death flow — no game-over screen in the chain).
+- **Audio**: the dump channel set (buzzlight/CMPTR/fansound/deepbreaths/stare/melody/garble/jackinthebox/popstatic/With_S2) driven through the game's volume hooks; cam-switch blip, flip, FENCING, windup2, error, ventwalk, metalrun wired by name.
+- **Input**: RB = mask, X = wind (CAM 11), LT/RT = vent lights (with the BB error), LB = flashlight, A = monitor, D-pad = cams.
+- Version → v2.58.
+
+---
+
 ## v2.57 — the title's Freddy "lamp" + point-sampled static
 
 - The missing effect from the title: the background brightness breathes. Dump group 5 re-rolls the Active 2 alpha coefficient to `Random(250)` every ~6 s, mapped via the project's coefficient rule (on-screen alpha = (255 − coeff)/255 — the same one the title static uses) — the Freddy backdrop breathes dim↔bright with deep dips like the original. No clamps invented this time (my earlier version narrowed the range against the dump's full swing).

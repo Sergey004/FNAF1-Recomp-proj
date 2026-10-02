@@ -38,11 +38,17 @@ public:
 
     // frame 3 "Frame 1" (1600x768): the panning office (dark unless lit),
     // desk row, wall LIGHT buttons, viewport static, debug-font HUD.
-    void RenderOffice(const FNaF2Game& game, f32 time, f32 pan);
+    void RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sceneValue);
 
-    // camera monitor (viewing 1..12): feed from the dump table, switch
-    // static burst, cam strip + HUD; wide feeds pan with `pan`.
-    void RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch, f32 pan);
+    // camera monitor (viewing 1..12): feed from the dump scene selector
+    // (Active 16 value), switch static burst, cam strip + HUD; wide feeds
+    // pan with `pan`. sceneValue 0 = keep the previous feed (dump behavior).
+    void RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch, f32 pan,
+                       i32 sceneValue, i32 lastSceneValue);
+
+    // v2.59: the jumpscare overlay (attack animation 12..21) — draw AFTER
+    // the office/monitor, full-screen.
+    void DrawAttack(const FNaF2Game& game);
 
 private:
     // pak texture by handle, FNAF2 frame coords (1024x768 -> 1280x720 full-stretch)

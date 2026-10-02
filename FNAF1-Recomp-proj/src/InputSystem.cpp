@@ -32,6 +32,7 @@ void UpdateInput(GameInput& out)
     ZeroMemory(&state, sizeof(state));
     if (XInputGetState(0, &state) != ERROR_SUCCESS) {
         out.lookDir = 0.0f;
+        out.lookDirY = 0.0f;
         return;
     }
 
@@ -41,6 +42,11 @@ void UpdateInput(GameInput& out)
     if (lx > 1.0f) lx = 1.0f;
     if (lx < -1.0f) lx = -1.0f;
     out.lookDir = lx;
+
+    // v2.60: Left Stick Y for the FNAF2 cursor (stick up = +1)
+    float ly = (float)state.Gamepad.sThumbLY / 32767.0f;
+    if (fabs(ly) < INPUT_DEADZONE) ly = 0.0f;
+    out.lookDirY = ly;
 
     // Persistent prev states for toggle detection
     static bool lbPrev = false, rbPrev = false;
@@ -65,6 +71,7 @@ void UpdateInput(GameInput& out)
     ltPrev = ltNow; rtPrev = rtNow;
 
     bool aNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0;
+    out.aHeld = aNow;   // v2.60: A level (the FNAF2 cursor click/hold)
     out.cameraToggle = aNow && !aPrev;
     aPrev = aNow;
 

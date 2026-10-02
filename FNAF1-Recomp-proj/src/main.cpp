@@ -203,6 +203,9 @@ static u32 ColorForState(GameState state, f32 power) {
         default: return D3DCOLOR_XRGB(0,0,0);
     }
 }
+// v2.17: DEV/debug menu flag (Start + B) — defined HERE because FrameEnd's
+// console gate reads it (the definition used to sit below its first use).
+static bool g_devMode  = false;
 static bool FrameBegin(u32 clearColor) {
     if (!g_pd3dDevice) return false;
     g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, clearColor, 1.0f, 0);
@@ -216,7 +219,15 @@ static bool FrameBegin(u32 clearColor) {
 }
 static void FrameEnd() {
     if (!g_pd3dDevice) return;
-    if (g_showConsole) g_debugConsole.Render(SCREEN_W, SCREEN_H);   // v2.17: DEV toggle
+    // v2.60: the on-screen console draws on FNAF1 (its log sink) or when the
+    // DEV menu is open — the FNAF2+ titles render clean (user call: the boot
+    // log was drawn over the FNAF2 menu).
+    {
+        AppModule* act = AppRegistry_Active();
+        const bool fnaf1Flow = (act == 0) || (strcmp(AppRegistry_Active()->Name(), "FNAF1") == 0);
+        if (g_showConsole && (fnaf1Flow || g_devMode))
+            g_debugConsole.Render(SCREEN_W, SCREEN_H);
+    }
     if (g_goldenScareT >= 0.0f) g_render.RenderScareFlash(g_scareFlashImg, g_goldenScareT);   // scare flash
     // v2.27: IT'S ME hallucination — visible only on ~1-in-10 frames while
     // the window is open (dump groups 413/416-418: Random(10)==1 per frame
@@ -1037,7 +1048,7 @@ static int  g_browserHold = 0;
 // be baked into GameRender.cpp.
 static bool g_tunerMode = false;
 static i32  g_tunerSel  = 0;
-static bool g_devMode  = false;   // v2.17: DEV/debug menu (Start + B)
+// (g_devMode moved above FrameEnd — its console gate reads it)
 static i32  g_devSel   = 0;
 static i32  g_devNight = 1;
 static i32  g_devAnim  = 0;       // 0 Freddy / 1 Bonnie / 2 Chica / 3 Foxy / 4 Golden Freddy
@@ -1139,7 +1150,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.57 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.61 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -1154,7 +1165,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.56 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.61 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists

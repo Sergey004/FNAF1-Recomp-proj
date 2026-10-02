@@ -19,7 +19,9 @@
 #include "AppModule.h"
 #include "FNaF2Game.h"
 #include "FNaF2Render.h"
+#include "FNaF3Game.h"
 #include "FNaF3Render.h"
+#include "FNaF4Game.h"
 #include "FNaF4Render.h"
 
 namespace fnaf {
@@ -78,17 +80,20 @@ private:
     int         m_prevAudioScreen; // v2.32: ambience switching (-1 none)
     bool        m_callDone;    // v2.33: phone call played this night
     f32         m_callT;       // v2.33: seconds in the office before the call
+    i32         m_sceneValue;  // v2.59: dump "Active 16" scene value (0 = keep)
+    i32         m_lastSceneValue;
     FNaF2Game   m_game;        // v2.31: the dump-mirrored game state
     FNaF2Render m_render;      // v2.31: the per-game renderer (no GameRender)
 };
 
 // ------------------------------------------------------------
-//  FNAF 3 (placeholder — v2.31 renders its title + office for test)
+//  FNAF 3 (v2.61 — the night loop lives in FNaF3Game; the module
+//  translates the pad, owns the screen ambience and forwards draw)
 // ------------------------------------------------------------
 class FNaF3Module : public AppModule {
 public:
-    FNaF3Module() : m_wantsExit(false), m_time(0.0f), m_pan(488.0f),
-                    m_screen(-1), m_prevA(false), m_cardT(0.0f) {}
+    FNaF3Module() : m_wantsExit(false), m_time(0.0f),
+                    m_prevAudioScreen(-2), m_prevX(false) {}
 
     virtual const char* Name()   const { return "FNAF3"; }
     virtual const char* PakName() const { return "fnaf3.pak"; }
@@ -102,21 +107,24 @@ public:
 private:
     AppServices m_services;
     bool        m_wantsExit;
-    f32         m_time;    // anim clock
-    f32         m_pan;     // office pan 0..976 (2000-wide world)
-    int         m_screen;  // -1 disclaimer, 0 title, 1 office
-    bool        m_prevA;
-    f32         m_cardT;   // disclaimer timer
+    f32         m_time;            // anim clock (static bursts)
+    int         m_prevAudioScreen; // ambience switching (-2 = none yet)
+    bool        m_prevX;           // X button edge (lure / seal)
+    FNaF3Game   m_game;
     FNaF3Render m_render;
 };
 
 // ------------------------------------------------------------
-//  FNAF 4 (placeholder — v2.31 renders its title + bedroom for test)
+//  FNAF 4 (v2.61 — the bedroom night loop lives in FNaF4Game).
+//  Pad map (NO cursor): D-pad walks (left door / center / closet /
+//  right door; up = to bed, down/B = out); A (hold) = flashlight
+//  peek; X (hold) = shut the door; listening = stand at a door
+//  holding nothing. The 373 MB pak streams (PrefersStreaming).
 // ------------------------------------------------------------
 class FNaF4Module : public AppModule {
 public:
     FNaF4Module() : m_wantsExit(false), m_time(0.0f), m_pan(138.0f),
-                    m_screen(-1), m_prevA(false), m_cardT(0.0f) {}
+                    m_prevAudioScreen(-2) {}
 
     virtual const char* Name()   const { return "FNAF4"; }
     virtual const char* PakName() const { return "fnaf4.pak"; }
@@ -133,11 +141,10 @@ public:
 private:
     AppServices m_services;
     bool        m_wantsExit;
-    f32         m_time;    // anim clock
-    f32         m_pan;     // bedroom pan 0..276 (1300-wide world)
-    int         m_screen;  // -1 disclaimer, 0 title, 1 office
-    bool        m_prevA;
-    f32         m_cardT;   // disclaimer timer
+    f32         m_time;            // anim clock
+    f32         m_pan;             // bedroom pan 0..276 (1300-wide world)
+    int         m_prevAudioScreen; // ambience switching (-2 = none yet)
+    FNaF4Game   m_game;
     FNaF4Render m_render;
 };
 

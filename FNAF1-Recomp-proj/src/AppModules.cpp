@@ -57,6 +57,22 @@ void FNaF1Module::RequestExit() {
 //  translates the pad, ticks the game and forwards to the renderer.
 // ============================================================
 
+// v2.59: audio trampolines for FNaF2Game's hooks (dump channels 1..31 map
+// onto the AudioSystem's generic 0..31 mixer; volumes are Clickteam 0..100).
+static AudioSystem* s_fn2Audio = 0;
+static PakLoader*   s_fn2Pak   = 0;
+static void FNaF2SfxPlay(const char* name, bool loop, i32 channel, i32 volume) {
+    if (!s_fn2Audio || !s_fn2Pak || !name) return;
+    s_fn2Audio->SetChannelVolume(channel, CFVolumeToDb(volume));
+    s_fn2Audio->PlayOnChannel(s_fn2Pak, name, loop, channel);
+}
+static void FNaF2SfxStop(const char* name) {
+    if (s_fn2Audio && name) s_fn2Audio->Stop(name);
+}
+static void FNaF2ChVol(i32 channel, i32 volume) {
+    if (s_fn2Audio) s_fn2Audio->SetChannelVolume(channel, CFVolumeToDb(volume));
+}
+
 bool FNaF2Module::Load(AppServices& services) {
     m_services = services;
     m_wantsExit = false;
@@ -67,6 +83,15 @@ bool FNaF2Module::Load(AppServices& services) {
     m_callDone = false;
     m_callT = 0.0f;
     m_render.Init(services.pak, services.batch, services.text);
+    m_sceneValue = 0;
+    m_lastSceneValue = 0;
+    // v2.59: the game speaks in dump channels through these hooks; the module
+    // owns the AudioSystem wiring (PlayOnChannel + CFVolume dB conversion).
+    s_fn2Audio = services.audio;
+    s_fn2Pak   = services.pak;
+    m_game.audio.play           = FNaF2SfxPlay;
+    m_game.audio.stop           = FNaF2SfxStop;
+    m_game.audio.channelVolume  = FNaF2ChVol;
     return true;
 }
 
@@ -81,16 +106,22 @@ void FNaF2Module::Tick(f32 dt) {
     in.leftPressed  = m_services.input ? m_services.input->cameraLeft   : false;
     in.rightPressed = m_services.input ? m_services.input->cameraRight  : false;
     in.lightHeld    = m_services.input ? m_services.input->leftShoulderHeld : false; // LB = hold flashlight
-    // v2.33: LT = Freddy mask hold, RT = music-box wind (both analog
-    // triggers are unused by FNAF2's other mechanics)
-    in.maskHeld     = m_services.input ? (m_services.input->leftDoorAxis  > 0.5f) : false;
-    in.windHeld     = m_services.input ? (m_services.input->rightDoorAxis > 0.5f) : false;
+    // v2.59: RB = mask, X = music-box wind (cam 11), LT/RT = vent lights
+    in.maskHeld        = m_services.input ? m_services.input->rightShoulderHeld : false;
+    in.windHeld        = m_services.input ? m_services.input->xHeld : false;
+    in.ventLightLHeld  = m_services.input ? (m_services.input->leftDoorAxis  > 0.5f) : false;
+    in.ventLightRHeld  = m_services.input ? (m_services.input->rightDoorAxis > 0.5f) : false;
     in.lookDir      = m_services.input ? m_services.input->lookDir      : 0.0f;
 
     const i32 viewingBefore = m_game.GetViewing();
     m_game.Tick(dt, in);
     if (m_game.GetViewing() != viewingBefore)
         m_lastSwitchT = m_time;          // camera-switch interference burst
+
+    // v2.59: the dump scene selector runs once per tick; a 0 = "no matching
+    // view" keeps the previous image (the dump's own stick-behavior)
+    m_lastSceneValue = m_sceneValue;
+    m_sceneValue = m_game.ComputeSceneValue();
 
     // office pan follows the stick while in the office
     if (m_game.GetScreen() == FNaF2Game::SCR_OFFICE) {
@@ -129,7 +160,31 @@ void FNaF2Module::Tick(f32 dt) {
             m_services.audio->Play(m_services.pak, "snd_The_Sand_Temple_Loop_G", true, 1.0f);
         } else {
             m_services.audio->Stop("snd_static2");
-            m_services.audio->Stop("snd_In_The_Depths_C");
+            m_services.audio->Stop("snd_The_Sand_Temple_Loop_G");
+        }
+        // v2.59: the office loop set — dump channels with their entry volumes
+        // (g31 + g52-55 etc.): In_The_Depths 50, fansound 40, buzzlight/CMPTR/
+        // deepbreaths/stare/melody/garble/jackinthebox/popstatic/With_S2 live
+        // at 0 until the game's volume hooks move them.
+        if (scr == (int)FNaF2Game::SCR_OFFICE) {
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_In_The_Depths_C",   true, 1);  s_fn2Audio->SetChannelVolume(1,  CFVolumeToDb(50));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_buzzlight",         true, 2);  s_fn2Audio->SetChannelVolume(2,  CFVolumeToDb(0));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_CMPTR_Low_Tech_Stat", true, 3); s_fn2Audio->SetChannelVolume(3,  CFVolumeToDb(0));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_fansound",          true, 6);  s_fn2Audio->SetChannelVolume(6,  CFVolumeToDb(40));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_deepbreaths",       true, 8);  s_fn2Audio->SetChannelVolume(8,  CFVolumeToDb(0));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_stare",             true, 9);  s_fn2Audio->SetChannelVolume(9,  CFVolumeToDb(0));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_Music_Box_Melody_Playful", true, 13); s_fn2Audio->SetChannelVolume(13, CFVolumeToDb(0));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_elec garble",       true, 16); s_fn2Audio->SetChannelVolume(16, CFVolumeToDb(0));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_jackinthebox",      true, 18); s_fn2Audio->SetChannelVolume(18, CFVolumeToDb(75));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_popstatic",         true, 30); s_fn2Audio->SetChannelVolume(30, CFVolumeToDb(0));
+            s_fn2Audio->PlayOnChannel(m_services.pak, "snd_With_S2",           true, 31); s_fn2Audio->SetChannelVolume(31, CFVolumeToDb(0));
+        } else if (m_prevAudioScreen == (int)FNaF2Game::SCR_OFFICE) {
+            s_fn2Audio->Stop("snd_In_The_Depths_C");   s_fn2Audio->Stop("snd_buzzlight");
+            s_fn2Audio->Stop("snd_CMPTR_Low_Tech_Stat"); s_fn2Audio->Stop("snd_fansound");
+            s_fn2Audio->Stop("snd_deepbreaths");       s_fn2Audio->Stop("snd_stare");
+            s_fn2Audio->Stop("snd_Music_Box_Melody_Playful"); s_fn2Audio->Stop("snd_elec garble");
+            s_fn2Audio->Stop("snd_jackinthebox");      s_fn2Audio->Stop("snd_popstatic");
+            s_fn2Audio->Stop("snd_With_S2");
         }
         m_prevAudioScreen = scr;
     }
@@ -150,8 +205,10 @@ void FNaF2Module::Render() {
             break;
         }
         case FNaF2Game::SCR_OFFICE:
-            if (m_game.GetViewing() != 0) m_render.RenderMonitor(m_game, m_time, m_time - m_lastSwitchT, m_pan);
-            else                          m_render.RenderOffice(m_game, m_time, m_pan);
+            if (m_game.GetViewing() != 0) m_render.RenderMonitor(m_game, m_time, m_time - m_lastSwitchT, m_pan, m_sceneValue, m_lastSceneValue);
+            else                          m_render.RenderOffice(m_game, m_time, m_pan, m_sceneValue);
+            // v2.59: the jumpscare overlays everything
+            if (m_game.GetScareTimer() >= 0.0f) m_render.DrawAttack(m_game);
             break;
         case FNaF2Game::SCR_6AM: {
             if (m_services.text) m_services.text->DrawText(580, 330, "6 AM", 0xFFFFFFFF);
@@ -160,134 +217,238 @@ void FNaF2Module::Render() {
     }
 }
 // ============================================================
-//  FNaF3Module — placeholder (same terms as FNaF2).
+//  FNaF3Module — v2.61: the FNAF3 night loop (FNaF3Game) + renderer.
+//  Pad map (NO cursor): LS/LT/RT pan the office; LB flips the
+//  monitor; on the map D-pad moves the highlight, A = cam,
+//  X = lure (room map) / seal (vent map), RB = room<->vent map,
+//  Y = maintenance panel (up/down + A), B drops the monitor.
 // ============================================================
+
+static AudioSystem* s_fn3Audio = 0;
+static PakLoader*   s_fn3Pak   = 0;
+static void FNaF3SfxPlay(const char* name, bool loop, i32 channel, i32 volume) {
+    if (!s_fn3Audio || !s_fn3Pak || !name) return;
+    s_fn3Audio->SetChannelVolume(channel, CFVolumeToDb(volume));
+    s_fn3Audio->PlayOnChannel(s_fn3Pak, name, loop, channel);
+}
+static void FNaF3SfxStop(const char* name) {
+    if (s_fn3Audio && name) s_fn3Audio->Stop(name);
+}
+static void FNaF3ChVol(i32 channel, i32 volume) {
+    if (s_fn3Audio) s_fn3Audio->SetChannelVolume(channel, CFVolumeToDb(volume));
+}
 
 bool FNaF3Module::Load(AppServices& services) {
     m_services = services;
     m_wantsExit = false;
     m_time = 0.0f;
-    m_pan = 488.0f;
-    m_screen = -1;    // disclaimer first (frame 0 "Frame 17")
-    m_cardT = 0.0f;
-    m_prevA = false;
+    m_prevAudioScreen = -2;
+    m_prevX = false;
     m_render.Init(services.pak, services.batch, services.text);
-    // v2.32: title ambience (titlemusic + static, per the FNAF3 title)
-    if (services.audio && services.pak) {
-        services.audio->Play(services.pak, "snd_titlemusic", true, 0.45f);
-        services.audio->Play(services.pak, "snd_static_sound", true, 0.35f);
-    }
+    s_fn3Audio = services.audio;
+    s_fn3Pak   = services.pak;
+    m_game.audio.play           = FNaF3SfxPlay;
+    m_game.audio.stop           = FNaF3SfxStop;
+    m_game.audio.channelVolume  = FNaF3ChVol;
+    m_game.ResetToTitle();
     return true;
 }
 
 void FNaF3Module::Tick(f32 dt) {
     m_time += dt;
-    if (m_screen == -1) {
-        // own warning screen (~3.5 s or any key)
-        m_cardT += dt;
-        const bool anyKey = m_services.input &&
-            (m_services.input->cameraToggle || m_services.input->cameraUp ||
-             m_services.input->cameraDown);
-        if (m_cardT >= 3.5f || anyKey) { m_screen = 0; m_cardT = 0.0f; }
-        return;
+
+    // ---- translate the pad ----
+    FNaF3Inputs in;
+    const bool xNow = m_services.input ? m_services.input->xHeld : false;
+    in.aPressed     = m_services.input ? m_services.input->cameraToggle : false;
+    in.bPressed     = m_services.input ? m_services.input->back         : false;
+    in.xPressed     = xNow && !m_prevX;
+    in.yPressed     = m_services.input ? m_services.input->yToggle      : false;
+    in.lbPressed    = m_services.input ? m_services.input->leftLightToggle  : false;
+    in.rbPressed    = m_services.input ? m_services.input->rightLightToggle : false;
+    in.upPressed    = m_services.input ? m_services.input->cameraUp     : false;
+    in.downPressed  = m_services.input ? m_services.input->cameraDown   : false;
+    in.leftPressed  = m_services.input ? m_services.input->cameraLeft   : false;
+    in.rightPressed = m_services.input ? m_services.input->cameraRight  : false;
+    if (m_services.input) {
+        in.lookDir = m_services.input->lookDir;
+        // the triggers pan too (FNAF2 terms)
+        if (m_services.input->leftDoorAxis  > 0.5f) in.lookDir -= 1.0f;
+        if (m_services.input->rightDoorAxis > 0.5f) in.lookDir += 1.0f;
     }
-    const bool aNow = m_services.input ? m_services.input->cameraToggle : false;
-    if (aNow && !m_prevA) {
-        m_screen = (m_screen == 0) ? 1 : 0;
-        if (m_services.audio) {
-            if (m_screen == 0) {
-                m_services.audio->Play(m_services.pak, "snd_titlemusic", true, 0.45f);
-                m_services.audio->Play(m_services.pak, "snd_static_sound", true, 0.35f);
-            } else {
-                m_services.audio->Stop("snd_titlemusic");
-                m_services.audio->Stop("snd_static_sound");
-            }
+    m_prevX = xNow;
+
+    m_game.Tick(dt, in);
+
+    // ---- screen ambience (the office loop set + the night voice) ----
+    const int scr = (int)m_game.GetScreen();
+    if (scr != m_prevAudioScreen && m_services.audio && m_services.pak) {
+        if (scr == (int)FNaF3Game::SCR_TITLE) {
+            m_services.audio->Play(m_services.pak, "snd_titlemusic", true, 0.45f);
+            m_services.audio->Play(m_services.pak, "snd_static_sound", true, 0.35f);
+        } else {
+            m_services.audio->Stop("snd_titlemusic");
+            m_services.audio->Stop("snd_static_sound");
         }
-    }
-    m_prevA = aNow;
-    const f32 look = m_services.input ? m_services.input->lookDir : 0.0f;
-    if (m_screen == 1) {
-        m_pan += look * 480.0f * dt;
-        if (m_pan < 0.0f)   m_pan = 0.0f;
-        if (m_pan > 976.0f) m_pan = 976.0f;   // 2000-wide world
+        if (scr == (int)FNaF3Game::SCR_OFFICE && m_prevAudioScreen == (int)FNaF3Game::SCR_NIGHTSTART) {
+            // office entry: the fan + the day-start + the night voice
+            s_fn3Audio->PlayOnChannel(m_services.pak, "snd_tablefan", true, 1);
+            s_fn3Audio->SetChannelVolume(1, CFVolumeToDb(50));
+            s_fn3Audio->PlayOnChannel(m_services.pak, "snd_startday", false, 2);
+            s_fn3Audio->SetChannelVolume(2, CFVolumeToDb(100));
+            static const char* const kVoice[7] = {
+                0, "snd_night1final", "snd_night2final2", "snd_night3final",
+                "snd_night4final", "snd_night5final", "snd_night6final"
+            };
+            const i32 n = m_game.GetNight();
+            if (n >= 1 && n <= 6 && kVoice[n])
+                s_fn3Audio->PlayOnChannel(m_services.pak, kVoice[n], false, 18);
+            s_fn3Audio->SetChannelVolume(18, CFVolumeToDb(100));
+        } else if (m_prevAudioScreen == (int)FNaF3Game::SCR_OFFICE &&
+                   scr != (int)FNaF3Game::SCR_OFFICE) {
+            s_fn3Audio->Stop("snd_tablefan");
+        }
+        m_prevAudioScreen = scr;
     }
 }
 
 void FNaF3Module::Render() {
-    if (m_screen == -1) {
-        if (m_services.text) {
-            m_services.text->DrawText((int)(530.0f * 1.25f), (int)(313.0f * 0.9375f),
-                                      "WARNING!", 0xFFFFFFFF);
-            m_services.text->DrawText((int)(338.0f * 1.25f), (int)(360.0f * 0.9375f),
-                                      "This game contains flashing lights, loud", 0xFFFFFFFF);
-            m_services.text->DrawText((int)(390.0f * 1.25f), (int)(388.0f * 0.9375f),
-                                      "noises, and lots of jumpscares!", 0xFFFFFFFF);
-        }
-        return;
+    switch (m_game.GetScreen()) {
+        case FNaF3Game::SCR_DISCLAIMER:
+            if (m_services.text) {
+                m_services.text->DrawText((int)(530.0f * 1.25f), (int)(313.0f * 0.9375f),
+                                          "WARNING!", 0xFFFFFFFF);
+                m_services.text->DrawText((int)(338.0f * 1.25f), (int)(360.0f * 0.9375f),
+                                          "This game contains flashing lights, loud", 0xFFFFFFFF);
+                m_services.text->DrawText((int)(390.0f * 1.25f), (int)(388.0f * 0.9375f),
+                                          "noises, and lots of jumpscares!", 0xFFFFFFFF);
+            }
+            break;
+        case FNaF3Game::SCR_TITLE:      m_render.RenderTitle(m_time, m_game.GetOptionSelected()); break;
+        case FNaF3Game::SCR_NIGHTSTART: m_render.RenderNightStart(m_game.GetNight()); break;
+        case FNaF3Game::SCR_OFFICE:
+            if (m_game.GetViewing() != 0) m_render.RenderMonitor(m_game, m_time);
+            else                          m_render.RenderOffice(m_game, m_time);
+            if (m_game.GetScareTimer() > 0.0f) m_render.DrawAttack(m_game);
+            break;
+        case FNaF3Game::SCR_STATIC6:    m_render.RenderStatic6(); break;
+        case FNaF3Game::SCR_NEXTDAY:    m_render.RenderNextDay(m_game.GetNight()); break;
     }
-    if (m_screen == 1) m_render.RenderOffice(m_time, m_pan);
-    else               m_render.RenderTitle(m_time);
 }
 
 // ============================================================
-//  FNaF4Module — placeholder (same terms as FNaF2).
-//  Dump: build/Dumps/Five Nights at Freddys 4 (office = "level"
-//  1300x768; fnaf4.pak ~373 MB, eager Load fits).
+//  FNaF4Module — v2.61: the FNAF4 bedroom night loop (FNaF4Game).
+//  Pad map (NO cursor): D-pad walks the five positions, A (hold)
+//  = flashlight peek, X (hold) = shut the door, listening = stand
+//  at a door with nothing held, B = out of the bed.
 // ============================================================
+
+static AudioSystem* s_fn4Audio = 0;
+static PakLoader*   s_fn4Pak   = 0;
+static void FNaF4SfxPlay(const char* name, bool loop, i32 channel, i32 volume) {
+    if (!s_fn4Audio || !s_fn4Pak || !name) return;
+    s_fn4Audio->SetChannelVolume(channel, CFVolumeToDb(volume));
+    s_fn4Audio->PlayOnChannel(s_fn4Pak, name, loop, channel);
+}
+static void FNaF4SfxStop(const char* name) {
+    if (s_fn4Audio && name) s_fn4Audio->Stop(name);
+}
+static void FNaF4ChVol(i32 channel, i32 volume) {
+    if (s_fn4Audio) s_fn4Audio->SetChannelVolume(channel, CFVolumeToDb(volume));
+}
 
 bool FNaF4Module::Load(AppServices& services) {
     m_services = services;
     m_wantsExit = false;
     m_time = 0.0f;
     m_pan = 138.0f;
-    m_screen = -1;    // disclaimer first (frame 0 "Frame 17")
-    m_cardT = 0.0f;
-    m_prevA = false;
+    m_prevAudioScreen = -2;
     m_render.Init(services.pak, services.batch, services.text);
+    s_fn4Audio = services.audio;
+    s_fn4Pak   = services.pak;
+    m_game.audio.play           = FNaF4SfxPlay;
+    m_game.audio.stop           = FNaF4SfxStop;
+    m_game.audio.channelVolume  = FNaF4ChVol;
+    m_game.ResetToTitle();
     return true;
 }
 
 void FNaF4Module::Tick(f32 dt) {
     m_time += dt;
-    if (m_screen == -1) {
-        m_cardT += dt;
-        const bool anyKey = m_services.input &&
-            (m_services.input->cameraToggle || m_services.input->cameraUp ||
-             m_services.input->cameraDown);
-        if (m_cardT >= 3.5f || anyKey) {
-            m_screen = 0; m_cardT = 0.0f;
-            // the title theme starts with the title (dump group 1)
-            if (m_services.audio && m_services.pak)
-                m_services.audio->Play(m_services.pak, "snd_title", true, 0.3f);
-        }
-        return;
+
+    // ---- translate the pad ----
+    FNaF4Inputs in;
+    in.aPressed     = m_services.input ? m_services.input->cameraToggle : false;
+    in.aHeld        = m_services.input ? m_services.input->aHeld        : false;
+    in.xHeld        = m_services.input ? m_services.input->xHeld        : false;
+    in.bPressed     = m_services.input ? m_services.input->back         : false;
+    in.upPressed    = m_services.input ? m_services.input->cameraUp     : false;
+    in.downPressed  = m_services.input ? m_services.input->cameraDown   : false;
+    in.leftPressed  = m_services.input ? m_services.input->cameraLeft   : false;
+    in.rightPressed = m_services.input ? m_services.input->cameraRight  : false;
+
+    m_game.Tick(dt, in);
+
+    // ---- the bedroom pan eases toward the current position ----
+    f32 target = 138.0f;
+    switch (m_game.GetPosition()) {
+        case FNaF4Game::P_LEFT:   target =   0.0f; break;
+        case FNaF4Game::P_RIGHT:  target = 276.0f; break;
+        case FNaF4Game::P_CLOSET: target = 276.0f; break;
+        default:                  target = 138.0f; break;
     }
-    const bool aNow = m_services.input ? m_services.input->cameraToggle : false;
-    if (aNow && !m_prevA) m_screen = (m_screen == 0) ? 1 : 0;
-    m_prevA = aNow;
-    const f32 look = m_services.input ? m_services.input->lookDir : 0.0f;
-    if (m_screen == 1) {
-        m_pan += look * 480.0f * dt;
-        if (m_pan < 0.0f)   m_pan = 0.0f;
-        if (m_pan > 276.0f) m_pan = 276.0f;   // 1300-wide bedroom
+    const f32 k = dt * 8.0f > 1.0f ? 1.0f : dt * 8.0f;
+    m_pan += (target - m_pan) * k;
+
+    // ---- screen ambience (the game-managed loops pre-start here) ----
+    const int scr = (int)m_game.GetScreen();
+    if (scr != m_prevAudioScreen && m_services.audio && m_services.pak) {
+        if (scr == (int)FNaF4Game::SCR_TITLE) {
+            m_services.audio->Play(m_services.pak, "snd_title", true, 0.3f);
+        } else {
+            m_services.audio->Stop("snd_title");
+        }
+        if (scr == (int)FNaF4Game::SCR_BEDROOM) {
+            // the loops the game's volume hooks move (breathing/kitchen/
+            // minimonsters/fredbear) + the night crickets
+            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_breathing1",  true, 20); s_fn4Audio->SetChannelVolume(20, CFVolumeToDb(0));
+            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_kitchen",     true, 19); s_fn4Audio->SetChannelVolume(19, CFVolumeToDb(0));
+            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_minimonsters",true, 21); s_fn4Audio->SetChannelVolume(21, CFVolumeToDb(0));
+            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_fredbear",    true, 27); s_fn4Audio->SetChannelVolume(27, CFVolumeToDb(0));
+            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_crickets",    true, 0);  s_fn4Audio->SetChannelVolume(0,  CFVolumeToDb(25));
+        } else if (m_prevAudioScreen == (int)FNaF4Game::SCR_BEDROOM) {
+            s_fn4Audio->Stop("snd_breathing1"); s_fn4Audio->Stop("snd_kitchen");
+            s_fn4Audio->Stop("snd_minimonsters"); s_fn4Audio->Stop("snd_fredbear");
+            s_fn4Audio->Stop("snd_crickets");
+        }
+        m_prevAudioScreen = scr;
     }
 }
 
 void FNaF4Module::Render() {
-    if (m_screen == -1) {
-        // FNAF4's warning is RED (frame 0 "Frame 17")
-        if (m_services.text) {
-            m_services.text->DrawText((int)(465.0f * 1.25f), (int)(290.0f * 0.9375f),
-                                      "WARNING!", 0xFF2020E0);
-            m_services.text->DrawText((int)(255.0f * 1.25f), (int)(365.0f * 0.9375f),
-                                      "THIS GAME CONTAINS FLASHING LIGHTS, LOUD", 0xFF2020E0);
-            m_services.text->DrawText((int)(298.0f * 1.25f), (int)(393.0f * 0.9375f),
-                                      "NOISES, AND LOTS OF JUMPSCARES!", 0xFF2020E0);
-        }
-        return;
+    switch (m_game.GetScreen()) {
+        case FNaF4Game::SCR_DISCLAIMER:
+            // FNAF4's warning is RED (frame 0 "Frame 17")
+            if (m_services.text) {
+                m_services.text->DrawText((int)(465.0f * 1.25f), (int)(290.0f * 0.9375f),
+                                          "WARNING!", 0xFF2020E0);
+                m_services.text->DrawText((int)(255.0f * 1.25f), (int)(365.0f * 0.9375f),
+                                          "THIS GAME CONTAINS FLASHING LIGHTS, LOUD", 0xFF2020E0);
+                m_services.text->DrawText((int)(298.0f * 1.25f), (int)(393.0f * 0.9375f),
+                                          "NOISES, AND LOTS OF JUMPSCARES!", 0xFF2020E0);
+            }
+            break;
+        case FNaF4Game::SCR_TITLE:
+            m_render.RenderTitle(m_time, m_game.GetOptionSelected(), m_game.IsBeat5());
+            break;
+        case FNaF4Game::SCR_NIGHTSTART: m_render.RenderNightStart(m_game.GetNight()); break;
+        case FNaF4Game::SCR_BEDROOM:
+            m_render.RenderBedroom(m_game, m_time, m_pan);
+            if (m_game.GetAttackT() > 0.0f || m_game.GetBiteT() > 0.0f)
+                m_render.DrawAttack(m_game);
+            break;
+        case FNaF4Game::SCR_NIGHTWIN:   m_render.RenderNightWin(); break;
     }
-    if (m_screen == 1) m_render.RenderOffice(m_time, m_pan);
-    else               m_render.RenderTitle(m_time);
 }
 
 // ============================================================

@@ -74,93 +74,146 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
     // first scene); every 2 s a Random(50) re-roll maps 0/1/2 to the eye
     // views 362/470/215 and anything else to the normal bg 321. We use a
     // stateless hash per 2 s slot (same 3/51 duty as Random(50)).
+    int bgImg = 321;
     {
         const f32 kRollPeriod = 2.0f;
         const int slot = (int)(time / kRollPeriod);
-        int roll;
         if (slot == 0) {
-            roll = 0;                                   // boot state: eye view
+            bgImg = 362;                                // boot state: eye view
         } else {
             u32 h = (u32)slot * 2654435761u + 1u;
             h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
-            roll = (int)(h % 51u);
+            const int roll = (int)(h % 51u);
+            bgImg = (roll == 0) ? 362 : (roll == 1) ? 470 : (roll == 2) ? 215 : 321;
         }
-        const int bgImg = (roll == 0) ? 362 : (roll == 1) ? 470 : (roll == 2) ? 215 : 321;
-        Draw(bgImg, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    }
+    // group 5: the bg's alpha coefficient := Random(250) every 6 s — the
+    // FNAF2 "lamp" (the backdrop breathes dim-to-bright; coeff -> alpha =
+    // (255-c)/255, the same convention as FNAF1's v2.57 title lamp).
+    {
+        u32 h = (u32)(int)(time / 6.0f) * 2654435761u + 5u;
+        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+        const u32 lampAlpha = 255u - (u32)(h % 250u);
+        Draw(bgImg, 0.0f, 0.0f, 1024.0f, 768.0f, (lampAlpha << 24) | 0x00FFFFFFu);
     }
 
-    // ---- static UNDER the logo/menu per the frame's instance order, with
-    // the X jitter (group 1: every ~1.8 s a random X shift; we use a hash
-    // per 1.8 s slot, range +-50, the strip is drawn slightly wide so no
-    // gaps appear) ----
+    // ---- the "static" obj (dump group 1): alpha coefficient := 50+Random(100)
+    // every 1.8 s -> alpha 0.42..0.80 (the old draw was OPAQUE — the bg
+    // drowned); position (0,0), fullscreen 1024x768, no X jitter (the dump
+    // sets only the alpha). Point-sampled so the grain survives the
+    // 1024->1280 stretch (FNAF1's v2.57 overlay). REMOVED DEVIATION: the
+    // invented "glitch" (imgs 65/73/210 every ~7 s) — those images are the
+    // PUPPET (full body / head) and the title dump never fires the static
+    // object's anims 12-15 (they are office cam events); that was the
+    // "Puppet appearing out of nowhere" on the title.
     {
-        const f32 kJitPeriod = 1.8f;
-        const int jslot = (int)(time / kJitPeriod);
-        u32 h = (u32)jslot * 2654435761u + 7u;
+        u32 h = (u32)(int)(time / 1.8f) * 2654435761u + 7u;
         h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
-        const f32 jx = (f32)(h % 101u) - 50.0f;
+        const u32 sAlpha = 255u - (50u + h % 100u);
         char name[32];
         Snprintf(name, sizeof(name), "img_%d", StaticFrame(time));
         PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
-        if (t && t->texture && m_batch)
-            m_batch->Draw(t->texture, jx * kScaleX, 0.0f,
-                          (1024.0f + 100.0f) * kScaleX, 768.0f * kScaleY, 0xFFFFFFFF);
+        if (t && t->texture && m_batch) {
+            const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+            const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+            m_batch->DrawPoint(t->texture, 0.0f, 0.0f, 1280.0f, 720.0f,
+                               0.0f, 0.0f, u1, v1, (sAlpha << 24) | 0x00FFFFFFu);
+        }
     }
 
-    // the "Freddy glitch" (anims 12/13/14 = imgs 65/73/210).
-    // DEVIATION: timed approximation (~7 s, one frame ~0.25 s) until the
-    // dump's trigger group is pinned.
+    // ---- "blip flash 2" (img_68, fullscreen band flash): group 5 rolls
+    // alterable[0] := Random(3) every 6 s and groups 6/7 show it only on 1;
+    // group 4 re-rolls its alpha := 200+Random(50) every 2 s (very faint,
+    // 0.02..0.22). Was missing entirely.
     {
-        const f32 period = 7.0f;
-        const f32 phase  = time - period * (f32)(int)(time / period);
-        if (phase < 0.25f) {
-            static const int kGlitch[3] = { 65, 73, 210 };
-            Draw(kGlitch[(int)(time / period) % 3], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        u32 hw = (u32)(int)(time / 6.0f) * 2654435761u + 11u;
+        hw ^= hw >> 13;  hw *= 3266489917u;  hw ^= hw >> 16;
+        if (hw % 3u == 1u) {
+            u32 h = (u32)(int)(time / 2.0f) * 2654435761u + 13u;
+            h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+            const u32 bAlpha = 255u - (200u + h % 50u);
+            Draw(68, 0.0f, 0.0f, 1024.0f, 768.0f, (bAlpha << 24) | 0x00FFFFFFu);
         }
     }
 
     // logo (obj "Active", img_469, hotspot-corrected (96,39))
     Draw(469, 96.0f, 39.0f, 300.0f, 280.0f, 0xFFFFFFFF);
 
-    // menu (hotspot-corrected left/top from frame_1_title.txt)
+    // menu rows — dump layout positions (hotspot-corrected left/top):
+    // new game 301 (86,437) 222x31 / continue 303 (86,507) 222x34 /
+    // 6th night 298 (90,582) 252x42 / custom 438 (89,650) 339x42.
+    // Continue is ALWAYS visible (dump groups 45-48 gate only the 6th
+    // night+star1 by beatgame and custom+star2 by beat6). Star 3 (246,341)
+    // needs the all-20 flag — not tracked yet, skipped.
     Draw(301,  86.0f, 437.0f, 222.0f,  31.0f, 0xFFFFFFFF);   // "new game"
-    // "continue word" + "night word" + night digit appear only with a
-    // save (dump coords: 303 (86,507), 270 (97,549), digit (185,567)) —
-    // hidden while FNAF2 has no save system.
-    // selector parks next to the selected item
-    if (game.GetOptionSelected() == 0)
-        Draw(229,  33.0f, 442.0f,  43.0f,  26.0f, 0xFFFFFFFF);
-    else
-        Draw(229,  33.0f, 655.0f,  43.0f,  26.0f, 0xFFFFFFFF);
-    // 6th night (298) / stars (593) / demo (487) hidden at start
-    // custom night (img_438, (89,650), VisibleAtStart=TRUE)
-    Draw(438,  89.0f, 650.0f, 339.0f,  42.0f, 0xFFFFFFFF);
-
-    // TEXT objects (raw instance coords are junk — placement per the
-    // composite; debug font stopgap, consolas glyphs later)
-    // v2.56: draw text with the SAME frame->screen transform as the sprites
-    // (kScaleX/kScaleY) — the old "160 + x*0.9375" pillarbox leftover put
-    // the text at coordinates that never matched the stretched art.
-    if (m_text) {
-        m_text->DrawText((int)( 90.0f * kScaleX), (int)( 40.0f * kScaleY), "Five",    0xFFFFFFFF);
-        m_text->DrawText((int)( 90.0f * kScaleX), (int)( 88.0f * kScaleY), "Nights",  0xFFFFFFFF);
-        m_text->DrawText((int)( 90.0f * kScaleX), (int)(136.0f * kScaleY), "at",      0xFFFFFFFF);
-        m_text->DrawText((int)( 90.0f * kScaleX), (int)(184.0f * kScaleY), "Freddy's",0xFFFFFFFF);
-        m_text->DrawText((int)( 90.0f * kScaleX), (int)(232.0f * kScaleY), "2",      0xFFFFFFFF);
-        m_text->DrawText((int)( 25.0f * kScaleX), (int)(738.0f * kScaleY), "v 1.033", 0xFFFFFFFF);
-        m_text->DrawText((int)(335.0f * kScaleX), (int)(737.0f * kScaleY), "Press and hold delete to reset all data.", 0xFFFFFFFF);
-        m_text->DrawText((int)(845.0f * kScaleX), (int)(738.0f * kScaleY), "(c)2014 Scott Cawthon", 0xFFFFFFFF);
+    Draw(303,  86.0f, 507.0f, 222.0f,  34.0f, 0xFFFFFFFF);   // "continue"
+    if (game.IsBeat5()) Draw(298,  90.0f, 582.0f, 252.0f,  42.0f, 0xFFFFFFFF);   // "6th night"
+    if (game.IsBeat6()) Draw(438,  89.0f, 650.0f, 339.0f,  42.0f, 0xFFFFFFFF);   // "custom night"
+    if (game.IsBeat5()) Draw(593,  94.0f, 341.0f,  57.0f,  55.0f, 0xFFFFFFFF);   // star 1
+    if (game.IsBeat6()) Draw(593, 171.0f, 341.0f,  57.0f,  55.0f, 0xFFFFFFFF);   // star 2
+    // the selector (dump "Active 4", img 229 at (33,512) with continue at
+    // 507) rides the selected row (+5 px onto each row's y)
+    {
+        static const f32 kRowY[4] = { 442.0f, 512.0f, 587.0f, 655.0f };
+        const i32 sel = game.GetOptionSelected();
+        Draw(229,  33.0f, kRowY[sel],  43.0f,  26.0f, 0xFFFFFFFF);
     }
+
+    // "Night N" under the Continue row (dump groups 51/52: night word 270 +
+    // the night number counter at (185,567) show only while Continue is
+    // selected; the counter value is the Ini level capped at 5, g58)
+    if (game.GetOptionSelected() == 1) {
+        Draw(270,  97.0f, 549.0f,  63.0f,  22.0f, 0xFFFFFFFF);   // "Night" art
+        if (m_text) {
+            char num[8];
+            const i32 lv = game.GetLastNight();
+            Snprintf(num, sizeof(num), "%d", lv < 1 ? 1 : (lv > 5 ? 5 : lv));
+            m_text->DrawText((int)(185.0f * kScaleX), (int)(567.0f * kScaleY),
+                             num, 0xFFFFFFFF);
+        }
+    }
+
+    // footer — img_294 "v 1.033" (26,738) and img_631 "Press and hold delete
+    // to reset all data." (335,736) are ART (verified the PNGs); only
+    // "(c)2014 Scott Cawthon" is a Text object (debug font stopgap, placed
+    // so it fits inside 1280). The "Demo" tag (img_487) is hidden in the
+    // full game (DEMO? == 0) — never drawn.
+    Draw(294,  26.0f, 738.0f,  69.0f,  12.0f, 0xFFFFFFFF);
+    Draw(631, 335.0f, 736.0f, 396.0f,  13.0f, 0xFFFFFFFF);
+    if (m_text)
+        m_text->DrawText((int)(790.0f * kScaleX), (int)(738.0f * kScaleY),
+                         "(c)2014 Scott Cawthon", 0xFFFFFFFF);
 }
 
 // ---- office (frame 3 "Frame 1", 1600x768, panning window) -------------
 
-void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan) {
+void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sceneValue) {
     if (!m_batch || !m_pak) return;
+
+    // v2.59: the scene selector drives the office view — dark office (35)
+    // keeps the panned world; any hall/lit view (36/73/93/97/84/76/50/55/56/
+    // 58/99) REPLACES the room image with its own full-frame art (the mask,
+    // static, sprites and HUD still draw on top).
+    bool hallView = false;
+    if (sceneValue != 35 && sceneValue != 0) {
+        const i32 img = FNaF2Game::SceneValueImg(sceneValue);
+        if (img > 0) {
+            char name[32];
+            Snprintf(name, sizeof(name), "img_%d", img);
+            PakLoadedTexture* t = m_pak->FindTexture(name);
+            if (t && t->texture) {
+                const f32 w = (t->origWidth  > 0) ? (f32)t->origWidth  : 1024.0f;
+                const f32 h = (t->origHeight > 0) ? (f32)t->origHeight : 768.0f;
+                m_batch->Draw(t->texture, 0.0f, 0.0f, w * kScaleX, h * kScaleY, 0xFFFFFFFF);
+            }
+            hallView = true;
+        }
+    }
 
     // dark unless the flashlight is held (approx of the light groups):
     // world tinted to ~28%, strips 507 + LIGHT buttons always lit.
     const u32 worldCol = game.IsLit() ? 0xFFFFFFFF : 0xFF484848;
+    if (!hallView) {
 
     // layer 0 — the room
     DrawWorld( 92,   0.0f,   0.0f, 1600.0f, 768.0f, pan, worldCol);  // bg
@@ -180,9 +233,43 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan) {
     DrawWorld(608, 1038.0f, 476.0f, 117.0f, 172.0f, pan, worldCol);  // toy bonnie
     DrawWorld(555, 1122.0f, 509.0f,  84.0f, 147.0f, pan, worldCol);  // cupcake
     DrawWorld(611, 1218.0f, 522.0f, 129.0f, 156.0f, pan, worldCol);  // golden fred
+    }   // end of the panned room (skipped during hall views)
 
-    // layer 2 — viewport-space static over everything
+    // layer 2 — v2.59: office sprites from the encounter pipeline
+    if (game.GetFreddyOfficeView())
+        DrawWorld(512, 620.0f, 320.0f, 480.0f, 300.0f, pan, 0xFFFFFFFF);  // Freddy under the table (pos approx)
+    if (game.IsToyBonnieScare())
+        DrawWorld(187, 620.0f, 260.0f, 520.0f, 340.0f, pan, 0xFFFFFFFF);  // toy Bonnie office pose
+    if (game.HasBBInOffice())
+        DrawWorld(221, 700.0f, 300.0f, 380.0f, 320.0f, pan, 0xFFFFFFFF);  // BB at the desk
+    // danger darkening ("blackout" img_225): alpha ramps over the 300-frame window
+    {
+        const f32 df = game.GetDangerDark();
+        if (df > 0.0f) {
+            f32 a = df / 300.0f; if (a > 0.85f) a = 0.85f;
+            const u32 A = (u32)(a * 255.0f);
+            DrawWorld(225, 0.0f, 0.0f, 1600.0f, 768.0f, pan, (A << 24) | 0x00FFFFFFu);
+        }
+    }
+
+    // layer 3 — viewport-space static over everything
     Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    // v2.59: the mask overlay (dump "mask come down"/"mask"/"mask up")
+    {
+        const i32 ms = game.GetMaskState();
+        static const int kMaskDown[9] = { 140, 139, 138, 137, 136, 135, 134, 143, 88 };
+        static const int kMaskUp[11]  = { 88, 143, 134, 135, 136, 137, 138, 139, 140, 133, 133 };
+        if (ms == 1) {
+            int fi = (int)(game.GetMaskT() * 45.0f); if (fi > 8) fi = 8;
+            Draw(kMaskDown[fi], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        } else if (ms == 2) {
+            Draw(125, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        } else if (ms == 3) {
+            int fi = (int)(game.GetMaskT() * 45.0f); if (fi > 10) fi = 10;
+            Draw(kMaskUp[fi], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        }
+    }
 
     // ---- HUD (debug font for now): night, hour, battery % ----
     if (m_text) {
@@ -191,20 +278,27 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan) {
         m_text->DrawText(180, 20, buf, 0xFFFFFFFF);
         Snprintf(buf, sizeof(buf), "%d AM", game.GetHour());
         m_text->DrawText(600, 20, buf, 0xFFFFFFFF);
-        const int pct = (int)((f32)game.GetBatteryLife() * 100.0f / 7000.0f + 0.5f);
+        const int pct = (int)((f32)game.GetBatteryLife() * 100.0f / (f32)game.GetBatteryMax() + 0.5f);
         Snprintf(buf, sizeof(buf), "Battery %d%%", pct);
         m_text->DrawText(950, 20, buf, game.IsLit() ? 0xFF80FF80 : 0xFFB0B0B0);
+    }
+
+    // v2.60: the office-side danger face ("danger 1", img_494/495, angry 496/497)
+    if (game.IsMusicBoxDanger()) {
+        const bool angry = game.GetMusicGauge() <= 200.0f;
+        Draw(angry ? 497 : 495, 40.0f, 120.0f, 220.0f, 220.0f, 0xFFFFFFFF);
     }
 }
 
 // ---- camera monitor (viewing 1..12) ------------------------------------
-// Feed per viewing id pinned from the office map-button groups 100-123
-// ("Active 16" set-anim): the EMPTY variants; animatronic frames come
-// with the AI stage. v2.56: a feed IS a 1024x768 (or 1600x768, for the
-// wide pans) world frame — wide feeds pan with the office's pan, narrow
-// pin to the frame. (Was: every feed z-stretched flat to the screen.)
+// v2.59: the feed image comes from the game's scene selector (the dump's
+// "Active 16" value = viewing + lit? + presence); value 0 ("no matching
+// view") KEEPS the previous feed image, exactly like the dump's unmatched
+// states. Fallback = the pinned empty feed. Wide (1600px) feeds pan with
+// the office pan, 1024-wide ones pin.
 
-void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch, f32 pan) {
+void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch, f32 pan,
+                                i32 sceneValue, i32 lastSceneValue) {
     if (!m_batch || !m_pak) return;
     static const int kFeedImg[13] = {
         0, 174, 80, 83, 43, 38, 32, 51, 37, 117, 41, 76, 50
@@ -212,18 +306,19 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
     const i32 v = game.GetViewing();
     if (v < 1 || v > 12) return;
 
-    char name[32];
-    Snprintf(name, sizeof(name), "img_%d", kFeedImg[v]);
-    PakLoadedTexture* t = m_pak->FindTexture(name);
-    if (t && t->texture && m_batch) {
-        // v2.56: the feed IS a 1600x768 (or 1024x768) world frame; the window
-        // is the office's 1024x768 logical frame, so a wide feed pans with
-        // the office's pan rather than being squashed flat.
-        if (t->origWidth > 1024)
-            DrawWorld(kFeedImg[v], 0.0f, 0.0f,
-                      (f32)t->origWidth, 768.0f, pan, 0xFFFFFFFF);
-        else
-            Draw(kFeedImg[v], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    i32 value = (sceneValue != 0) ? sceneValue : lastSceneValue;
+    i32 img = (value > 0) ? FNaF2Game::SceneValueImg(value) : 0;
+    if (img <= 0) img = kFeedImg[v];   // fallback: the pinned empty feed
+    if (img > 0) {
+        char name[32];
+        Snprintf(name, sizeof(name), "img_%d", img);
+        PakLoadedTexture* t = m_pak->FindTexture(name);
+        if (t && t->texture) {
+            if (t->origWidth > 1024)
+                DrawWorld(img, 0.0f, 0.0f, (f32)t->origWidth, 768.0f, pan, 0xFFFFFFFF);
+            else
+                Draw(img, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        }
     }
 
     // feed-switch interference burst
@@ -260,13 +355,30 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
         }
     }
 
-    // CAM 11 (Prize Corner): the MUSIC BOX — wind button img_251/273 and
-    // a counter bar (the pump's charge; the button is held with RT).
+    // CAM 11 (Prize Corner): the MUSIC BOX — wind button img_251/273, the
+    // gauge (0..2000) and the danger faces (dump "danger 2": img_307/308,
+    // angry 489/490) once the Puppet has left the box.
     if (v == 11) {
         Draw(251, 90.0f, 560.0f, 156.0f, 65.0f, 0xFFFFFFFF);
-        if (m_text) m_text->DrawText((int)(20.0f), (int)(640.0f),
-                                     "Hold RT to wind the music box", 0xFFC0C0C0);
+        const int gpct = (int)(game.GetMusicGauge() * 100.0f / 2000.0f + 0.5f);
+        if (m_text) {
+            m_text->DrawText((int)(20.0f), (int)(640.0f),
+                             "Hold X to wind the music box", 0xFFC0C0C0);
+            char gb[32];
+            Snprintf(gb, sizeof(gb), "Music box %d%%", gpct);
+            m_text->DrawText((int)(20.0f), (int)(665.0f), gb,
+                             gpct <= 20 ? 0xFFFF6060 : 0xFFC0C0C0);
+        }
+        if (game.IsMusicBoxDanger()) {
+            const bool angry = game.GetMusicGauge() <= 200.0f;
+            Draw(angry ? 490 : 308, 700.0f, 120.0f, 220.0f, 220.0f, 0xFFFFFFFF);
+        }
     }
+
+    // v2.59: movement static burst — a character moved in the watched feed
+    if (game.GetMoveStatic() > 0.0f)
+        Draw(20, 0.0f, 0.0f, 1024.0f, 768.0f,
+             (u32)((int)(game.GetMoveStatic() * 255.0f) << 24) | 0x00FFFFFFu);
 
     if (m_text) {
         char buf[24];
@@ -279,10 +391,38 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
         }
         Snprintf(buf, sizeof(buf), "%d AM", game.GetHour());
         m_text->DrawText(600, 20, buf, 0xFFFFFFFF);
-        const int pct = (int)((f32)game.GetBatteryLife() * 100.0f / 7000.0f + 0.5f);
+        const int pct = (int)((f32)game.GetBatteryLife() * 100.0f / (f32)game.GetBatteryMax() + 0.5f);
         Snprintf(buf, sizeof(buf), "Battery %d%%", pct);
         m_text->DrawText(950, 20, buf, 0xFFB0B0B0);
     }
+}
+// v2.59: the jumpscare — "attack animation" values 12..21 (anim per attacker,
+// dump g440-449) drawn full-screen over whatever is underneath. Frame lists
+// verbatim from the FNAF2 application.json (h=156).
+void FNaF2Render::DrawAttack(const FNaF2Game& game) {
+    if (!m_batch) return;
+    static const int kFrames[10][16] = {
+        { 377,365,379,367,368,369,370,371,372,373,374,375,376,0,0,0 },
+        { 744,729,746,731,732,733,734,735,736,737,738,739,740,741,742,743 },
+        { 458,447,460,449,450,451,452,453,454,455,456,457,0,0,0,0 },
+        { 401,385,386,388,389,390,391,392,393,394,395,396,397,398,0,0 },
+        { 712,700,714,702,703,704,705,706,707,708,709,710,711,0,0,0 },
+        { 757,745,759,747,748,749,750,751,752,753,754,755,756,0,0,0 },
+        { 446,414,448,415,416,419,420,421,422,423,424,445,0,0,0,0 },
+        { 812,387,814,404,785,792,802,803,804,805,806,807,808,809,810,811 },
+        { 515,195,517,313,315,316,317,318,324,340,342,343,345,347,514,0 },
+        { 320,246,516,247,248,249,250,306,310,311,312,314,319,0,0,0 },
+    };
+    static const i32 kCount[10] = { 13, 16, 12, 14, 13, 13, 12, 16, 15, 13 };
+    static const i32 kSpd[10]   = { 50, 50, 40, 60, 50, 40, 40, 50, 50, 50 };
+    const i32 anim = game.GetScareAnim();
+    if (anim < 12 || anim > 21) return;
+    const i32 idx = anim - 12;
+    const f32 fps = (f32)kSpd[idx] * 0.6f;
+    int fi = (int)(game.GetScareTimer() * fps);
+    if (fi < 0) fi = 0;
+    if (fi >= kCount[idx]) fi = kCount[idx] - 1;
+    Draw(kFrames[idx][fi], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
 }
 
 } // namespace fnaf
