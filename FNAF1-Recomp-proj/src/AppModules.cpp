@@ -85,13 +85,20 @@ bool FNaF2Module::Load(AppServices& services) {
     m_render.Init(services.pak, services.batch, services.text);
     m_sceneValue = 0;
     m_lastSceneValue = 0;
-    // v2.59: the game speaks in dump channels through these hooks; the module
+    m_xHoldT = 0.0f;
+    m_prevRB = false;
+    // v2.62: the game speaks in dump channels through these hooks; the module
     // owns the AudioSystem wiring (PlayOnChannel + CFVolume dB conversion).
     s_fn2Audio = services.audio;
     s_fn2Pak   = services.pak;
     m_game.audio.play           = FNaF2SfxPlay;
     m_game.audio.stop           = FNaF2SfxStop;
     m_game.audio.channelVolume  = FNaF2ChVol;
+    m_game.ResetToTitle();
+    // v2.62: load the dump's own save ("freddy2") into the session
+    Progress::PrimeStorage();
+    Progress::GameProgressF2 p2;
+    if (Progress::LoadF2(p2)) m_game.ApplyProgressF2(p2);
     return true;
 }
 
@@ -101,6 +108,7 @@ void FNaF2Module::Tick(f32 dt) {
     // ---- translate the pad into the game's inputs ----
     FNaF2Inputs in;
     in.aPressed     = m_services.input ? m_services.input->cameraToggle : false;
+    in.bPressed     = m_services.input ? m_services.input->back         : false;
     in.upPressed    = m_services.input ? m_services.input->cameraUp     : false;
     in.downPressed  = m_services.input ? m_services.input->cameraDown   : false;
     in.leftPressed  = m_services.input ? m_services.input->cameraLeft   : false;
@@ -112,11 +120,54 @@ void FNaF2Module::Tick(f32 dt) {
     in.ventLightLHeld  = m_services.input ? (m_services.input->leftDoorAxis  > 0.5f) : false;
     in.ventLightRHeld  = m_services.input ? (m_services.input->rightDoorAxis > 0.5f) : false;
     in.lookDir      = m_services.input ? m_services.input->lookDir      : 0.0f;
+    // v2.62: the minigames' held directions (D-pad OR the left stick) and the
+    // customize mode-cycle edges
+    if (m_services.input) {
+        in.mgUp    = m_services.input->cameraUp    || m_services.input->lookDirY >  0.5f;
+        in.mgDown  = m_services.input->cameraDown  || m_services.input->lookDirY < -0.5f;
+        in.mgLeft  = m_services.input->cameraLeft  || m_services.input->lookDir   < -0.5f;
+        in.mgRight = m_services.input->cameraRight || m_services.input->lookDir   >  0.5f;
+        const bool rb = m_services.input->rightShoulderHeld;
+        in.rbPressed = rb && !m_prevRB;
+        m_prevRB = rb;
+        const bool lb = m_services.input->leftShoulderHeld;
+        in.lbPressed = lb && !m_prevLB;
+        m_prevLB = lb;
+        in.lookDirY = m_services.input->lookDirY;
+    }
+
+    // v2.62: the title X-hold wipes the freddy2 save (the dump's hold-delete)
+    if (m_game.GetScreen() == FNaF2Game::SCR_TITLE && m_services.input &&
+        m_services.input->xHeld) {
+        m_xHoldT += dt;
+        if (m_xHoldT >= 5.0f) {
+            m_xHoldT = 0.0f;
+            Progress::WipeF2();
+            Progress::GameProgressF2 p2;
+            Progress::ResetF2(p2);
+            m_game.ApplyProgressF2(p2);
+            printf("FNAF2 SAVE WIPED (X hold)\n");
+        }
+    } else {
+        m_xHoldT = 0.0f;
+    }
 
     const i32 viewingBefore = m_game.GetViewing();
     m_game.Tick(dt, in);
     if (m_game.GetViewing() != viewingBefore)
         m_lastSwitchT = m_time;          // camera-switch interference burst
+
+    // v2.62: the save bridge — the game flips the dirty bit on the dump's
+    // write beats (6 AM, endings, errors, the minigame rotation)
+    if (m_game.ConsumeSaveDirty()) {
+        Progress::GameProgressF2 p2;
+        m_game.FillProgressF2(p2);
+        if (Progress::SaveF2(p2))
+            printf("FNAF2 SAVE: level=%d beatgame=%d beat6=%d\n",
+                   p2.level, p2.beatgame ? 1 : 0, p2.beat6 ? 1 : 0);
+    }
+    // the dump's End application (the rare post-night loader) -> the boot
+    if (m_game.ExitRequested()) m_wantsExit = true;
 
     // v2.59: the dump scene selector runs once per tick; a 0 = "no matching
     // view" keeps the previous image (the dump's own stick-behavior)
@@ -194,26 +245,34 @@ void FNaF2Module::Render() {
     switch (m_game.GetScreen()) {
         case FNaF2Game::SCR_DISCLAIMER: m_render.RenderDisclaimer(m_game); break;
         case FNaF2Game::SCR_TITLE:      m_render.RenderTitle(m_game, m_time); break;
-        case FNaF2Game::SCR_NIGHTSTART: {
-            // night card (frame "what day") — text card until its layout is ported
-            if (m_services.text) {
-                char buf[32];
-                Snprintf(buf, sizeof(buf), "Night %d", m_game.GetNight());
-                m_services.text->DrawText(560, 330, buf, 0xFFFFFFFF);
-                m_services.text->DrawText(560, 360, "12 AM", 0xFFB0B0B0);
-            }
-            break;
-        }
+        case FNaF2Game::SCR_AD:         m_render.RenderAd(); break;
+        case FNaF2Game::SCR_NIGHTSTART: m_render.RenderCard(m_game); break;
         case FNaF2Game::SCR_OFFICE:
             if (m_game.GetViewing() != 0) m_render.RenderMonitor(m_game, m_time, m_time - m_lastSwitchT, m_pan, m_sceneValue, m_lastSceneValue);
             else                          m_render.RenderOffice(m_game, m_time, m_pan, m_sceneValue);
             // v2.59: the jumpscare overlays everything
             if (m_game.GetScareTimer() >= 0.0f) m_render.DrawAttack(m_game);
             break;
-        case FNaF2Game::SCR_6AM: {
-            if (m_services.text) m_services.text->DrawText(580, 330, "6 AM", 0xFFFFFFFF);
-            break;
-        }
+        case FNaF2Game::SCR_STATIC:     m_render.RenderStatic(); break;
+        case FNaF2Game::SCR_NEXTDAY:    m_render.RenderNextDay(m_game); break;
+        case FNaF2Game::SCR_DREAM:      m_render.RenderDream(m_game); break;
+        case FNaF2Game::SCR_ERROR:      m_render.RenderError(false); break;
+        case FNaF2Game::SCR_ERROR2:     m_render.RenderError(true); break;
+        case FNaF2Game::SCR_END5:       m_render.RenderEnd(5); break;
+        case FNaF2Game::SCR_END6:       m_render.RenderEnd(6); break;
+        case FNaF2Game::SCR_END7:       m_render.RenderEnd(7); break;
+        case FNaF2Game::SCR_CUSTOMIZE:  m_render.RenderCustomize(m_game); break;
+        case FNaF2Game::SCR_RARE1:      m_render.RenderRare(1); break;
+        case FNaF2Game::SCR_RARE2:      m_render.RenderRare(2); break;
+        case FNaF2Game::SCR_RARE3:      m_render.RenderRare(3); break;
+        case FNaF2Game::SCR_GAMEOVER:   m_render.RenderGameOver(); break;
+        case FNaF2Game::SCR_EIGHTBIT:   m_render.RenderEightBit(m_game); break;
+        case FNaF2Game::SCR_MGLOAD:     m_render.RenderMgLoad(); break;
+        case FNaF2Game::SCR_MG1:
+        case FNaF2Game::SCR_MG2:
+        case FNaF2Game::SCR_MG3:        m_render.RenderMinigame(m_game); break;
+        case FNaF2Game::SCR_ENDBARS:    m_render.RenderEndBars(); break;
+        case FNaF2Game::SCR_RAREEXIT:   m_render.RenderEndBars(); break;
     }
 }
 // ============================================================

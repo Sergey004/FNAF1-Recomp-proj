@@ -6,6 +6,20 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.62 — FNAF2 completed: the dump's frame flow, the freddy2 save, and the 8-bit minigames
+
+Everything the dump has beyond the office/title now runs (all in the existing files — nothing to add to the .vcxproj):
+
+- **The save**: file **"freddy2"** (the dump's own Ini file) through the same storage backend (XContent container + the local fallback). Keys verbatim: `level` (the 6 AM screen saves the NEXT night), `cine`, `turn`, `beatgame`, `beat6`, `beat7`, `c1..c10`. Loaded at boot (the 6th-night row rides beatgame, custom rides beat6), written on the dump's beats (6 AM, endings, the dream `cine`, the minigame rotation `turn`), and the title's X-hold wipe clears it.
+- **The flow screens** (frames 8/2/4/5/13/14/15/9/10/11/12/16/17/18/6/20/22): the HELP WANTED newspaper after New Game; the real night card (429.png + the rare 1/1000 branch); the post-night static (stare loop, 1-in-10 → the rare app-end loader → the boot selector, the dump's End application); the 6 AM screen (seven-segment art + the crowd cheer + the save) routing to the DREAM after nights 2/3/4 or the endings after 5/6/7; the panning 2500px dream (the static flicker, the blackout fade, Robot at 30 s, and the cine==0 ? "it's me" : "err" exit — the first-run dream counter); the three ending screens (paycheck / pink slip / robots-scrapped, each writing beatgame — that's what unlocks the 6th night); the three rare screens.
+- **Death rerouted per the real game**: the scare now leads to the frame-6 "Game Over" face (10 s / any key → title) instead of the in-place restart — the dump's only route INTO frame 6 is its gameover edge, and the 1/1000 roll from there opens the 8-bit chain. (The old in-place restart remains for the danger pipeline's own restart semantics.)
+- **The custom night setup** (frame 12): ten AI sliders 0-20 (D-pad row, left/right ±1, coin), the ten challenge presets verbatim (20/20/20/20, New and Shiny, Double Trouble, Night of Misfits, Foxy Foxy, Ladies Night, Freddy's Circus, Cupcake, Fazbear Fever, Golden Freddy) with the `doing custom` arm + the `c<N>` beaten flags, the all-20 flag (beat7), the 1987 combo (1/9/8/7), READY → night 7 and the sliders BECOME the office AI (g622).
+- **The 8-bit minigames** (the shared engine — the movement model FNAF3/4/SL minigames reuse): grid-step motion gated by `10 + add_to_timer` frames with facing, sensors vs obstacle rects, the SAVETHEM hub (20 px/200 ms steps, the 5x5 wrap-around room grid with per-room dressing, Puppet chasers, the Golden Freddy cameo, the 1/101 Purple Guy on a right-wrap, "you cant" → the loader, the SAVETHEM letter voice); **TAKE CAKE TO THE CHILDREN** (feeding resets the kids' sadness; at 20 s the purple car → Purple Guy → the step-gate rot +10/s → +25/pass → the scripted attack); **GIVE GIFTS, GIVE LIFE** (the Puppet: 4 gifts → center → 4 lives with the volume ladder → the attack); **Foxy's party** (2048px, the camera snaps at x=1024, the phase/cycle machine, the second visit brings the Purple Guy and the fatal trigger); the rotation loader (`turn` +1 per second, reset ≥5: 0/1→bars, 2→cake, 3→gifts, 4→bars, 5→party) and the bars screen.
+- **Labeled stops**: the per-night card anim cells, the 5→6 digit roll and the minigame walk/attack cells are anim banks the dumper did not split — those ride debug-font/approximation art (the attack = the white flash into static, img 23/361); the minigame background-collision is a walkable-rect clamp (the dump needs pixel data); the challenge-name text for the mode row is debug font.
+- Version → v2.62. FNAF2 ≈ 85 % (left: DLC achievements ids 11-20 — needs the .xlast extension, doc ready; per-cam pose polish).
+
+---
+
 ## v2.61 — FNAF2 title dump-exact + FNAF3/FNAF4 night loops
 
 - **FNAF2 title reworked to the dump** (frame_1_title.txt + 71 groups):

@@ -78,6 +78,27 @@ public:
     // the same FNAF_LIVE_SAFE switch as Load/Save.
     static bool LoadAchieve(u32* bits);
     static bool SaveAchieve(u32 bits);
+
+    // ---- v2.62: the FNAF2 save ("freddy2", the dump's own INI file) ----
+    // Keys mirror the original Ini extension exactly: level (the night the
+    // 6 AM screen saved = the NEXT night), cine (dream counter), turn
+    // (minigame rotation), beatgame (an ending screen was reached — unlocks
+    // the 6th night), beat6 (night 6 — unlocks custom), beat7 (custom with
+    // all 20; never read by the dump, kept for fidelity), c1..c10 (challenge
+    // beaten flags).
+    struct GameProgressF2 {
+        i32 level;        // 1..8 (the next night; the title caps 5 for Continue)
+        i32 cine;
+        i32 turn;
+        bool beatgame;
+        bool beat6;
+        bool beat7;
+        bool c[10];       // c1..c10
+    };
+    static void ResetF2(GameProgressF2& p);
+    static bool LoadF2(GameProgressF2& p);      // false = no/fresh save
+    static bool SaveF2(const GameProgressF2& p);
+    static void WipeF2();                       // the title X-hold wipe
 };
 
 } // namespace fnaf

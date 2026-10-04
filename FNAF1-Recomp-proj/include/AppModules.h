@@ -60,7 +60,8 @@ private:
 // ------------------------------------------------------------
 class FNaF2Module : public AppModule {
 public:
-    FNaF2Module() : m_wantsExit(false), m_time(0.0f) {}
+    FNaF2Module() : m_wantsExit(false), m_time(0.0f), m_xHoldT(0.0f),
+                    m_prevLB(false), m_prevRB(false) {}
 
     virtual const char* Name()   const { return "FNAF2"; }
     virtual const char* PakName() const { return "fnaf2.pak"; }
@@ -82,6 +83,9 @@ private:
     f32         m_callT;       // v2.33: seconds in the office before the call
     i32         m_sceneValue;  // v2.59: dump "Active 16" scene value (0 = keep)
     i32         m_lastSceneValue;
+    f32         m_xHoldT;      // v2.62: the title X-hold save wipe
+    bool        m_prevLB;      // v2.62: LB edge for the customize mode cycle
+    bool        m_prevRB;
     FNaF2Game   m_game;        // v2.31: the dump-mirrored game state
     FNaF2Render m_render;      // v2.31: the per-game renderer (no GameRender)
 };

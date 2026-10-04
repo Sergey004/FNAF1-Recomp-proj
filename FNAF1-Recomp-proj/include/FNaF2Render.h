@@ -50,6 +50,22 @@ public:
     // the office/monitor, full-screen.
     void DrawAttack(const FNaF2Game& game);
 
+    // ---- v2.62: the rest of the dump's frame flow + the minigames ----
+    void RenderAd();                             // frame 8: the newspaper
+    void RenderCard(const FNaF2Game& game);      // frame 2: the night card
+    void RenderStatic();                         // frame 4
+    void RenderNextDay(const FNaF2Game& game);   // frame 5: the 6 AM clock
+    void RenderDream(const FNaF2Game& game);     // frame 13
+    void RenderError(bool second);               // frames 14/15
+    void RenderEnd(i32 which);                   // frames 9/10/11
+    void RenderCustomize(const FNaF2Game& game); // frame 12
+    void RenderRare(i32 which);                  // frames 16/17/18
+    void RenderGameOver();                       // frame 6
+    void RenderEightBit(const FNaF2Game& game);  // frame 19: SAVETHEM
+    void RenderMgLoad();                         // frame 21
+    void RenderMinigame(const FNaF2Game& game);  // frames 23/24/25
+    void RenderEndBars();                        // frames 20/22
+
 private:
     // pak texture by handle, FNAF2 frame coords (1024x768 -> 1280x720 full-stretch)
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);

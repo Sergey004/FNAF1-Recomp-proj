@@ -17,11 +17,13 @@
 #define FNAF2_GAME_H
 
 #include "Types.h"
+#include "Progress.h"    // v2.62: GameProgressF2 (the "freddy2" save struct)
 
 namespace fnaf {
 
 struct FNaF2Inputs {         // translated from GameInput by the module
     bool aPressed;           // confirm (edge)
+    bool bPressed;           // back (edge) — v2.62: Escape mirror on the new screens
     bool upPressed;          // menu up (edge)
     bool downPressed;        // menu down (edge)
     bool leftPressed;        // cam cycle - (edge)
@@ -32,12 +34,19 @@ struct FNaF2Inputs {         // translated from GameInput by the module
     bool ventLightLHeld;     // v2.59: left vent light hold (LT)
     bool ventLightRHeld;     // v2.59: right vent light hold (RT)
     f32  lookDir;            // office pan -1..1
+    // v2.62: the 8-bit minigames' held directions (D-pad OR left stick) +
+    // the customize mode-cycle edges
+    bool mgUp, mgDown, mgLeft, mgRight;
+    bool lbPressed, rbPressed;
+    f32  lookDirY;           // stick Y (-1 down..+1 up) for the dream pan
 
-    FNaF2Inputs() : aPressed(false), upPressed(false), downPressed(false),
-                    leftPressed(false), rightPressed(false),
+    FNaF2Inputs() : aPressed(false), bPressed(false), upPressed(false),
+                    downPressed(false), leftPressed(false), rightPressed(false),
                     lightHeld(false), maskHeld(false), windHeld(false),
                     ventLightLHeld(false), ventLightRHeld(false),
-                    lookDir(0.0f) {}
+                    lookDir(0.0f),
+                    mgUp(false), mgDown(false), mgLeft(false), mgRight(false),
+                    lbPressed(false), rbPressed(false), lookDirY(0.0f) {}
 };
 
 // Audio hooks the module fills (all optional). Volumes are 0..100
@@ -49,14 +58,106 @@ struct FNaF2AudioHooks {
     FNaF2AudioHooks() : play(0), stop(0), channelVolume(0) {}
 };
 
+// ------------------------------------------------------------
+// v2.62: the shared 8-bit minigame state (the movement model that
+// FNAF3/4/SL minigames reuse). Grid-step motion gated by a frame
+// accumulator; sensors are checked against obstacle rectangles.
+// ------------------------------------------------------------
+struct FNaF2MgState {
+    i32 game;              // 1 SAVETHEM hub, 2 take cake, 3 gifts, 4 foxy party
+    i32 px, py;            // player anchor (hit box), world px
+    i32 facing;            // 0 up, 1 right, 2 down, 3 left
+    f32 gateT;             // frame accumulator for the step gate
+    i32 addTimer;          // the speed penalty (extra frames per step)
+    bool readyMove;        // the dump's one-step-per-window flag
+    f32 t;                 // seconds in the minigame
+
+    // ---- SAVETHEM hub (frame 19) ----
+    i32 h, v;              // room grid (the dump's horizontal/vertical)
+    i32 spawnPick;         // Random(4)+1
+    bool newFrame;         // room changed -> re-dress
+    f32 letterT;
+    i32 letters;           // the SAVETHEM voice step
+    f32 rollT;             // the every-30 s Random(3) exit roll
+    // one Puppet chaser at a time (dump: per-room phantoms; equivalent effect)
+    bool chaserOn;  f32 chaserT;  f32 chX, chY;  i32 chDir;  i32 chSteps;
+    // he-was-here shuttle
+    f32 heT;  i32 heDir;  f32 heX, heY;
+    // Purple Guy (1/101 per right-edge wrap)
+    bool manOn;  f32 manT;  f32 manX, manY;
+    // Golden Freddy cameo (4/101 per room change, harmless)
+    bool gfOn;  f32 gfT;  f32 gfX, gfY;
+    bool youCantOn;  f32 youCantX, youCantY;
+
+    // ---- TAKE CAKE (frame 23) ----
+    i32 kidSad[6];
+    f32 kidT;
+    bool murder;           // bear.alterable[0]: past the 20 s mark
+    i32 carStage;  f32 carT;  f32 carX;
+    f32 manStageT;
+
+    // ---- GIVE GIFTS (frame 24) ----
+    bool headGifted[4];
+    i32 gifts;             // child 5.alterable[6]
+    bool phaseB;           // bear.alterable[15]
+    i32 lives;             // child 5.alterable[0]
+    f32 attackT;           // the scripted attack anim timer (-1 idle)
+
+    // ---- FOXY PARTY (frame 25) ----
+    i32 phase;             // 0 intro, 1 walk, 2 party
+    i32 cycles;
+    f32 phaseT;
+    f32 popT;
+
+    void Clear() {
+        game = 0; px = 0; py = 0; facing = 2; gateT = 0.0f; addTimer = 0;
+        readyMove = false; t = 0.0f;
+        h = 0; v = 0; spawnPick = 0; newFrame = false;
+        letterT = 0.0f; letters = 0; rollT = 0.0f;
+        chaserOn = false; chaserT = 0.0f; chX = 0.0f; chY = 0.0f; chDir = 0; chSteps = 0;
+        heT = 0.0f; heDir = 1; heX = 0.0f; heY = 0.0f;
+        manOn = false; manT = 0.0f; manX = 0.0f; manY = 0.0f;
+        gfOn = false; gfT = 0.0f; gfX = 0.0f; gfY = 0.0f;
+        youCantOn = false; youCantX = 0.0f; youCantY = 0.0f;
+        for (i32 i = 0; i < 6; ++i) kidSad[i] = 0;
+        kidT = 0.0f; murder = false;
+        carStage = 0; carT = 0.0f; carX = 0.0f; manStageT = 0.0f;
+        for (i32 i = 0; i < 4; ++i) headGifted[i] = false;
+        gifts = 0; phaseB = false; lives = 0; attackT = -1.0f;
+        phase = 0; cycles = 0; phaseT = 0.0f; popT = 0.0f;
+    }
+    FNaF2MgState() { Clear(); }
+};
+
 class FNaF2Game {
 public:
     enum Screen {
         SCR_DISCLAIMER = 4,
         SCR_TITLE = 0,
-        SCR_NIGHTSTART = 1,
-        SCR_OFFICE = 2,
-        SCR_6AM = 3
+        // v2.62: the rest of the dump's frame flow
+        SCR_AD = 5,          // frame 8: HELP WANTED newspaper (after New Game)
+        SCR_NIGHTSTART = 1,  // frame 2: the "Nst Night" card
+        SCR_OFFICE = 2,      // frame 3: gameplay
+        SCR_STATIC = 6,      // frame 4: post-night static (rare 1/10 app-end)
+        SCR_NEXTDAY = 7,     // frame 5: 6 AM clock + the save + router
+        SCR_DREAM = 8,       // frame 13: the panning between-night cutscene
+        SCR_ERROR = 9,       // frame 14: "it's me" (dream exit, cine == 0)
+        SCR_ERROR2 = 10,     // frame 15: "err" (dream exit, cine > 0)
+        SCR_END5 = 11,       // frame 9: $100.50 paycheck (night 5)
+        SCR_END6 = 12,       // frame 10: pink slip (night 6)
+        SCR_END7 = 13,       // frame 11: robots scrapped (custom)
+        SCR_CUSTOMIZE = 14,  // frame 12: custom-night AI setup
+        SCR_RARE1 = 15,      // frame 16: toy face closeup
+        SCR_RARE2 = 16,      // frame 17: withered Foxy closeup
+        SCR_RARE3 = 17,      // frame 18: BB balloons room
+        SCR_GAMEOVER = 18,   // frame 6: withered Freddy face (1/1000 -> 8bit)
+        SCR_EIGHTBIT = 19,   // frame 19: the SAVETHEM overworld hub
+        SCR_MGLOAD = 20,     // frame 21: the minigame rotation loader
+        SCR_MG1 = 21,        // frame 23: TAKE CAKE TO THE CHILDREN
+        SCR_MG2 = 22,        // frame 24: GIVE GIFTS, GIVE LIFE
+        SCR_MG3 = 23,        // frame 25: Foxy's party
+        SCR_ENDBARS = 24,    // frame 20: black + bars after the chain
+        SCR_RAREEXIT = 25    // frame 22: rare post-night app-end loader
     };
 
     // characters (being attacked by ids: 1..9, 12 — dump G421-449)
@@ -138,6 +239,25 @@ public:
     f32    GetVentTimer(i32 side) const { return side == 0 ? m_ventLT : m_ventRT; }
     bool   IsPhoneMuted()       const { return m_phoneMuted; }
 
+    // ---- v2.62: the dump flow / minigames ----
+    i32    GetNightNext()     const { return m_nightNext; }    // 6 AM's incremented night
+    f32    GetScratchT()      const { return m_scratchT; }     // generic screen timer
+    i32    GetRareRoll()      const { return m_rareRoll; }     // 1 = the rare branch
+    f32    GetDreamPan()      const { return m_dreamPan; }
+    f32    GetBlackout()      const { return m_blackout; }
+    i32    GetDoingCustom()   const { return m_doingCustom; }
+    i32    GetCustomMode()    const { return m_customMode; }
+    i32    GetCustomAI(i32 i) const { return m_customAI[i]; }
+    bool   GetAllAre20()      const { return m_allAre20; }
+    bool   Is1987()           const { return m_combo1987; }
+    const FNaF2MgState& Mg()  const { return m_mg; }
+    bool   ExitRequested()    const { return m_exitRequested; }  // dump End application
+
+    // the save bridge: the module loads at boot and writes when dirty
+    void   ApplyProgressF2(const Progress::GameProgressF2& p);
+    void   FillProgressF2(Progress::GameProgressF2& p) const;
+    bool   ConsumeSaveDirty() { const bool d = m_saveDirty; m_saveDirty = false; return d; }
+
     // presence query for the feed renderer: is `ch` currently at `room`?
     bool CharAt(i32 ch, i32 room) const { return m_chars[ch].room == room; }
 
@@ -164,6 +284,19 @@ private:
     void Sfx(const char* s, bool loop, i32 ch, i32 vol);
     void SfxStop(const char* s);
     void ChVol(i32 ch, i32 vol);
+
+    // v2.62: the new screens + the shared minigame engine
+    void TickDream(f32 dt, const FNaF2Inputs& in);
+    void TickCustomize(f32 dt, const FNaF2Inputs& in);
+    void StartMinigame(i32 which);
+    void TickEightBit(f32 dt, const FNaF2Inputs& in);
+    void TickMg1(f32 dt, const FNaF2Inputs& in);
+    void TickMg2(f32 dt, const FNaF2Inputs& in);
+    void TickMg3(f32 dt, const FNaF2Inputs& in);
+    void MgStep(const FNaF2Inputs& in, i32 stepPx);   // the shared grid-step
+    void MgAttack(i32 animValue);                     // the scripted attack -> load
+    bool HubObstacleAt(f32 x, f32 y) const;
+    void HubDressRoom();                              // re-dress on room change
 
     Screen m_screen;
     i32    m_night;
@@ -215,6 +348,25 @@ private:
     f32    m_occT;             // office occupied 4.9 s cycle
     bool   m_officeOccupied;
     CharState m_chars[C_COUNT];
+
+    // v2.62: the dump flow state
+    i32    m_nightNext;        // the 6 AM screen's incremented night number
+    i32    m_cine;             // the dream counter (persisted)
+    i32    m_turn;             // the minigame rotation (persisted)
+    i32    m_doingCustom;      // 0 normal, 1..10 challenge mode
+    i32    m_customMode;       // 1..10
+    i32    m_customAI[10];     // the customize sliders
+    bool   m_allAre20;
+    bool   m_combo1987;
+    bool   m_beat7;            // persisted (never read by the dump; kept)
+    bool   m_cFlags[10];       // persisted challenge flags
+    i32    m_rareRoll;         // per-screen rare roll (1 = rare)
+    f32    m_scratchT;         // generic per-screen timer
+    f32    m_dreamPan;         // the dream camera 0..(2500-1024)
+    f32    m_blackout;         // the dream blackout fade 0..255
+    bool   m_saveDirty;        // the module writes freddy2 when this flips
+    bool   m_exitRequested;    // SCR_RAREEXIT: the dump's End application
+    FNaF2MgState m_mg;
 };
 
 } // namespace fnaf

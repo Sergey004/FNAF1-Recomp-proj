@@ -523,4 +523,93 @@ bool Progress::SaveAchieve(u32 bits) {
     return put == (size_t)len;
 }
 
+// ------------------------------------------------------------
+// v2.62: the FNAF2 save — file "freddy2", section [freddy2], the dump's
+// own Ini keys (level/cine/turn/beatgame/beat6/beat7/c1..c10). Same
+// StorageOpen backend as everything else (XContent container + the local
+// fallback folder).
+// ------------------------------------------------------------
+
+void Progress::ResetF2(GameProgressF2& p) {
+    p.level = 1;
+    p.cine = 0;
+    p.turn = 0;
+    p.beatgame = false;
+    p.beat6 = false;
+    p.beat7 = false;
+    for (i32 i = 0; i < 10; ++i) p.c[i] = false;
+}
+
+bool Progress::LoadF2(GameProgressF2& p) {
+    ResetF2(p);
+    FILE* f = StorageOpen("freddy2", "rb", false);
+    if (!f) return false;
+    char buf[128];
+    bool inSection = false;
+    bool any = false;
+    char key[64];
+    int val = 0;
+    while (fgets(buf, sizeof(buf), f)) {
+        char* eol = strchr(buf, '\r');
+        if (eol) *eol = '\0';
+        eol = strchr(buf, '\n');
+        if (eol) *eol = '\0';
+        char* s = buf;
+        while (*s && (*s == ' ' || *s == '\t')) ++s;
+        if (*s == '\0' || *s == ';' || *s == '#') continue;
+        if (*s == '[') {
+            inSection = (strcmp(s, "[freddy2]") == 0);
+            continue;
+        }
+        if (!inSection) continue;
+        if (ParseIniLine(s, key, &val)) {
+            any = true;
+            if      (strcmp(key, "level") == 0)    p.level = val;
+            else if (strcmp(key, "cine") == 0)     p.cine = val;
+            else if (strcmp(key, "turn") == 0)     p.turn = val;
+            else if (strcmp(key, "beatgame") == 0) p.beatgame = (val != 0);
+            else if (strcmp(key, "beat6") == 0)    p.beat6 = (val != 0);
+            else if (strcmp(key, "beat7") == 0)    p.beat7 = (val != 0);
+            else if (key[0] == 'c' && key[1] >= '1' && key[1] <= '9') {
+                const int idx = atoi(key + 1);
+                if (idx >= 1 && idx <= 10) p.c[idx - 1] = (val != 0);
+            }
+        }
+    }
+    fclose(f);
+    StorageClose();
+    if (p.level < 1 || p.level > 8) p.level = 1;
+    if (!any) return false;
+    return true;
+}
+
+bool Progress::SaveF2(const GameProgressF2& pIn) {
+    GameProgressF2 out = pIn;
+    if (out.level < 1) out.level = 1;
+    char iniBuf[512];
+    int len = fnaf::Snprintf(iniBuf, sizeof(iniBuf),
+        "[freddy2]\nlevel=%d\ncine=%d\nturn=%d\nbeatgame=%d\nbeat6=%d\nbeat7=%d\n"
+        "c1=%d\nc2=%d\nc3=%d\nc4=%d\nc5=%d\nc6=%d\nc7=%d\nc8=%d\nc9=%d\nc10=%d\n",
+        out.level, out.cine, out.turn,
+        out.beatgame ? 1 : 0, out.beat6 ? 1 : 0, out.beat7 ? 1 : 0,
+        out.c[0] ? 1 : 0, out.c[1] ? 1 : 0, out.c[2] ? 1 : 0, out.c[3] ? 1 : 0,
+        out.c[4] ? 1 : 0, out.c[5] ? 1 : 0, out.c[6] ? 1 : 0, out.c[7] ? 1 : 0,
+        out.c[8] ? 1 : 0, out.c[9] ? 1 : 0);
+
+    FILE* f = StorageOpen("freddy2", "wb", true);
+    if (!f) return false;
+    size_t put = fwrite(iniBuf, 1, (size_t)len, f);
+    fclose(f);
+    StorageClose();
+    return put == (size_t)len;
+}
+
+void Progress::WipeF2() {
+    // the title's X-hold wipe (dump title group 49): level=1 and every flag
+    // back to 0 — the save file is rewritten with the defaults
+    GameProgressF2 p;
+    ResetF2(p);
+    SaveF2(p);
+}
+
 } // namespace fnaf

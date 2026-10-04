@@ -425,4 +425,271 @@ void FNaF2Render::DrawAttack(const FNaF2Game& game) {
     Draw(kFrames[idx][fi], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
 }
 
+// ===========================================================================
+// v2.62 — the rest of the dump's frame flow + the 8-bit minigames.
+// Coordinates from the frame layouts; the anim-cell art that the dumper
+// could not split into separate images (night names, the 5->6 roll, walk
+// cycles) stands in as labeled debug-font/approximation stops.
+// ===========================================================================
+
+void FNaF2Render::RenderAd() {
+    // frame 8: the HELP WANTED newspaper, fullscreen
+    Draw(272, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+}
+
+void FNaF2Render::RenderCard(const FNaF2Game& game) {
+    // frame 2: the "12:00 AM / Nst Night" card (429 @ center); the per-night
+    // anim cells (2nd..7th Night art) were not dumped as images — the night
+    // number rides under it in the debug font (labeled stopgap)
+    Draw(429, 394.0f, 316.0f, 235.0f, 116.0f, 0xFFFFFFFF);
+    if (m_text) {
+        char buf[32];
+        Snprintf(buf, sizeof(buf), "%d%s NIGHT", game.GetNight(),
+                 game.GetNight() == 1 ? "ST" : game.GetNight() == 2 ? "ND" :
+                 game.GetNight() == 3 ? "RD" : "TH");
+        m_text->DrawText((int)(470.0f * kScaleX), (int)(450.0f * kScaleY), buf, 0xFFFFFFFF);
+        m_text->DrawText((int)(480.0f * kScaleX), (int)(200.0f * kScaleY), "12:00 AM", 0xFFB0B0B0);
+    }
+}
+
+void FNaF2Render::RenderStatic() {
+    // frame 4: the post-night static (img 361 fullscreen)
+    Draw(361, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+}
+
+void FNaF2Render::RenderNextDay(const FNaF2Game& game) {
+    // frame 5: the seven-segment "5" (297 @ 415,363) + the "AM" plate
+    // (295 @ 595,363); the 5->6 digit roll is an anim cell — the 6 rides
+    // as debug text after the roll (labeled)
+    Draw(297, 415.0f, 363.0f, 124.0f, 200.0f, 0xFFFFFFFF);
+    Draw(295, 595.0f, 363.0f, 179.0f, 84.0f, 0xFFFFFFFF);
+    if (game.GetCardTimer() >= 1.0f && m_text)
+        m_text->DrawText((int)(430.0f * kScaleX), (int)(340.0f * kScaleY), "6", 0xFFFFFFFF);
+}
+
+void FNaF2Render::RenderDream(const FNaF2Game& game) {
+    // frame 13: the 2500x768 panning room (616), the slumped pair
+    // (609 Bonnie @243 / 614 Chica @2348), the night props, the static
+    // flicker and the slow blackout
+    const f32 pan = game.GetDreamPan();
+    DrawWorld(616, 0.0f, 0.0f, 2500.0f, 768.0f, pan, 0xFFFFFFFF);
+    DrawWorld(609, 243.0f, 300.0f, 400.0f, 460.0f, pan, 0xFFFFFFFF);   // Bonnie
+    DrawWorld(614, 2348.0f, 300.0f, 400.0f, 460.0f, pan, 0xFFFFFFFF);  // Chica + balloons
+    if (game.GetNight() == 4)
+        DrawWorld(624, 1514.0f, 340.0f, 220.0f, 300.0f, pan, 0xFFFFFFFF);  // golden Freddy
+    if (game.GetNight() == 5) {
+        // the Puppet slides toward the anchor (dump groups 26/27)
+        const f32 px = 2170.0f - pan;
+        if (px > -300.0f && px < 1330.0f)
+            DrawWorld(626, 2170.0f, 330.0f, 260.0f, 420.0f, pan, 0xFFFFFFFF);
+    }
+    // the static flicker (alpha tiers per the re-roll)
+    {
+        const i32 roll = game.GetRareRoll();
+        const u32 a = (u32)(roll <= 6 ? 250 : (roll <= 9 ? 225 : 100));
+        Draw(361, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
+    }
+    // the blackout fade
+    if (game.GetBlackout() > 0.5f) {
+        const u32 a = (u32)game.GetBlackout();
+        Draw(225, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
+    }
+}
+
+void FNaF2Render::RenderError(bool second) {
+    Draw(second ? 630 : 628, second ? 33.0f : 20.0f, second ? 19.0f : 16.0f,
+         512.0f, 384.0f, 0xFFFFFFFF);
+}
+
+void FNaF2Render::RenderEnd(i32 which) {
+    const i32 img = (which == 5) ? 587 : (which == 6) ? 590 : 622;
+    Draw(img, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+}
+
+void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
+    // frame 12: the header, the ten AI rows (icon + arrows + number), the
+    // challenge mode, READY; the icons are the dumped row images
+    static const i32 kIcons[10] = { 551, 339, 338, 341, 344, 352, 346, 576, 577, 578 };
+    Draw(524, 262.0f, 20.0f, 500.0f, 90.0f, 0xFFFFFFFF);    // "Customize Night"
+    for (i32 i = 0; i < 10; ++i) {
+        const f32 y = 130.0f + 46.0f * i;
+        const u32 tint = (game.GetOptionSelected() == i) ? 0xFF50A0FF : 0xFFFFFFFF;
+        Draw(kIcons[i], 320.0f, y, 44.0f, 44.0f, tint);
+        Draw(557, 420.0f, y + 4.0f, 34.0f, 34.0f, 0xFFFFFFFF);   // left arrow
+        Draw(556, 700.0f, y + 4.0f, 34.0f, 34.0f, 0xFFFFFFFF);   // right arrow
+        if (m_text) {
+            char buf[8];
+            Snprintf(buf, sizeof(buf), "%d", game.GetCustomAI(i));
+            m_text->DrawText((int)(600.0f * kScaleX), (int)((y + 6.0f) * kScaleY), buf, tint);
+        }
+    }
+    // the challenge mode row (the dumped arrows 595/602)
+    Draw(602, 320.0f, 620.0f, 34.0f, 34.0f, 0xFFFFFFFF);
+    Draw(595, 700.0f, 620.0f, 34.0f, 34.0f, 0xFFFFFFFF);
+    if (m_text) {
+        char buf[64];
+        static const char* const kModes[10] = {
+            "20/20/20/20", "New and Shiny", "Double Trouble", "Night of Misfits",
+            "Foxy Foxy", "Ladies Night", "Freddy's Circus", "Cupcake Challenge",
+            "Fazbear Fever", "Golden Freddy"
+        };
+        const i32 mode = game.GetCustomMode();
+        if (mode >= 1 && mode <= 10) {
+            Snprintf(buf, sizeof(buf), "%s%s", kModes[mode - 1],
+                     game.GetDoingCustom() ? "" : " (not armed)");
+            m_text->DrawText((int)(380.0f * kScaleX), (int)(628.0f * kScaleY), buf, 0xFFB0B0B0);
+        }
+        if (game.GetAllAre20())
+            m_text->DrawText((int)(460.0f * kScaleX), (int)(90.0f * kScaleY), "ALL 20", 0xFF60FF60);
+        if (game.Is1987())
+            m_text->DrawText((int)(560.0f * kScaleX), (int)(120.0f * kScaleY), "1987", 0xFF6060FF);
+    }
+    Draw(546, 818.0f, 671.0f, 150.0f, 56.0f, 0xFFFFFFFF);    // READY
+    // the did-challenge stars (dump groups 78/79: the INI c<mode> check)
+    const i32 mode = game.GetCustomMode();
+    if (mode >= 1 && mode <= 10 && game.GetDoingCustom() == 0 && m_text) {
+        // the beat flags ride the game (c-flags); the star shows for the
+        // beaten challenge of the CURRENT mode slot
+        m_text->DrawText((int)(560.0f * kScaleX), (int)(580.0f * kScaleY),
+                         "* *", 0xFFC0C040);
+    }
+}
+
+void FNaF2Render::RenderRare(i32 which) {
+    const i32 img = (which == 1) ? 625 : (which == 2) ? 623 : 627;
+    Draw(img, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+}
+
+void FNaF2Render::RenderGameOver() {
+    // frame 6: the withered Freddy face + the "Game Over" plate
+    Draw(226, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    Draw(228, 180.0f, 700.0f, 320.0f, 48.0f, 0xFFFFFFFF);
+}
+
+// ---- the 8-bit minigames ------------------------------------------------
+
+void FNaF2Render::RenderEightBit(const FNaF2Game& game) {
+    // frame 19 SAVETHEM: the fixed-screen room re-dressed per grid cell
+    const FNaF2MgState& mg = game.Mg();
+    Draw(636, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    // the border walls (dump: 639/640 strips on all four edges)
+    Draw(639,  -2.0f,  -8.0f, 1024.0f, 84.0f, 0xFFFFFFFF);
+    Draw(639,  -2.0f, 680.0f, 1024.0f, 84.0f, 0xFFFFFFFF);
+    Draw(640,  -2.0f,  80.0f, 30.0f, 570.0f, 0xFFFFFFFF);
+    Draw(640, 926.0f,  79.0f, 30.0f, 570.0f, 0xFFFFFFFF);
+    // the per-room dressing (the dump's fire-once groups, keyed (h,v))
+    const i32 h = mg.h, v = mg.v;
+    if ((h == 3 && v == 1) || (h == 4 && v == 1) || (h == 4 && v == 3) ||
+        (h == 3 && v == 3) || (h == 2 && v == 4)) {
+        Draw(652, 294.0f, 190.0f, 90.0f, 60.0f, 0xFFFFFFFF);
+        Draw(652, 737.0f, 190.0f, 90.0f, 60.0f, 0xFFFFFFFF);
+        Draw(652, 737.0f, 410.0f, 90.0f, 60.0f, 0xFFFFFFFF);
+        Draw(652, 294.0f, 410.0f, 90.0f, 60.0f, 0xFFFFFFFF);
+    }
+    if (h == 5 && v == 2) Draw(655, 720.0f, 420.0f, 60.0f, 70.0f, 0xFFFFFFFF);
+    if (h == 1 && v == 4) Draw(660, 523.0f, 296.0f, 190.0f, 100.0f, 0xFFFFFFFF);
+    if (h == 2 && v == 1) {
+        Draw(656, 184.0f, 524.0f, 70.0f, 70.0f, 0xFFFFFFFF);   // dead chica
+        Draw(657, 280.0f, 288.0f, 70.0f, 70.0f, 0xFFFFFFFF);   // dead bonnie
+        Draw(658, 832.0f, 190.0f, 70.0f, 70.0f, 0xFFFFFFFF);
+    }
+    if ((h == 2 && v == 3) || (h == 4 && v == 2) || (h == 2 && v == 4))
+        Draw(659, 500.0f, 600.0f, 50.0f, 50.0f, 0xFFFFFFFF);   // trash
+    if ((h == 3 && v == 2) || (h == 4 && v == 2) || (h == 2 && v == 4) || (h == 3 && v == 4))
+        Draw(662, 700.0f, 250.0f, 60.0f, 60.0f, 0xFFFFFFFF);   // checker
+    if (h == 3 && v == 5) Draw(664, 704.0f, 400.0f, 44.0f, 50.0f, 0xFFFFFFFF);  // gift
+    if (h == 4 && v == 2) Draw(665, (f32)mg.heX, (f32)mg.heY, 60.0f, 80.0f, 0xFFFFFFFF);
+    // the blood spots (group 40 shows them every room after the first change)
+    Draw(380, 316.0f, 308.0f, 30.0f, 30.0f, 0xFFFFFFFF);
+    Draw(380, 711.0f, 468.0f, 30.0f, 30.0f, 0xFFFFFFFF);
+    // the NPCs
+    if (mg.youCantOn) Draw(673, (f32)mg.youCantX, (f32)mg.youCantY, 40.0f, 56.0f, 0xFFFFFFFF);
+    if (mg.manOn)     Draw(671, (f32)mg.manX, (f32)mg.manY, 46.0f, 70.0f, 0xFFFFFFFF);
+    if (mg.gfOn)      Draw(669, (f32)mg.gfX, (f32)mg.gfY, 70.0f, 90.0f, 0xFFFFFFFF);
+    if (mg.chaserOn)  Draw(675, (f32)mg.chX, (f32)mg.chY, 56.0f, 80.0f, 0xFFFFFFFF);
+    // the player (8-bit Freddy 245 glued to the hit box)
+    Draw(245, (f32)mg.px - 50.0f, (f32)mg.py - 55.0f, 99.0f, 100.0f, 0xFFFFFFFF);
+    // the WASD hint rides above the player for the first 5 s (group 104)
+    if (mg.t < 5.0f) Draw(646, (f32)mg.px - 40.0f, (f32)mg.py - 130.0f, 84.0f, 30.0f, 0xFFFFFFFF);
+}
+
+void FNaF2Render::RenderMgLoad() {
+    // frame 21: black + the two loading bars
+    Draw(636, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    Draw(678, 0.0f, 300.0f, 1076.0f, 40.0f, 0xFFFFFFFF);
+    Draw(680, 0.0f, 420.0f, 1076.0f, 40.0f, 0xFFFFFFFF);
+}
+
+void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
+    const FNaF2MgState& mg = game.Mg();
+    const bool attack = (mg.attackT >= 0.0f);
+    if (mg.game == 2) {
+        // frame 23 TAKE CAKE
+        Draw(400, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        Draw(698, 77.0f, 659.0f, 870.0f, 60.0f, 0xFFFFFFFF);
+        static const f32 kKidX[6] = { 290,290,290,776,770,766 };
+        static const f32 kKidY[6] = { 280,416,548,278,410,538 };
+        for (i32 i = 0; i < 6; ++i) {
+            // the sadness anim cells are not dumped — the crying kids dim
+            const u32 tint = (mg.kidSad[i] >= 10) ? 0xFF909090 : 0xFFFFFFFF;
+            Draw(692, kKidX[i], kKidY[i], 56.0f, 64.0f, tint);
+        }
+        Draw(683, 404.0f, 118.0f, 56.0f, 64.0f, 0xFFFFFFFF);   // the crying kid
+        if (mg.murder && mg.carStage >= 1)
+            Draw(715, (f32)mg.carX, 67.0f, 150.0f, 70.0f, 0xFFFFFFFF);
+        if (mg.carStage == 2) Draw(699, 467.0f, 300.0f, 46.0f, 72.0f, 0xFFFFFFFF);
+        Draw(409, (f32)mg.px - 45.0f, (f32)mg.py - 55.0f, 90.0f, 100.0f, 0xFFFFFFFF);
+    } else if (mg.game == 3) {
+        // frame 24 GIVE GIFTS, GIVE LIFE
+        Draw(636, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        Draw(723, 391.0f, 8.0f, 250.0f, 50.0f, 0xFFFFFFFF);
+        static const f32 kHeadX[4] = { 235, 200, 814, 818 };
+        static const f32 kHeadY[4] = { 204, 594, 190, 580 };
+        static const i32 kHeadImg[4] = { 728, 763, 762, 765 };
+        for (i32 i = 0; i < 4; ++i) {
+            if (!mg.phaseB || !mg.headGifted[i] || mg.kidSad[i] == 0)
+                Draw(kHeadImg[i], kHeadX[i], kHeadY[i], 52.0f, 52.0f, 0xFFFFFFFF);
+        }
+        for (i32 i = 0; i < 4; ++i) {
+            static const f32 kHelpX[4] = { 228, 204, 830, 830 };
+            static const f32 kHelpY[4] = { 239, 635, 239, 623 };
+            Draw(761, kHelpX[i], kHelpY[i], 46.0f, 60.0f, 0xFFFFFFFF);
+        }
+        if (!mg.phaseB) Draw(779, 526.0f, 388.0f, 79.0f, 57.0f, 0xFFFFFFFF);
+        Draw(758, (f32)mg.px - 45.0f, (f32)mg.py - 60.0f, 90.0f, 110.0f, 0xFFFFFFFF);
+    } else {
+        // frame 25 FOXY'S PARTY: the 2048-wide world, the camera snaps at
+        // the x=1024 line (dump groups 44/45)
+        const f32 cam = (mg.px >= 1024) ? -1024.0f : 0.0f;
+        Draw(778, cam + 0.0f,    0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        Draw(382, cam + 1024.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        Draw(784, cam + 273.0f, 268.0f, 120.0f, 140.0f, 0xFFFFFFFF);
+        Draw(784, cam + 784.0f, 268.0f, 120.0f, 140.0f, 0xFFFFFFFF);
+        static const f32 kKidsX[5] = { 1608, 1778, 1550, 1766, 1602 };
+        static const f32 kKidsY[5] = { 217, 322, 404, 508, 594 };
+        for (i32 i = 0; i < 5; ++i) {
+            // the kids go silent on the second visit (group 57)
+            const u32 tint = (mg.cycles >= 2) ? 0xFF808080 : 0xFFFFFFFF;
+            Draw(794, cam + kKidsX[i], (f32)kKidsY[i], 56.0f, 64.0f, tint);
+        }
+        if (mg.cycles >= 2) Draw(799, cam + 1560.0f, 430.0f, 46.0f, 72.0f, 0xFFFFFFFF);
+        if (mg.phase == 1 && mg.cycles < 2)
+            Draw(787, cam + 819.0f, 566.0f, 90.0f, 60.0f, 0xFFFFFFFF);
+        Draw(682, (f32)mg.px + cam - 45.0f, (f32)mg.py - 55.0f, 90.0f, 100.0f, 0xFFFFFFFF);
+    }
+    // the scripted attack: the flash-into-static stand-in (the dump's attack
+    // anim cells live in the object's animation bank — not resolvable)
+    if (attack) {
+        if (mg.attackT < 0.2f) Draw(23, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        else                   Draw(361, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    }
+}
+
+void FNaF2Render::RenderEndBars() {
+    // frames 20/22: black + the two CRT bars
+    Draw(636, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    Draw(678, 0.0f, 300.0f, 1076.0f, 40.0f, 0xFFFFFFFF);
+    Draw(680, 0.0f, 420.0f, 1076.0f, 40.0f, 0xFFFFFFFF);
+}
+
 } // namespace fnaf
