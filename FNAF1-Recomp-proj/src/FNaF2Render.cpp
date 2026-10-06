@@ -639,9 +639,9 @@ void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
         static const f32 kKidY[6] = { 280,416,548,278,410,538 };
         for (i32 i = 0; i < 6; ++i) {
             i32 img = 692; f32 fps = 3.0f;
-            if (mg.kidSad[i] >= 20)      { img = (int)(mg.t * 18.0f) % 2 ? 696 : 693; fps = 18.0f; }
-            else if (mg.kidSad[i] >= 10) { img = (int)(mg.t * 6.0f)  % 2 ? 482 : 519; }
-            else                         { img = (int)(mg.t * 3.0f)  % 2 ? 685 : 692; }
+            if (mg.kidSad[i] >= 20)      { img = ((int)(mg.t * 18.0f) % 2) ? 696 : 693; fps = 18.0f; }
+            else if (mg.kidSad[i] >= 10) { img = ((int)(mg.t * 6.0f)  % 2) ? 482 : 519; }
+            else                         { img = ((int)(mg.t * 3.0f)  % 2) ? 685 : 692; }
             Draw(img, kKidX[i], kKidY[i], 56.0f, 64.0f, 0xFFFFFFFF);
         }
         // the crying kid 2 (objInfo 394): idle [683,697]@1.5fps; the murder
@@ -653,7 +653,7 @@ void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
             if (fi > 7) fi = 7;
             Draw(kReact[fi], 404.0f, 118.0f, 56.0f, 64.0f, 0xFFFFFFFF);
         } else {
-            Draw((int)(mg.t * 1.5f) % 2 ? 697 : 683, 404.0f, 118.0f, 56.0f, 64.0f, 0xFFFFFFFF);
+            Draw(((int)(mg.t * 1.5f) % 2) ? 697 : 683, 404.0f, 118.0f, 56.0f, 64.0f, 0xFFFFFFFF);
         }
         if (mg.murder && mg.carStage >= 1)
             Draw(715, (f32)mg.carX, 67.0f, 150.0f, 70.0f, 0xFFFFFFFF);

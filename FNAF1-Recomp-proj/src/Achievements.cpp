@@ -216,6 +216,18 @@ void Achievements::Save() {
 
 // ---- v2.62: the FNAF2 add-on slots (ids 11..20) ----
 
+// v2.35: human-readable names for the XDK results achievements can hit.
+static const char* AchErrName(DWORD res) {
+    switch (res) {
+        case ERROR_SUCCESS:          return "OK";
+        case ERROR_ACCESS_DENIED:    return "ACCESS_DENIED";
+        case ERROR_INVALID_PARAMETER:return "BAD_PARAM";
+        case ERROR_DEVICE_NOT_CONNECTED: return "DEVICE_NOT_CONNECTED";
+        case ERROR_NO_MORE_FILES:    return "NO_DISK_SPACE";
+        default: return "?";
+    }
+}
+
 void Achievements::UnlockFnaf2(int slot) {
     if (slot < 0 || slot > 9) return;
     const int id = 11 + slot;                 // the add-on id range (see the header)
@@ -239,18 +251,6 @@ void Achievements::UnlockFnaf2(int slot) {
 #else
     printf("ACH F2 %d (local only)\n", id);
 #endif
-}
-
-// v2.35: human-readable names for the XDK results achievements can hit.
-static const char* AchErrName(DWORD res) {
-    switch (res) {
-        case ERROR_SUCCESS:          return "OK";
-        case ERROR_ACCESS_DENIED:    return "ACCESS_DENIED";
-        case ERROR_INVALID_PARAMETER:return "BAD_PARAM";
-        case ERROR_DEVICE_NOT_CONNECTED: return "DEVICE_NOT_CONNECTED";
-        case ERROR_NO_MORE_FILES:    return "NO_DISK_SPACE";
-        default: return "?";
-    }
 }
 
 void Achievements::SystemWrite(int id) {

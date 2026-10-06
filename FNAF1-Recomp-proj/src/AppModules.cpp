@@ -319,7 +319,7 @@ bool FNaF3Module::Load(AppServices& services) {
     m_game.audio.channelVolume  = FNaF3ChVol;
     m_game.ResetToTitle();
     // v2.62: load the dump's own save ("freddy3")
-    GameProgressF3 p3;
+    Progress::GameProgressF3 p3;
     if (Progress::LoadF3(p3)) m_game.ApplyProgressF3(p3);
     return true;
 }
@@ -352,7 +352,7 @@ void FNaF3Module::Tick(f32 dt) {
 
     // v2.62: the freddy3 save bridge (the next-day screen flips the bit)
     if (m_game.ConsumeSaveDirty()) {
-        GameProgressF3 p3;
+        Progress::GameProgressF3 p3;
         m_game.FillProgressF3(p3);
         if (Progress::SaveF3(p3))
             printf("FNAF3 SAVE: level=%d\n", p3.level);
