@@ -60,6 +60,29 @@ Use this if the XLAST content-package build or XAM's package discovery
 misbehaves; upgrade to the real PDLC later — the ids stay the same, so
 nothing in the save/achievement mask changes.
 
+----------------------------------------------------------------------------
+3b. THE CONCRETE ENTRY TABLE (v2.62 — the game side is LIVE, type these 10)
+----------------------------------------------------------------------------
+The code unlocks by SLOT (Achievements::UnlockFnaf2, mask fnaf2_ach.ini);
+the spa id = slot + 10. Enter in XLAST exactly:
+
+  id | suggested name            | GS  | unlock condition (the code beat)
+  11 | Night 1                   | 10G | complete night 1
+  12 | Night 2                   | 10G | complete night 2
+  13 | Night 3                   | 20G | complete night 3
+  14 | Night 4                   | 20G | complete night 4
+  15 | Night 5                   | 40G | complete night 5 (beatgame)
+  16 | Night 6                   | 40G | complete night 6
+  17 | Custom Night 20/20/20/20  | 50G | the custom night with all ten AI at 20
+  18 | 20/20/20/20 Challenge     | 30G | survive the "20/20/20/20" preset (c1)
+  19 | Challenge Master          | 40G | survive all ten challenge presets (c1..c10)
+  20 | SAVE THEM                 | 20G | discover the 8-bit chain (the 1/1000 roll)
+
+(GS values are proposals — tune to taste; 280G add-on, base 400G + 280G is
+under the 1000G cap.) After the rebuild the profile writes pass on their
+own — the local fnaf2_ach.ini mask already tracks everything earned before
+the spa caught up (the IsUnlockedFnaf2 gate prevents rewrites).
+
 ============================================================================
 4. CODE-SIDE NOTES
 ============================================================================

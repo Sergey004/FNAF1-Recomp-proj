@@ -632,14 +632,29 @@ void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
         // frame 23 TAKE CAKE
         Draw(400, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
         Draw(698, 77.0f, 659.0f, 870.0f, 60.0f, 0xFFFFFFFF);
+        // the kids (application.json objInfo 393): 0=[692,685]@3fps content,
+        // 12=[519,482]@6fps crying, 13=[693,696]@18fps past-20 — the real
+        // sadness cells, picked per the kid's counter
         static const f32 kKidX[6] = { 290,290,290,776,770,766 };
         static const f32 kKidY[6] = { 280,416,548,278,410,538 };
         for (i32 i = 0; i < 6; ++i) {
-            // the sadness anim cells are not dumped — the crying kids dim
-            const u32 tint = (mg.kidSad[i] >= 10) ? 0xFF909090 : 0xFFFFFFFF;
-            Draw(692, kKidX[i], kKidY[i], 56.0f, 64.0f, tint);
+            i32 img = 692; f32 fps = 3.0f;
+            if (mg.kidSad[i] >= 20)      { img = (int)(mg.t * 18.0f) % 2 ? 696 : 693; fps = 18.0f; }
+            else if (mg.kidSad[i] >= 10) { img = (int)(mg.t * 6.0f)  % 2 ? 482 : 519; }
+            else                         { img = (int)(mg.t * 3.0f)  % 2 ? 685 : 692; }
+            Draw(img, kKidX[i], kKidY[i], 56.0f, 64.0f, 0xFFFFFFFF);
         }
-        Draw(683, 404.0f, 118.0f, 56.0f, 64.0f, 0xFFFFFFFF);   // the crying kid
+        // the crying kid 2 (objInfo 394): idle [683,697]@1.5fps; the murder
+        // reaction anim 14 = [683,713,716,717,718,701,720,719] @ speed 1
+        if (mg.carStage >= 2) {
+            static const i32 kReact[8] = { 683, 713, 716, 717, 718, 701, 720, 719 };
+            int fi = (int)(mg.manStageT * 0.6f);
+            if (fi < 0) fi = 0;
+            if (fi > 7) fi = 7;
+            Draw(kReact[fi], 404.0f, 118.0f, 56.0f, 64.0f, 0xFFFFFFFF);
+        } else {
+            Draw((int)(mg.t * 1.5f) % 2 ? 697 : 683, 404.0f, 118.0f, 56.0f, 64.0f, 0xFFFFFFFF);
+        }
         if (mg.murder && mg.carStage >= 1)
             Draw(715, (f32)mg.carX, 67.0f, 150.0f, 70.0f, 0xFFFFFFFF);
         if (mg.carStage == 2) Draw(699, 467.0f, 300.0f, 46.0f, 72.0f, 0xFFFFFFFF);
@@ -708,6 +723,16 @@ void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
         } else {
             Draw(361, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
         }
+    }
+    // the CRT scanline flicker (the dump's scanline groups: every 500 ms the
+    // alpha coefficient := 200+Random(100) -> alpha 0.02..0.22)
+    {
+        u32 h = (u32)(int)(mg.t / 0.5f) * 2654435761u + 21u;
+        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+        const u32 coeff = 200u + h % 100u;
+        const u32 a = 255u - coeff;
+        if (a > 0u)
+            Draw(649, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
     }
 }
 
