@@ -113,7 +113,7 @@ FNaF1Module (active)   FNaF2Module   FNaF3Module   … (FNAF4/SL/UCN)
 | Sprite browser | LB+RB (in menus) |
 | Perspective tuner | L3+R3 (Y — reset knob) |
 
-## Asset pipeline (CTFAK-CPP) (It'll be available soon, due to legal issues)
+## Asset pipeline (CTFAK-CPP) (Temporarily available)
 
 Tool: **[ctfak-cpp](https://github.com/Sergey004/ctfak-cpp)** — a clean-room
 C++ reimplementation of a Clickteam Fusion runtime dumper/repacker. The full
