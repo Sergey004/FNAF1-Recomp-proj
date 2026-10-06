@@ -648,11 +648,22 @@ void Progress::WipeF2() {
     SaveF2(p);
 }
 
-// ---- v2.62: the FNAF3 save (freddy3: level/cine) ----
+// ---- v2.62: the FNAF3 save (freddy3). v2.63 carries the full dump key
+// set: progression flags, the minigame chain and the cheats toggles. ----
 
 void Progress::ResetF3(GameProgressF3& p) {
     p.level = 1;
     p.cine = 0;
+    p.beat6 = false;
+    p.goodend = false;
+    p.fourthStar = false;
+    p.bb = false;
+    p.cake = false;
+    p.k1 = false; p.k2 = false; p.k3 = false; p.k4 = false;
+    p.fastNights = false;
+    p.ventProof = false;
+    p.hyper = false;
+    p.noCams = false;
 }
 
 bool Progress::LoadF3(GameProgressF3& p) {
@@ -679,8 +690,21 @@ bool Progress::LoadF3(GameProgressF3& p) {
         if (!inSection) continue;
         if (ParseIniLine(s, key, &val)) {
             any = true;
-            if      (strcmp(key, "level") == 0) p.level = val;
-            else if (strcmp(key, "cine") == 0)  p.cine = val;
+            if      (strcmp(key, "level") == 0)      p.level = val;
+            else if (strcmp(key, "cine") == 0)       p.cine = val;
+            else if (strcmp(key, "beat6") == 0)      p.beat6 = val != 0;
+            else if (strcmp(key, "goodend") == 0)    p.goodend = val != 0;
+            else if (strcmp(key, "4thstar") == 0)    p.fourthStar = val != 0;
+            else if (strcmp(key, "bb") == 0)         p.bb = val != 0;
+            else if (strcmp(key, "cake") == 0)       p.cake = val != 0;
+            else if (strcmp(key, "k1") == 0)         p.k1 = val != 0;
+            else if (strcmp(key, "k2") == 0)         p.k2 = val != 0;
+            else if (strcmp(key, "k3") == 0)         p.k3 = val != 0;
+            else if (strcmp(key, "k4") == 0)         p.k4 = val != 0;
+            else if (strcmp(key, "fast") == 0)       p.fastNights = val != 0;
+            else if (strcmp(key, "vents") == 0)      p.ventProof = val != 0;
+            else if (strcmp(key, "hyper") == 0)      p.hyper = val != 0;
+            else if (strcmp(key, "nocams") == 0)     p.noCams = val != 0;
         }
     }
     fclose(f);
@@ -693,9 +717,17 @@ bool Progress::LoadF3(GameProgressF3& p) {
 bool Progress::SaveF3(const GameProgressF3& pIn) {
     GameProgressF3 out = pIn;
     if (out.level < 1) out.level = 1;
-    char iniBuf[128];
+    char iniBuf[512];
     int len = fnaf::Snprintf(iniBuf, sizeof(iniBuf),
-        "[freddy3]\nlevel=%d\ncine=%d\n", out.level, out.cine);
+        "[freddy3]\nlevel=%d\ncine=%d\nbeat6=%d\ngoodend=%d\n4thstar=%d\n"
+        "bb=%d\ncake=%d\nk1=%d\nk2=%d\nk3=%d\nk4=%d\n"
+        "fast=%d\nvents=%d\nhyper=%d\nnocams=%d\n",
+        out.level, out.cine,
+        out.beat6 ? 1 : 0, out.goodend ? 1 : 0, out.fourthStar ? 1 : 0,
+        out.bb ? 1 : 0, out.cake ? 1 : 0,
+        out.k1 ? 1 : 0, out.k2 ? 1 : 0, out.k3 ? 1 : 0, out.k4 ? 1 : 0,
+        out.fastNights ? 1 : 0, out.ventProof ? 1 : 0,
+        out.hyper ? 1 : 0, out.noCams ? 1 : 0);
     FILE* f = StorageOpen("freddy3", "wb", true);
     if (!f) return false;
     size_t put = fwrite(iniBuf, 1, (size_t)len, f);

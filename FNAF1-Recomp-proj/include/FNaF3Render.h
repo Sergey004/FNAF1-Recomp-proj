@@ -33,6 +33,16 @@ public:
     void RenderRare2();                          // frame 13: the glitch screen
     void RenderEndScreen(i32 which);             // 0 chooser / 1 bad / 2 good / 3 end2
 
+    // v2.63: the new flow screens + the minigames/cutscenes/extras
+    void RenderWait();                           // frame 7: the 100 ms black
+    void RenderStaticDeath();                    // frame 4: the death static
+    void RenderGameOver();                       // frame 6
+    void RenderRare(i32 id);                     // frames 12/13/14 (225/228/252)
+    void RenderLoad(f32 t);                      // frame 18: the glitch loader
+    void RenderCutscene(const FNaF3Game& game, f32 time);   // frame 16
+    void RenderMinigame(const FNaF3Game& game, f32 time);   // frames 19-24
+    void RenderExtras(const FNaF3Game& game, f32 time);     // frame 25
+
 private:
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);
     void DrawWorld(int handle, float wx, float wy, float fw, float fh,

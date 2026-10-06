@@ -368,7 +368,9 @@ void FNaF3Module::Tick(f32 dt) {
             m_services.audio->Stop("snd_titlemusic");
             m_services.audio->Stop("snd_static_sound");
         }
-        if (scr == (int)FNaF3Game::SCR_OFFICE && m_prevAudioScreen == (int)FNaF3Game::SCR_NIGHTSTART) {
+        if ((scr == (int)FNaF3Game::SCR_OFFICE) &&
+            (m_prevAudioScreen == (int)FNaF3Game::SCR_NIGHTSTART ||
+             m_prevAudioScreen == (int)FNaF3Game::SCR_WAIT)) {
             // office entry: the fan + the day-start + the night voice
             s_fn3Audio->PlayOnChannel(m_services.pak, "snd_tablefan", true, 1);
             s_fn3Audio->SetChannelVolume(1, CFVolumeToDb(50));
@@ -409,7 +411,7 @@ void FNaF3Module::Render() {
             else                          m_render.RenderOffice(m_game, m_time);
             if (m_game.GetScareTimer() > 0.0f) m_render.DrawAttack(m_game);
             break;
-        case FNaF3Game::SCR_STATIC6:    m_render.RenderStatic6(); break;
+        case FNaF3Game::SCR_STATIC6:    m_render.RenderStaticDeath(); break;
         case FNaF3Game::SCR_NEXTDAY:    m_render.RenderNextDay(m_game.GetNight()); break;
         // v2.62: the dump's end screens
         case FNaF3Game::SCR_AD:         m_render.RenderAd(); break;
@@ -418,6 +420,15 @@ void FNaF3Module::Render() {
         case FNaF3Game::SCR_ENDBAD:     m_render.RenderEndScreen(1); break;
         case FNaF3Game::SCR_ENDGOOD:    m_render.RenderEndScreen(2); break;
         case FNaF3Game::SCR_END2:       m_render.RenderEndScreen(3); break;
+        // v2.63: the new flow screens + the minigames/cutscenes/extras
+        case FNaF3Game::SCR_WAIT:       m_render.RenderWait(); break;
+        case FNaF3Game::SCR_GAMEOVER:   m_render.RenderGameOver(); break;
+        case FNaF3Game::SCR_RARE1:      m_render.RenderRare(1); break;
+        case FNaF3Game::SCR_RARE3:      m_render.RenderRare(3); break;
+        case FNaF3Game::SCR_LOAD:       m_render.RenderLoad(m_time); break;
+        case FNaF3Game::SCR_CUTSCENE:   m_render.RenderCutscene(m_game, m_time); break;
+        case FNaF3Game::SCR_MG:         m_render.RenderMinigame(m_game, m_time); break;
+        case FNaF3Game::SCR_EXTRAS:     m_render.RenderExtras(m_game, m_time); break;
     }
 }
 

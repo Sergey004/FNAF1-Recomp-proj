@@ -62,11 +62,31 @@ public:
         SCR_NEXTDAY    = 4,   // frame 5 "next day" (payday card)
         // v2.62: the rest of the dump's flow
         SCR_AD         = 5,   // frame 8: the "COMING SOON" newspaper (after New Game)
-        SCR_RARE2      = 6,   // frame 13: the post-night glitch screen (garble, 5 s)
-        SCR_ENDCHOOSER = 7,   // frame 17: the night-5 ending anim (chooser)
+        SCR_RARE2      = 6,   // frame 13: the post-gameover rare screen (garble, 5 s)
+        SCR_ENDCHOOSER = 7,   // frame 17: cutscene != 5 -> what day; == 5 -> the ends
         SCR_ENDBAD     = 8,   // frame 9: bad end (mb2 + beatgame)
         SCR_ENDGOOD    = 9,   // frame 10: good end (the "ending" song + beatgame)
-        SCR_END2       = 10   // frame 11: the end 2 (mb2 + beatgame)
+        SCR_END2       = 10,  // frame 11: the end 2 (mb2 + beatgame; night 6)
+        // v2.63: the rest of the dump's flow (jumps = storyboard slots)
+        SCR_WAIT       = 11,  // frame 7 "wait": 100 ms black -> office
+        SCR_GAMEOVER   = 12,  // frame 6: 5 s / A -> title; 1/1000 -> rare2
+        SCR_RARE1      = 13,  // frame 12: the boot rare screen (1/1000 at the disclaimer)
+        SCR_RARE3      = 14,  // frame 14: the night-card rare screen (1/1000) -> what day
+        SCR_LOAD       = 15,  // frame 18: the between-night glitch (5 s) -> cutscene
+        SCR_CUTSCENE   = 16,  // frame 16: the retro decommission scenes (5x5 rooms)
+        SCR_MG         = 17,  // frames 19-24: the six Atari minigames (m_mgGame)
+        SCR_EXTRAS     = 18   // frame 25: the extras menu
+    };
+
+    // The six minigames (frames 19-24). Entry points are the office secrets:
+    // the arcade cabinet (night 2) -> MG_MANGLE, the BB toy on CAM 08 ->
+    // MG_BB, the cupcake run -> MG_TOYCHICA, the 5-2-4-8 keypad -> MG_GFREDDY,
+    // the dark room (night 5) -> MG_RWQ, the puppet toy on CAM 03 -> MG_MARION.
+    // The extras menu replays all but the Marion.
+    enum Mg3Game {
+        MG_NONE = 0,
+        MG_BB = 1, MG_MANGLE = 2, MG_TOYCHICA = 3,
+        MG_GFREDDY = 4, MG_RWQ = 5, MG_MARION = 6
     };
 
     // Springtrap's places: the dump moves one invisible tracker ("dhfgh")
@@ -79,6 +99,114 @@ public:
         R3_ST1 = 21, R3_ST2 = 22, R3_ST3 = 23, R3_ST4 = 24,
         R3_GY = 25, R3_GY2 = 26,
         R3_V11 = 31, R3_V12 = 32, R3_V13 = 33, R3_V14 = 34, R3_V15 = 35
+    };
+
+    // ---- v2.63: the six Atari minigames (frames 19-24). One platformer
+    // skeleton drives all six: 100 ms ticks (fall 10 px, walk 15/20 px),
+    // the 60 ms rise tick (20 px, jump counter 7/9/10), "feel" sensors vs
+    // the obstacle rects, the balloon bounce floors (after BB), the
+    // viewport that scrolls in 1024x768 pages inside a 3072x2304 world and
+    // the 200-frame win counter. Dump deviations: pixel-perfect backdrop
+    // collision becomes obstacle rects, and the exact per-room platform
+    // shapes are coarse. ----
+    struct Mg3State {
+        i32  game;          // Mg3Game
+        bool fromExtras;    // the extras replay flag ("extras game?")
+        f32  px, py;        // the hit box (46x46, center-based like the dump)
+        i32  facing;        // 0 right, 1 left
+        i32  jumpCnt;       // the rise counter (0 = grounded)
+        bool jumpHold;      // W held (the cut releases the jump)
+        f32  fallT, walkT, riseT;   // the 100/100/60 ms tick accumulators
+        f32  camX, camY;    // viewport top-left in world px (1024x768 pages)
+        bool scrolled;      // "secret": the camera has moved (exit gating)
+        f32  winT;          // the alt2 win counter (frames at 60 fps -> s)
+        bool won;           // "win" == 1
+        i32  collects;      // "Counter" (pickups taken)
+        f32  cakeT;         // the big-cake feed counter (k-feeding scenes)
+        bool feeding;       // the freeze cutscene (Toy Chica / big cakes)
+        // per-game extras
+        bool kidFollow[4];  // Mangle: the four kids collected
+        i32  fed;           // Toy Chica: guests fed (exit at 4)
+        i32  view;          // RWQ: the S-teleport view 1..5
+        i32  party;         // Marion: finale stage (0 none, 1..4)
+        f32  partyT;        // Marion: the float timeline
+        i32  taken[12];    // pickup state (1 = taken), index per game table
+        void Clear() {
+            game = 0; fromExtras = false; px = 0; py = 0; facing = 0;
+            jumpCnt = 0; jumpHold = false;
+            fallT = 0.0f; walkT = 0.0f; riseT = 0.0f;
+            camX = 0.0f; camY = 0.0f; scrolled = false;
+            winT = 0.0f; won = false; collects = 0; cakeT = 0.0f; feeding = false;
+            for (i32 i = 0; i < 4; ++i) kidFollow[i] = false;
+            fed = 0; view = 1; party = 0; partyT = 0.0f;
+            for (i32 i = 0; i < 12; ++i) taken[i] = 0;
+        }
+        Mg3State() { Clear(); }
+    };
+
+    // ---- v2.63: the cutscenes frame (16): you walk the retro pizzeria
+    // (5x5 room grid, one 1024x768 screen per room) toward the room where
+    // the Purple Guy dismantles the animatronic you play (scene = the cine
+    // counter 1..4); scene 5 opens the back room where he hides in the
+    // Springtrap suit and dies. ----
+    struct CutsceneState {
+        i32  scene;         // 1..5 (the "cutscene" counter)
+        i32  v, h;          // room grid 1..5 (vertical, horizontal)
+        f32  px, py;        // hit box on the 1024x768 screen
+        i32  facing;        // 0 right, 1 left, 2 up, 3 down
+        f32  moveT;         // the 250 ms step gate
+        f32  t;             // scene clock
+        bool errShown;      // the (2,5) blocked-up ERR fired (arms the kill)
+        i32  manStage;      // 0 none, 1 hunting, 2 kill anim
+        f32  manX, manY;    // purple guy pos
+        f32  manT;          // his 100 ms homing tick
+        f32  killT;         // the death fade (frames)
+        f32  errT;          // the ERR display timer
+        f32  shadowX[3];    // shadow right/up/down drift offsets (-1000 off)
+        bool shadowOn[3];
+        f32  hintT;         // the controls hint / follow-me timer
+        f32  ratT;          // the rat scurry timer
+        f32  ratX;
+        f32  rainT;         // rain spawn timer
+        i32  rainN;         // live drops
+        f32  dropY[12];
+        f32  dropX[12];
+        // scene 5 finale (room 1,5)
+        bool finaleOn;      // the suit sequence runs
+        i32  suitStage;     // 0..6
+        f32  suitT;
+        f32  manRunX;
+        i32  trips;         // "count trips"
+        f32  patrolT;
+        f32  patrolX;
+        i32  patrolState;
+        void Clear() {
+            scene = 1; v = 2; h = 3; px = 500.0f; py = 300.0f; facing = 0;
+            moveT = 0.0f; t = 0.0f; errShown = false;
+            manStage = 0; manX = 0.0f; manY = 0.0f; manT = 0.0f;
+            killT = 0.0f; errT = 0.0f;
+            for (i32 i = 0; i < 3; ++i) { shadowX[i] = 0.0f; shadowOn[i] = false; }
+            hintT = 5.0f; ratT = 0.0f; ratX = -60.0f; rainT = 0.0f; rainN = 0;
+            for (i32 i = 0; i < 12; ++i) { dropY[i] = 0.0f; dropX[i] = 0.0f; }
+            finaleOn = false; suitStage = 0; suitT = 0.0f; manRunX = 0.0f;
+            trips = 0; patrolT = 0.0f; patrolX = 0.0f; patrolState = 0;
+        }
+        CutsceneState() { Clear(); }
+    };
+
+    // ---- v2.63: the extras menu (frame 25): five rows, the minigame and
+    // jumpscare viewers gated by goodend/beat6, the four cheats. ----
+    struct ExtrasState {
+        i32  row;           // 0 animatronics, 1 minigames, 2 jumpscares, 3 cheats, 4 exit
+        i32  viewer;        // the animatronics viewer index 0..6
+        i32  mgPick;        // the minigame replay pick 0..4
+        i32  jsPick;        // the jumpscare pick 0..5
+        f32  jsT;           // the playing jumpscare timer
+        f32  cooldown;      // the cheat toggle cooldown
+        void Clear() {
+            row = 0; viewer = 0; mgPick = 0; jsPick = 0; jsT = 0.0f; cooldown = 0.0f;
+        }
+        ExtrasState() { Clear(); }
     };
 
     FNaF3Game();
@@ -149,6 +277,27 @@ public:
     i32    GetLastNight()     const { return m_lastNight; }
     bool   IsBeat5()          const { return m_beat5; }
 
+    // v2.63: new screens
+    i32    GetRareId()        const { return m_rareId; }        // 1/2/3 poster
+    i32    GetGameOverRare()  const { return m_gameOverRare; }  // 1 = the rare roll hit
+    const Mg3State&   Mg()    const { return m_mg; }
+    const CutsceneState& Cs() const { return m_cs; }
+    const ExtrasState& Ex()    const { return m_ex; }
+    bool   IsBeat6()          const { return m_beat6; }
+    bool   IsGoodEnd()        const { return m_goodend; }
+    bool   IsFourthStar()     const { return m_fourthStar; }
+    bool   HasBB()            const { return m_bb; }     // the balloon unlock
+    bool   HasCake()          const { return m_cake; }
+    // the cheats (the office consults them; the extras menu writes them)
+    bool   CheatFast()        const { return m_fastNights; }
+    bool   CheatVentProof()   const { return m_ventProof; }
+    bool   CheatHyper()       const { return m_hyper; }
+    bool   CheatNoCams()      const { return m_noCams; }
+
+    // v2.63: the minigame entry points (the office secrets call these)
+    void   StartMinigame(i32 game, bool fromExtras);
+    void   ExitMinigameToExtras();
+
     // v2.62: the freddy3 save bridge (the module loads at boot and writes
     // when the next-day screen flips the dirty bit)
     void   ApplyProgressF3(const Progress::GameProgressF3& p);
@@ -176,6 +325,22 @@ private:
     void ResetNightInPlace();    // dump Group 606: frame 3 reloads itself
     void Sfx(const char* s, bool loop, i32 ch, i32 vol);
     void SfxStop(const char* s);
+
+    // v2.63: the new screens
+    void TickWhatDay(f32 dt, const FNaF3Inputs& in);   // the night card + wait
+    void TickStaticDeath(f32 dt);                      // the death static (frame 4)
+    void TickGameOver(f32 dt, const FNaF3Inputs& in);  // frame 6
+    void TickRare(f32 dt, const FNaF3Inputs& in);      // frames 12/13/14
+    void TickLoad(f32 dt);                             // frame 18
+    void TickCutscene(f32 dt, const FNaF3Inputs& in);  // frame 16
+    void TickMinigame(f32 dt, const FNaF3Inputs& in);  // frames 19-24
+    void TickExtras(f32 dt, const FNaF3Inputs& in);    // frame 25
+    void MgStep(f32 dt, const FNaF3Inputs& in);        // the shared platformer
+    bool MgObstacle(f32 x, f32 y) const;               // wall probe (rect map)
+    bool MgBalloonAt(f32 x, f32 y) const;              // the bounce floors
+    void MgCheckPickups();                             // collects/exits/cakes
+    void GoWhatDay();                                  // the card -> wait -> office
+    void WriteNightProgress();                         // the next-day INI keys
 
     Screen m_screen;
     i32    m_night;
@@ -268,6 +433,20 @@ private:
     bool   m_beat5;
     i32    m_cine;            // v2.62: persisted (the dump's cutscene counter)
     bool   m_saveDirty;
+
+    // v2.63: the new-flow state
+    i32    m_rareId;          // which rare screen (1 boot / 2 gameover / 3 card)
+    i32    m_gameOverRare;    // the gameover 1/1000 roll result
+    f32    m_waitT;           // the 100 ms wait screen
+    bool   m_died;            // the office death routed to the static+gameover
+    Mg3State       m_mg;
+    CutsceneState  m_cs;
+    ExtrasState    m_ex;
+    bool   m_beat6;
+    bool   m_goodend;
+    bool   m_fourthStar;
+    bool   m_bb, m_cake, m_k1, m_k2, m_k3, m_k4;
+    bool   m_fastNights, m_ventProof, m_hyper, m_noCams;
 
     f32    m_pan;            // office scroll 0..1488
     f32    m_cardT;

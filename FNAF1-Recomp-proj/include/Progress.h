@@ -107,10 +107,24 @@ public:
     static void WipeF2();                       // the title X-hold wipe
 
     // ---- v2.62: the FNAF3 save ("freddy3") — the dump writes level (the
-    // next night, after the next-day increment) and cine ----
+    // next night, after the next-day increment) and cine. v2.63 adds the
+    // full dump key set: the progression flags (beat6/4thstar/goodend are
+    // the extras unlocks), the minigame chain (bb = balloons unlocked,
+    // cake = the Mangle cake, k1..k4 = the four kids fed) and the four
+    // cheats toggles the extras menu writes (fast/vents/hyper/nocams).
     struct GameProgressF3 {
         i32 level;    // 1..7 (the next night to play)
-        i32 cine;
+        i32 cine;     // the pending cutscene counter (0 = none yet)
+        bool beat6;       // night 6 beaten (jumpscares row + star 2)
+        bool goodend;     // the Marion trigger fired (minigames row + star 3)
+        bool fourthStar;  // night 6 beaten with no cheats on (star 4)
+        bool bb;          // BB minigame done: balloons in every minigame
+        bool cake;        // the Mangle cake taken (k-feeds possible)
+        bool k1, k2, k3, k4;  // the kids fed (BB / Toy Chica / GFreddy / RWQ)
+        bool fastNights;  // cheat: shorter nights
+        bool ventProof;   // cheat: vents can't be sealed against you
+        bool hyper;       // cheat: hyper Springtrap
+        bool noCams;      // cheat: monitor disabled
     };
     static void ResetF3(GameProgressF3& p);
     static bool LoadF3(GameProgressF3& p);
