@@ -438,18 +438,15 @@ void FNaF2Render::RenderAd() {
 }
 
 void FNaF2Render::RenderCard(const FNaF2Game& game) {
-    // frame 2: the "12:00 AM / Nst Night" card (429 @ center); the per-night
-    // anim cells (2nd..7th Night art) were not dumped as images — the night
-    // number rides under it in the debug font (labeled stopgap)
-    Draw(429, 394.0f, 316.0f, 235.0f, 116.0f, 0xFFFFFFFF);
-    if (m_text) {
-        char buf[32];
-        Snprintf(buf, sizeof(buf), "%d%s NIGHT", game.GetNight(),
-                 game.GetNight() == 1 ? "ST" : game.GetNight() == 2 ? "ND" :
-                 game.GetNight() == 3 ? "RD" : "TH");
-        m_text->DrawText((int)(470.0f * kScaleX), (int)(450.0f * kScaleY), buf, 0xFFFFFFFF);
+    // frame 2: the "12:00 AM / Nst Night" card (429 @ 512,374) — the
+    // per-night cells ARE in application.json (objInfo 45 anims 0/12-17):
+    // night 1->429, 2->430, 3->431, 4->436, 5->437, 6->426, 7->425
+    static const i32 kNightCell[7] = { 429, 430, 431, 436, 437, 426, 425 };
+    const i32 n = game.GetNight();
+    const i32 cell = kNightCell[(n < 1) ? 0 : (n > 7 ? 6 : n - 1)];
+    Draw(cell, 394.0f, 316.0f, 235.0f, 116.0f, 0xFFFFFFFF);
+    if (m_text)
         m_text->DrawText((int)(480.0f * kScaleX), (int)(200.0f * kScaleY), "12:00 AM", 0xFFB0B0B0);
-    }
 }
 
 void FNaF2Render::RenderStatic() {
@@ -458,13 +455,16 @@ void FNaF2Render::RenderStatic() {
 }
 
 void FNaF2Render::RenderNextDay(const FNaF2Game& game) {
-    // frame 5: the seven-segment "5" (297 @ 415,363) + the "AM" plate
-    // (295 @ 595,363); the 5->6 digit roll is an anim cell — the 6 rides
-    // as debug text after the roll (labeled)
-    Draw(297, 415.0f, 363.0f, 124.0f, 200.0f, 0xFFFFFFFF);
+    // frame 5: the "5 -> 6" roll IS in application.json (objInfo 224 anim 0,
+    // 18 cells @ speed 10 = 6 fps = 3 s), ending on the "6"; the AM plate
+    // (295 @ 595,363) sits beside it. The crowd cheer rides the anim end.
+    static const i32 kRoll[18] = { 297, 297, 297, 290, 300, 302, 304, 309, 309,
+                                   309, 309, 309, 433, 336, 335, 427, 364, 432 };
     Draw(295, 595.0f, 363.0f, 179.0f, 84.0f, 0xFFFFFFFF);
-    if (game.GetCardTimer() >= 1.0f && m_text)
-        m_text->DrawText((int)(430.0f * kScaleX), (int)(340.0f * kScaleY), "6", 0xFFFFFFFF);
+    int fi = (int)(game.GetCardTimer() * 6.0f);          // speed 10 -> 6 fps
+    if (fi < 0) fi = 0;
+    if (fi > 17) fi = 17;                                // hold the last cell
+    Draw(kRoll[fi], 415.0f, 363.0f, 57.0f, 86.0f, 0xFFFFFFFF);
 }
 
 void FNaF2Render::RenderDream(const FNaF2Game& game) {
@@ -623,6 +623,11 @@ void FNaF2Render::RenderMgLoad() {
 void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
     const FNaF2MgState& mg = game.Mg();
     const bool attack = (mg.attackT >= 0.0f);
+    // the walk cycles (application.json, the player objects' anim 0):
+    // mg1 [412,417]@speed5, mg2 [760], mg3 [722,726] — 3 fps waddles
+    int walkFrame = 0;
+    if (mg.game == 2)      walkFrame = ((int)(mg.t * 3.0f)) % 2;   // 412/417
+    else if (mg.game == 4) walkFrame = ((int)(mg.t * 3.0f)) % 2;   // 722/726
     if (mg.game == 2) {
         // frame 23 TAKE CAKE
         Draw(400, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
@@ -638,7 +643,8 @@ void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
         if (mg.murder && mg.carStage >= 1)
             Draw(715, (f32)mg.carX, 67.0f, 150.0f, 70.0f, 0xFFFFFFFF);
         if (mg.carStage == 2) Draw(699, 467.0f, 300.0f, 46.0f, 72.0f, 0xFFFFFFFF);
-        Draw(409, (f32)mg.px - 45.0f, (f32)mg.py - 55.0f, 90.0f, 100.0f, 0xFFFFFFFF);
+        Draw(walkFrame ? 417 : 412, (f32)mg.px - 45.0f, (f32)mg.py - 55.0f,
+             90.0f, 100.0f, 0xFFFFFFFF);
     } else if (mg.game == 3) {
         // frame 24 GIVE GIFTS, GIVE LIFE
         Draw(636, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
@@ -656,7 +662,7 @@ void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
             Draw(761, kHelpX[i], kHelpY[i], 46.0f, 60.0f, 0xFFFFFFFF);
         }
         if (!mg.phaseB) Draw(779, 526.0f, 388.0f, 79.0f, 57.0f, 0xFFFFFFFF);
-        Draw(758, (f32)mg.px - 45.0f, (f32)mg.py - 60.0f, 90.0f, 110.0f, 0xFFFFFFFF);
+        Draw(760, (f32)mg.px - 45.0f, (f32)mg.py - 60.0f, 90.0f, 110.0f, 0xFFFFFFFF);
     } else {
         // frame 25 FOXY'S PARTY: the 2048-wide world, the camera snaps at
         // the x=1024 line (dump groups 44/45)
@@ -675,13 +681,33 @@ void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
         if (mg.cycles >= 2) Draw(799, cam + 1560.0f, 430.0f, 46.0f, 72.0f, 0xFFFFFFFF);
         if (mg.phase == 1 && mg.cycles < 2)
             Draw(787, cam + 819.0f, 566.0f, 90.0f, 60.0f, 0xFFFFFFFF);
-        Draw(682, (f32)mg.px + cam - 45.0f, (f32)mg.py - 55.0f, 90.0f, 100.0f, 0xFFFFFFFF);
+        Draw(walkFrame ? 726 : 722, (f32)mg.px + cam - 45.0f, (f32)mg.py - 55.0f,
+             90.0f, 100.0f, 0xFFFFFFFF);
     }
-    // the scripted attack: the flash-into-static stand-in (the dump's attack
-    // anim cells live in the object's animation bank — not resolvable)
+    // the scripted attack — the REAL frame lists from the "attack animation"
+    // object (application.json): 20 = the car/man scare, 21 = the Puppet,
+    // 15 = Foxy; fullscreen cells at speed*0.6 fps, then the load jump
     if (attack) {
-        if (mg.attackT < 0.2f) Draw(23, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-        else                   Draw(361, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        static const i32 kFrames[3][16] = {
+            { 401, 385, 386, 388, 389, 390, 391, 392, 393, 394, 395, 396, 397, 398, 0, 0 },  // 15
+            { 515, 195, 517, 313, 315, 316, 317, 318, 324, 340, 342, 343, 345, 347, 514, 0 },// 20
+            { 320, 246, 516, 247, 248, 249, 250, 306, 310, 311, 312, 314, 319, 0, 0, 0 }     // 21
+        };
+        static const i32 kCount[3] = { 14, 15, 13 };
+        static const i32 kSpd[3]   = { 60, 50, 40 };
+        int idx = -1;
+        if      (mg.attackAnim == 15) idx = 0;
+        else if (mg.attackAnim == 20) idx = 1;
+        else if (mg.attackAnim == 21) idx = 2;
+        if (idx >= 0) {
+            const f32 fps = (f32)kSpd[idx] * 0.6f;
+            int fi = (int)(mg.attackT * fps);
+            if (fi < 0) fi = 0;
+            if (fi >= kCount[idx]) fi = kCount[idx] - 1;
+            Draw(kFrames[idx][fi], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        } else {
+            Draw(361, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        }
     }
 }
 

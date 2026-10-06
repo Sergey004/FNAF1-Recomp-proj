@@ -94,8 +94,23 @@ public:
     const char* ToastName() const;
     int         ToastGamerscore() const;
 
+    // ---- v2.62: the FNAF2 add-on slots (spa ids 11..20) ----
+    // The mask lives in fnaf2_ach.ini (bits 0..9); the profile write targets
+    // the same spa — the user extends the base .xlast with ids 11..20 per
+    // docs/FNAF2_DLC_ACHIEVEMENTS.md (the add-on superset rule keeps the ids
+    // identical if the real PDLC replaces it). Until the spa carries them the
+    // XUserWriteAchievements call fails harmlessly and the local mask + the
+    // printf log stay the record.
+    // Slot map (name them to match in the XLAST):
+    //   0..4 = nights 1..5 beaten, 5 = night 6, 6 = custom all-20,
+    //   7 = the 20/20/20/20 challenge (c1), 8 = all ten challenges,
+    //   9 = the 8-bit SAVETHEM chain discovered.
+    bool IsUnlockedFnaf2(int slot) const { return (m_unlockedF2 & (1u << slot)) != 0; }
+    void UnlockFnaf2(int slot);      // idempotent: mark + save + system write
+
 private:
     u32   m_unlocked;     // bit (id-1) set = achievement id unlocked
+    u32   m_unlockedF2;   // v2.62: the FNAF2 add-on mask (bits 0..9)
     class DebugConsole* m_console;   // v2.35: on-screen log sink (may be 0)
     bool  m_foxyRan;      // this night
     bool  m_freddyEast;   // this night

@@ -55,7 +55,10 @@ struct FNaF2AudioHooks {
     void (*play)(const char* sample, bool loop, i32 channel, i32 volume);
     void (*stop)(const char* sample);
     void (*channelVolume)(i32 channel, i32 volume);
-    FNaF2AudioHooks() : play(0), stop(0), channelVolume(0) {}
+    // v2.62: the add-on achievement slots (0..9 -> spa ids 11..20); the
+    // slot map lives in Achievements.h
+    void (*unlockAch)(i32 slot);
+    FNaF2AudioHooks() : play(0), stop(0), channelVolume(0), unlockAch(0) {}
 };
 
 // ------------------------------------------------------------
@@ -102,6 +105,8 @@ struct FNaF2MgState {
     bool phaseB;           // bear.alterable[15]
     i32 lives;             // child 5.alterable[0]
     f32 attackT;           // the scripted attack anim timer (-1 idle)
+    i32 attackAnim;        // v2.62: the attack's anim value (15/20/21 — the
+                           // frame lists live on the "attack animation" object)
 
     // ---- FOXY PARTY (frame 25) ----
     i32 phase;             // 0 intro, 1 walk, 2 party
@@ -123,7 +128,7 @@ struct FNaF2MgState {
         kidT = 0.0f; murder = false;
         carStage = 0; carT = 0.0f; carX = 0.0f; manStageT = 0.0f;
         for (i32 i = 0; i < 4; ++i) headGifted[i] = false;
-        gifts = 0; phaseB = false; lives = 0; attackT = -1.0f;
+        gifts = 0; phaseB = false; lives = 0; attackT = -1.0f; attackAnim = 0;
         phase = 0; cycles = 0; phaseT = 0.0f; popT = 0.0f;
     }
     FNaF2MgState() { Clear(); }

@@ -116,9 +116,21 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
     if (!m_batch || !m_pak) return;
     const f32 pan = game.GetPan();
 
-    // the office light states (203 base; 204/205 are the vent/light
-    // variants — the light logic lands with the panel polish wave)
-    DrawWorld(203, 0.0f, 0.0f, 2000.0f, 768.0f, pan, 0xFFFFFFFF);
+    // the office "foreground" states (dump objInfo 123: anim 0 = 203 normal,
+    // anim 12 = 204 — the VENT-ERROR variant; groups 337/338/344 switch it
+    // while the vent meter is <= -10, flickering under the hallucinations)
+    const bool ventError = game.GetVentMeter() <= -10;
+    if (ventError) {
+        // the error state: the 204 foreground at the dump's alpha coefficient
+        // 50 (group 346 sets it during the hallucination window)
+        DrawWorld(203, 0.0f, 0.0f, 2000.0f, 768.0f, pan, 0xFFFFFFFF);
+        u32 a = 200u;
+        if (game.IsHallucinating())
+            a = 120u + ((u32)((int)(time * 9.0f)) % 80u);
+        DrawWorld(204, 0.0f, 0.0f, 2000.0f, 768.0f, pan, (a << 24) | 0x00FFFFFFu);
+    } else {
+        DrawWorld(203, 0.0f, 0.0f, 2000.0f, 768.0f, pan, 0xFFFFFFFF);
+    }
 
     // Springtrap at the office window (img 206) — the stage-4 scare pose
     if (game.GetSpringtrapRoom() == FNaF3Game::R3_ST4)
@@ -210,14 +222,31 @@ void FNaF3Render::RenderMonitor(const FNaF3Game& game, f32 time) {
     Draw(75, 204.0f, 44.0f, 873.0f, 679.0f, 0xFFFFFFFF);
     const i32 cam = game.GetYouIn();
 
-    // the feed: shadow-Freddy overrides cams 02/10 (imgs 61/60)
+    // the feed: shadow-Freddy overrides cams 02/10 (imgs 61/60); the room
+    // cams draw the dump's own anim cell (FNaF3Game::FeedImg) fit inside the
+    // 825x650 feed — the cells are the props the original composites over
+    // the base, drawn here at native aspect from the pak's texture dims
     if (game.IsShadowFreddy() && cam == 2)      Draw(61, 228.0f, 58.0f, 845.0f, 679.0f, 0xFFFFFFFF);
     else if (game.IsShadowFreddy() && cam == 10) Draw(60, 228.0f, 58.0f, 869.0f, 680.0f, 0xFFFFFFFF);
     else {
         Draw(104, 228.0f, 58.0f, 825.0f, 650.0f, 0xFFFFFFFF);
-        // "Springtrap is here" — his window pose as the feed presence
-        if (game.SpringtrapOnCam(cam))
-            Draw(206, 480.0f, 58.0f, 320.0f, 650.0f, 0xFFFFFFFF);
+        const bool stHere = game.SpringtrapOnCam(cam);
+        const i32 piece = FNaF3Game::FeedImg(cam, stHere);
+        if (piece != 0 && piece != 104) {
+            // fit the piece inside a centered 400x330 box, native aspect
+            char pname[32];
+            Snprintf(pname, sizeof(pname), "img_%d", piece);
+            PakLoadedTexture* pt = m_pak ? m_pak->FindTexture(pname) : 0;
+            if (pt && pt->texture) {
+                const f32 pw = (f32)pt->origWidth, ph = (f32)pt->origHeight;
+                const f32 k = (pw > 0.0f && ph > 0.0f)
+                            ? (pw / ph > 400.0f / 330.0f ? 400.0f / pw : 330.0f / ph)
+                            : 1.0f;
+                const f32 dw = pw * k, dh = ph * k;
+                Draw(piece, 228.0f + (825.0f - dw) * 0.5f,
+                     58.0f + (650.0f - dh) * 0.5f, dw, dh, 0xFFFFFFFF);
+            }
+        }
     }
 
     // the phantom feed overlays
@@ -294,6 +323,11 @@ void FNaF3Render::RenderMap(const FNaF3Game& game) {
         }
         Draw(426, kMapX + 190.0f, kMapY + 355.0f, 50.0f, 30.0f,
              (sel == 15) ? 0xFF50A0FF : 0xFFFFFFFF);
+        // the sealing progress bar (img 611) while a seal is armed
+        if (game.GetSealTarget() != 0 && game.GetSealDuration() > 0.0f) {
+            const f32 w = 165.0f * (game.GetSealProgress() / game.GetSealDuration());
+            Draw(611, kMapX + 130.0f, kMapY + 300.0f, w, 30.0f, 0xFFFFFFFF);
+        }
     }
     if (m_text) {
         m_text->DrawText((int)(kMapX * kScaleX), (int)((kMapY + 405.0f) * kScaleY),
@@ -344,6 +378,33 @@ void FNaF3Render::DrawAttack(const FNaF3Game& game) {
     const i32 img = game.GetScareImg();
     if (img == 778)      Draw(img, 128.0f, -80.0f, 900.0f, 870.0f, 0xFFFFFFFF);
     else if (img == 792) Draw(img, 190.0f, -60.0f, 900.0f, 645.0f, 0xFFFFFFFF);
+}
+
+// ---- the dump's end screens (v2.62) ------------------------------------
+
+void FNaF3Render::RenderAd() {
+    // frame 8: the "COMING SOON! Fazbear's Fright" newspaper (img 0)
+    Draw(0, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+}
+
+void FNaF3Render::RenderRare2() {
+    // frame 13: the post-night glitch screen (img 228)
+    Draw(228, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+}
+
+void FNaF3Render::RenderEndScreen(i32 which) {
+    // frame 9 "bad end" = img 346 / frame 10 "good end" = img 172 /
+    // frame 11 "the end 2" = img 123 (the backdrops from the layouts);
+    // the night-5 chooser (frame 17) plays an anim whose cells are not
+    // dumped — a black hold with the caption stand-in
+    if (which == 1)      Draw(346, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    else if (which == 2) Draw(172, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    else if (which == 3) Draw(123, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    else {
+        if (m_batch) Draw(225, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        if (m_text) m_text->DrawText((int)(520.0f * kScaleX), (int)(340.0f * kScaleY),
+                                     "THE END", 0xFFC0C0C0);
+    }
 }
 
 } // namespace fnaf

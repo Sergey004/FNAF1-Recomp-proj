@@ -523,6 +523,42 @@ bool Progress::SaveAchieve(u32 bits) {
     return put == (size_t)len;
 }
 
+// ---- v2.62: the FNAF2 achievement mask (fnaf2_ach.ini, bits 0..9) ----
+
+bool Progress::LoadAchieveF2(u32* bits) {
+    *bits = 0;
+    bool ok = false;
+    FILE* f = StorageOpen("fnaf2_ach.ini", "rb", false);
+    if (!f) return false;
+    char buf[128];
+    while (fgets(buf, sizeof(buf), f)) {
+        char* eol = strchr(buf, '\r');
+        if (eol) *eol = '\0';
+        eol = strchr(buf, '\n');
+        if (eol) *eol = '\0';
+        char* s = buf;
+        while (*s && (*s == ' ' || *s == '\t')) ++s;
+        if (strncmp(s, "unlocked=", 9) == 0) {
+            *bits = (u32)atoi(s + 9);
+            ok = true;
+        }
+    }
+    fclose(f);
+    StorageClose();
+    return ok;
+}
+
+bool Progress::SaveAchieveF2(u32 bits) {
+    char buf[64];
+    int len = fnaf::Snprintf(buf, sizeof(buf), "unlocked=%u\n", (unsigned)bits);
+    FILE* f = StorageOpen("fnaf2_ach.ini", "wb", true);
+    if (!f) return false;
+    size_t put = fwrite(buf, 1, (size_t)len, f);
+    fclose(f);
+    StorageClose();
+    return put == (size_t)len;
+}
+
 // ------------------------------------------------------------
 // v2.62: the FNAF2 save — file "freddy2", section [freddy2], the dump's
 // own Ini keys (level/cine/turn/beatgame/beat6/beat7/c1..c10). Same
@@ -610,6 +646,62 @@ void Progress::WipeF2() {
     GameProgressF2 p;
     ResetF2(p);
     SaveF2(p);
+}
+
+// ---- v2.62: the FNAF3 save (freddy3: level/cine) ----
+
+void Progress::ResetF3(GameProgressF3& p) {
+    p.level = 1;
+    p.cine = 0;
+}
+
+bool Progress::LoadF3(GameProgressF3& p) {
+    ResetF3(p);
+    FILE* f = StorageOpen("freddy3", "rb", false);
+    if (!f) return false;
+    char buf[128];
+    bool inSection = false;
+    bool any = false;
+    char key[64];
+    int val = 0;
+    while (fgets(buf, sizeof(buf), f)) {
+        char* eol = strchr(buf, '\r');
+        if (eol) *eol = '\0';
+        eol = strchr(buf, '\n');
+        if (eol) *eol = '\0';
+        char* s = buf;
+        while (*s && (*s == ' ' || *s == '\t')) ++s;
+        if (*s == '\0' || *s == ';' || *s == '#') continue;
+        if (*s == '[') {
+            inSection = (strcmp(s, "[freddy3]") == 0);
+            continue;
+        }
+        if (!inSection) continue;
+        if (ParseIniLine(s, key, &val)) {
+            any = true;
+            if      (strcmp(key, "level") == 0) p.level = val;
+            else if (strcmp(key, "cine") == 0)  p.cine = val;
+        }
+    }
+    fclose(f);
+    StorageClose();
+    if (p.level < 1 || p.level > 7) p.level = 1;
+    if (!any) return false;
+    return true;
+}
+
+bool Progress::SaveF3(const GameProgressF3& pIn) {
+    GameProgressF3 out = pIn;
+    if (out.level < 1) out.level = 1;
+    char iniBuf[128];
+    int len = fnaf::Snprintf(iniBuf, sizeof(iniBuf),
+        "[freddy3]\nlevel=%d\ncine=%d\n", out.level, out.cine);
+    FILE* f = StorageOpen("freddy3", "wb", true);
+    if (!f) return false;
+    size_t put = fwrite(iniBuf, 1, (size_t)len, f);
+    fclose(f);
+    StorageClose();
+    return put == (size_t)len;
 }
 
 } // namespace fnaf

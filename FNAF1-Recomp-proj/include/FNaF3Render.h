@@ -28,6 +28,11 @@ public:
     void RenderMonitor(const FNaF3Game& game, f32 time);
     void DrawAttack(const FNaF3Game& game);      // the office jumpscares
 
+    // v2.62: the dump's end screens
+    void RenderAd();                             // frame 8: COMING SOON newspaper
+    void RenderRare2();                          // frame 13: the glitch screen
+    void RenderEndScreen(i32 which);             // 0 chooser / 1 bad / 2 good / 3 end2
+
 private:
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);
     void DrawWorld(int handle, float wx, float wy, float fw, float fh,

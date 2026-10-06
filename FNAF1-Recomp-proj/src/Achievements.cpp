@@ -76,6 +76,7 @@ static const AchievementDef kAchievements[Achievements::COUNT] = {
 
 Achievements::Achievements()
     : m_unlocked(0)
+    , m_unlockedF2(0)
     , m_console(0)
     , m_foxyRan(false)
     , m_freddyEast(false)
@@ -90,6 +91,9 @@ void Achievements::Init() {
     if (Progress::LoadAchieve(&bits)) m_unlocked = bits;
     printf("Achievements: unlocked=0x%03X\n", (unsigned)m_unlocked);
     if (m_console) m_console->Print("Achievements: unlocked=0x%03X", (unsigned)m_unlocked);
+    // v2.62: the FNAF2 add-on mask rides along (fnaf2_ach.ini)
+    if (Progress::LoadAchieveF2(&bits)) m_unlockedF2 = bits;
+    printf("Achievements: fnaf2 mask=0x%03X\n", (unsigned)m_unlockedF2);
 #if !defined(FNAF_LIVE_SAFE)
     // v2.48: log profile readiness once at boot — the profile write silently
     // no-ops when nobody is signed in, so state it (0 = nobody, 1 = local,
@@ -208,6 +212,33 @@ void Achievements::Save() {
         printf("ACH save FAILED\n");
         if (m_console) m_console->Print("ACH save FAILED");
     }
+}
+
+// ---- v2.62: the FNAF2 add-on slots (ids 11..20) ----
+
+void Achievements::UnlockFnaf2(int slot) {
+    if (slot < 0 || slot > 9) return;
+    const int id = 11 + slot;                 // the add-on id range (see the header)
+    if (m_unlockedF2 & (1u << slot)) return;  // already earned
+    m_unlockedF2 |= (1u << slot);
+    if (!Progress::SaveAchieveF2(m_unlockedF2)) printf("ACH F2 save FAILED\n");
+    // the profile write: the same pipe as the base ids; harmless failure
+    // until the spa carries the add-on ids (the local mask stays the record)
+#if !defined(FNAF_LIVE_SAFE)
+    if (XUserGetSigninState(0) == eXUserSigninState_NotSignedIn) {
+        printf("ACH F2 %d -> skipped (no signed-in profile at slot 0)\n", id);
+        if (m_console) m_console->Print("ACH F2 %d -> skipped (no profile)", id);
+        return;
+    }
+    XUSER_ACHIEVEMENT a;
+    a.dwUserIndex     = 0;
+    a.dwAchievementId = (DWORD)id;
+    DWORD res = XUserWriteAchievements(1, &a, NULL);
+    printf("ACH F2 %d -> 0x%08X (%s)\n", id, (unsigned)res, AchErrName(res));
+    if (m_console) m_console->Print("ACH F2 %d -> 0x%08X (%s)", id, (unsigned)res, AchErrName(res));
+#else
+    printf("ACH F2 %d (local only)\n", id);
+#endif
 }
 
 // v2.35: human-readable names for the XDK results achievements can hit.

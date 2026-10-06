@@ -79,6 +79,12 @@ public:
     static bool LoadAchieve(u32* bits);
     static bool SaveAchieve(u32 bits);
 
+    // ---- v2.62: the FNAF2 achievement mask (fnaf2_ach.ini) ----
+    // bits 0..9 = the FNAF2 add-on slots (spa ids 11..20); kept SEPARATE from
+    // the FNAF1 mask so the two games never step on each other.
+    static bool LoadAchieveF2(u32* bits);
+    static bool SaveAchieveF2(u32 bits);
+
     // ---- v2.62: the FNAF2 save ("freddy2", the dump's own INI file) ----
     // Keys mirror the original Ini extension exactly: level (the night the
     // 6 AM screen saved = the NEXT night), cine (dream counter), turn
@@ -99,6 +105,16 @@ public:
     static bool LoadF2(GameProgressF2& p);      // false = no/fresh save
     static bool SaveF2(const GameProgressF2& p);
     static void WipeF2();                       // the title X-hold wipe
+
+    // ---- v2.62: the FNAF3 save ("freddy3") — the dump writes level (the
+    // next night, after the next-day increment) and cine ----
+    struct GameProgressF3 {
+        i32 level;    // 1..7 (the next night to play)
+        i32 cine;
+    };
+    static void ResetF3(GameProgressF3& p);
+    static bool LoadF3(GameProgressF3& p);
+    static bool SaveF3(const GameProgressF3& p);
 };
 
 } // namespace fnaf

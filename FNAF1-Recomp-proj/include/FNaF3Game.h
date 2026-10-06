@@ -19,6 +19,7 @@
 #define FNAF3_GAME_H
 
 #include "Types.h"
+#include "Progress.h"    // v2.62: GameProgressF3 (the "freddy3" save struct)
 
 namespace fnaf {
 
@@ -58,7 +59,14 @@ public:
         SCR_NIGHTSTART = 1,   // frame 2 "what day" card
         SCR_OFFICE     = 2,   // frame 3 "Frame 1"
         SCR_STATIC6    = 3,   // frame 4 "static" (6 AM transition)
-        SCR_NEXTDAY    = 4    // frame 5 "next day" (payday card)
+        SCR_NEXTDAY    = 4,   // frame 5 "next day" (payday card)
+        // v2.62: the rest of the dump's flow
+        SCR_AD         = 5,   // frame 8: the "COMING SOON" newspaper (after New Game)
+        SCR_RARE2      = 6,   // frame 13: the post-night glitch screen (garble, 5 s)
+        SCR_ENDCHOOSER = 7,   // frame 17: the night-5 ending anim (chooser)
+        SCR_ENDBAD     = 8,   // frame 9: bad end (mb2 + beatgame)
+        SCR_ENDGOOD    = 9,   // frame 10: good end (the "ending" song + beatgame)
+        SCR_END2       = 10   // frame 11: the end 2 (mb2 + beatgame)
     };
 
     // Springtrap's places: the dump moves one invisible tracker ("dhfgh")
@@ -108,6 +116,7 @@ public:
     i32    GetSealedVent()    const { return m_sealedVent; }    // 0 none, 11..15
     i32    GetSealTarget()    const { return m_sealTarget; }    // sealing now
     f32    GetSealProgress()  const { return m_sealProgress; }
+    f32    GetSealDuration()  const { return m_sealDuration; }
     i32    GetPlayCounter()   const { return m_playCounter; }   // 0..7 lure charge
 
     // maintenance panel
@@ -139,6 +148,12 @@ public:
     i32    GetOptionSelected()const { return m_optionSelected; }
     i32    GetLastNight()     const { return m_lastNight; }
     bool   IsBeat5()          const { return m_beat5; }
+
+    // v2.62: the freddy3 save bridge (the module loads at boot and writes
+    // when the next-day screen flips the dirty bit)
+    void   ApplyProgressF3(const Progress::GameProgressF3& p);
+    void   FillProgressF3(Progress::GameProgressF3& p) const;
+    bool   ConsumeSaveDirty() { const bool d = m_saveDirty; m_saveDirty = false; return d; }
 
     // feed image table (dump "camera screen" act #17 values): empty/Springtrap
     static i32 FeedImg(i32 cam, bool springtrap);
@@ -251,6 +266,8 @@ private:
     i32    m_optionSelected;
     i32    m_lastNight;
     bool   m_beat5;
+    i32    m_cine;            // v2.62: persisted (the dump's cutscene counter)
+    bool   m_saveDirty;
 
     f32    m_pan;            // office scroll 0..1488
     f32    m_cardT;

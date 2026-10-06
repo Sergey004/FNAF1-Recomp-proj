@@ -5,6 +5,7 @@
 
 #include "AppModules.h"
 #include "AudioSystem.h"    // Play/Stop for the module ambience
+#include "Achievements.h"   // v2.62: the FNAF2 add-on id writes
 #include "TextRenderer.h"   // stub screens call DrawText (full type needed)
 #include "PakLoader.h"      // FindTexture for the module's own draws
 #include "SpriteBatch.h"
@@ -72,6 +73,11 @@ static void FNaF2SfxStop(const char* name) {
 static void FNaF2ChVol(i32 channel, i32 volume) {
     if (s_fn2Audio) s_fn2Audio->SetChannelVolume(channel, CFVolumeToDb(volume));
 }
+// v2.62: the add-on achievement trampoline (the core's Achievements owner)
+static Achievements* s_fn2Ach = 0;
+static void FNaF2AchUnlock(i32 slot) {
+    if (s_fn2Ach) s_fn2Ach->UnlockFnaf2(slot);
+}
 
 bool FNaF2Module::Load(AppServices& services) {
     m_services = services;
@@ -91,9 +97,11 @@ bool FNaF2Module::Load(AppServices& services) {
     // owns the AudioSystem wiring (PlayOnChannel + CFVolume dB conversion).
     s_fn2Audio = services.audio;
     s_fn2Pak   = services.pak;
+    s_fn2Ach   = services.ach;
     m_game.audio.play           = FNaF2SfxPlay;
     m_game.audio.stop           = FNaF2SfxStop;
     m_game.audio.channelVolume  = FNaF2ChVol;
+    m_game.audio.unlockAch      = FNaF2AchUnlock;
     m_game.ResetToTitle();
     // v2.62: load the dump's own save ("freddy2") into the session
     Progress::PrimeStorage();
@@ -310,6 +318,9 @@ bool FNaF3Module::Load(AppServices& services) {
     m_game.audio.stop           = FNaF3SfxStop;
     m_game.audio.channelVolume  = FNaF3ChVol;
     m_game.ResetToTitle();
+    // v2.62: load the dump's own save ("freddy3")
+    GameProgressF3 p3;
+    if (Progress::LoadF3(p3)) m_game.ApplyProgressF3(p3);
     return true;
 }
 
@@ -338,6 +349,14 @@ void FNaF3Module::Tick(f32 dt) {
     m_prevX = xNow;
 
     m_game.Tick(dt, in);
+
+    // v2.62: the freddy3 save bridge (the next-day screen flips the bit)
+    if (m_game.ConsumeSaveDirty()) {
+        GameProgressF3 p3;
+        m_game.FillProgressF3(p3);
+        if (Progress::SaveF3(p3))
+            printf("FNAF3 SAVE: level=%d\n", p3.level);
+    }
 
     // ---- screen ambience (the office loop set + the night voice) ----
     const int scr = (int)m_game.GetScreen();
@@ -392,6 +411,13 @@ void FNaF3Module::Render() {
             break;
         case FNaF3Game::SCR_STATIC6:    m_render.RenderStatic6(); break;
         case FNaF3Game::SCR_NEXTDAY:    m_render.RenderNextDay(m_game.GetNight()); break;
+        // v2.62: the dump's end screens
+        case FNaF3Game::SCR_AD:         m_render.RenderAd(); break;
+        case FNaF3Game::SCR_RARE2:      m_render.RenderRare2(); break;
+        case FNaF3Game::SCR_ENDCHOOSER: m_render.RenderEndScreen(0); break;
+        case FNaF3Game::SCR_ENDBAD:     m_render.RenderEndScreen(1); break;
+        case FNaF3Game::SCR_ENDGOOD:    m_render.RenderEndScreen(2); break;
+        case FNaF3Game::SCR_END2:       m_render.RenderEndScreen(3); break;
     }
 }
 

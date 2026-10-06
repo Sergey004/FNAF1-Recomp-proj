@@ -33,6 +33,7 @@ class AudioSystem;
 class PakLoader;
 class SpriteBatch;
 class TextRenderer;
+class Achievements;
 struct GameInput;
 
 // Services the core hands to every module once, at boot. All owned by the
@@ -44,8 +45,9 @@ struct AppServices {
     SpriteBatch*  batch;   // quad queue; core calls Begin() before module Render()
     TextRenderer* text;    // bitmap text (debug/HUD strings)
     GameInput*    input;   // v2.30: this frame's polled pad snapshot
+    Achievements* ach;     // v2.62: the add-on achievement ids (FNAF2 11..20)
 
-    AppServices() : audio(0), pak(0), batch(0), text(0), input(0) {}
+    AppServices() : audio(0), pak(0), batch(0), text(0), input(0), ach(0) {}
 };
 
 class AppModule {

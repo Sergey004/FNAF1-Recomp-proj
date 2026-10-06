@@ -1356,6 +1356,7 @@ int main(int argc, char* argv[]){
                     s_svc.pak   = &g_pak;
                     s_svc.batch = &g_batch;
                     s_svc.text  = &g_text;
+                    s_svc.ach   = &g_ach;   // v2.62: the FNAF2 add-on ids
                 }
                 m->Load(s_svc);
                 s_loadedModule = m;

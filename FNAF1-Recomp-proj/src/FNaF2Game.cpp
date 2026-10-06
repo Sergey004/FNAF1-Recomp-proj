@@ -1029,18 +1029,30 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
                         m_cFlags[m_doingCustom - 1] = true;
                     if (m_nightNext == 7) m_beat6 = true;
                     if (m_nightNext == 8 && m_allAre20) m_beat7 = true;
+                    // v2.62: the add-on achievement slots — nights 1..6 and
+                    // the custom flags (the slot map in Achievements.h)
+                    if (audio.unlockAch) {
+                        if (m_night >= 1 && m_night <= 5) audio.unlockAch(m_night - 1);
+                        if (m_night == 6)                 audio.unlockAch(5);
+                        if (m_nightNext == 8 && m_allAre20) audio.unlockAch(6);
+                        if (m_doingCustom == 1)           audio.unlockAch(7);
+                        bool allC = true;
+                        for (i32 i = 0; i < 10; ++i) if (!m_cFlags[i]) allC = false;
+                        if (allC) audio.unlockAch(8);
+                    }
                 }
             }
             break;
         }
 
         case SCR_NEXTDAY: {
-            // dump frame 5: the 5->6 digit roll + the crowd cheer (~1 s),
-            // then the ~6 s route (the Active 3 alt[1] > 300 family):
+            // dump frame 5: the 5->6 digit roll (18 cells @ 6 fps = 3 s; the
+            // crowd cheer fires on the anim-finished condition), then the
+            // ~6 s route (the Active 3 alt[1] > 300 family):
             //   2 -> card; 3/4/5 -> dream; 6/7/8 -> the endings (counter := 5)
             m_cardT += dt;
-            if (m_cardT >= 1.0f && m_scratchT == 0.0f) {
-                m_scratchT = 1.0f;   // one-shot cheer marker
+            if (m_cardT >= 3.0f && m_scratchT == 0.0f) {
+                m_scratchT = 1.0f;   // one-shot cheer marker (the roll's end)
                 Sfx("snd_CROWD_SMALL_CHIL_EC049202", false, 2, 100);
             }
             if (m_cardT >= 6.0f) {
@@ -1343,6 +1355,8 @@ void FNaF2Game::StartMinigame(i32 which) {
         case 1: {   // frame 19 SAVETHEM: the spawn table (dump groups 77/82-84)
             m_screen = SCR_EIGHTBIT;
             m_mg.spawnPick = 1 + (rand() % 4);
+            // v2.62 slot 9: the 8-bit chain discovered (the 1/1000 death roll)
+            if (audio.unlockAch) audio.unlockAch(9);
             switch (m_mg.spawnPick) {
                 case 1: m_mg.h = 1; m_mg.v = 3; m_mg.px = 638; m_mg.py = 396; break;
                 case 2: m_mg.h = 3; m_mg.v = 4; m_mg.px = 388; m_mg.py = 396; break;
@@ -1373,11 +1387,12 @@ void FNaF2Game::StartMinigame(i32 which) {
 
 void FNaF2Game::MgAttack(i32 animValue) {
     // the scripted attack (frames 23/24/25): the attack animation + Xscream2,
-    // then -> the load frame. The dump's attack anim cells live in the
-    // object's animation bank (not resolvable) — the renderer flashes.
+    // then -> the load frame. The frame lists ride the "attack animation"
+    // object (application.json): 15 = Foxy, 20 = the car/man, 21 = the Puppet.
     (void)animValue;
     if (m_mg.attackT >= 0.0f) return;
     m_mg.attackT = 0.0f;
+    m_mg.attackAnim = animValue;
     Sfx("snd_Xscream2", false, 1, 100);
 }
 

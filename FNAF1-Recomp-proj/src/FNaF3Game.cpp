@@ -31,6 +31,8 @@ void FNaF3Game::ResetToTitle() {
     m_optionSelected = 0;
     m_lastNight = 1;
     m_beat5 = false;
+    m_cine = 0;
+    m_saveDirty = false;
     m_pan = 488.0f;
     // a fresh boot still has nothing behind the title until the FNAF3 INI
     // save system lands (same session-unlock terms as FNAF2 v2.58)
@@ -182,14 +184,27 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
                 m_optionSelected = (m_optionSelected + 1) % 4;
             if (in.aPressed) {
                 switch (m_optionSelected) {
-                    case 0: StartNight(1); break;                       // new game
-                    case 1: StartNight(m_lastNight < 1 ? 1 : m_lastNight); break; // load
+                    case 0:
+                        // dump title -> ad (frame 8) -> what day
+                        m_night = 1;
+                        m_screen = SCR_AD;
+                        m_cardT = 0.0f;
+                        break;
+                    case 1: StartNight(m_lastNight < 1 ? 1 : m_lastNight); break;   // load
                     case 2: if (m_beat5) StartNight(6); break;          // nightmare
                     case 3: /* extras menu — later wave */ break;
                 }
             }
             break;
         }
+
+        case SCR_AD:
+            // dump frame 8: any key / 90 s -> the night card
+            m_cardT += dt;
+            if (m_cardT >= 90.0f || in.aPressed || in.bPressed || in.upPressed || in.downPressed) {
+                StartNight(m_night < 1 ? 1 : m_night);
+            }
+            break;
 
         case SCR_NIGHTSTART:
             m_cardT += dt;
@@ -212,11 +227,89 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
         case SCR_NEXTDAY:
             m_cardT += dt;
             if (m_cardT >= 3.5f) {
-                // "next day" (g): night number += 1, level saved (the INI
-                // save is a later wave — session memory only)
+                // "next day" (g): night number += 1, then the INI write
+                // (freddy3: level = the incremented night, cine). The dump's
+                // routes: nights 2-6 -> rare2 (the glitch screen) -> title;
+                // the night-5 ending -> the chooser (frame 17); the 7th
+                // counter (night 6 beaten) -> the good end (frame 10).
                 m_night += 1;
                 m_lastNight = m_night > 6 ? 6 : m_night;
                 if (m_night - 1 == 5) m_beat5 = true;   // nightmare unlocked
+                m_saveDirty = true;                      // v2.62: the module saves
+                if (m_night == 6) {
+                    m_screen = SCR_ENDCHOOSER;           // frame 17
+                    m_cardT = 0.0f;
+                } else if (m_night >= 7) {
+                    m_screen = SCR_ENDGOOD;              // frame 10
+                    m_cardT = 0.0f;
+                } else {
+                    m_screen = SCR_RARE2;                // frame 13
+                    m_cardT = 0.0f;
+                }
+            }
+            break;
+
+        case SCR_RARE2:
+            // dump frame 13: StopAll + "crazy garble" loop, 5 s -> title
+            if (m_cardT == 0.0f) {
+                SfxStop("snd_tablefan"); SfxStop("snd_startday");
+                Sfx("snd_crazy garble", true, 1, 100);
+            }
+            m_cardT += dt;
+            if (m_cardT >= 5.0f || in.bPressed) {
+                SfxStop("snd_crazy garble");
+                m_screen = SCR_TITLE;
+                m_cardT = 0.0f;
+            }
+            break;
+
+        case SCR_ENDCHOOSER:
+            // dump frame 17: the night-5 ending plays (the "Active" anim —
+            // cells not dumped, a hold stand-in); its write is beatgame = 1
+            // (the dump's ending screens carry it; here it unlocks nightmare
+            // persistence), then the title. The minigame-driven good/bad
+            // split lands with the minigames wave.
+            if (m_cardT == 0.0f) {
+                SfxStop("snd_tablefan"); SfxStop("snd_startday");
+                Sfx("snd_mb2", true, 1, 100);
+                m_beat5 = true;
+                m_saveDirty = true;
+            }
+            m_cardT += dt;
+            if (m_cardT >= 8.0f || in.aPressed || in.bPressed) {
+                SfxStop("snd_mb2");
+                m_screen = SCR_TITLE;
+                m_cardT = 0.0f;
+            }
+            break;
+
+        case SCR_ENDBAD:
+        case SCR_END2:
+            // dump frames 9/11: mb2 loop + beatgame = 1, Escape/150 s -> title
+            if (m_cardT == 0.0f) {
+                Sfx("snd_mb2", true, 1, 100);
+                m_beat5 = true;
+                m_saveDirty = true;
+            }
+            m_cardT += dt;
+            if (m_cardT >= 150.0f || in.bPressed) {
+                SfxStop("snd_mb2");
+                m_screen = SCR_TITLE;
+                m_cardT = 0.0f;
+            }
+            break;
+
+        case SCR_ENDGOOD:
+            // dump frame 10: the "ending" song + beatgame = 1, Escape/590 s
+            // -> title (the long credit-length screen; B skips)
+            if (m_cardT == 0.0f) {
+                Sfx("snd_ending", true, 1, 100);
+                m_beat5 = true;
+                m_saveDirty = true;
+            }
+            m_cardT += dt;
+            if (m_cardT >= 590.0f || in.bPressed) {
+                SfxStop("snd_ending");
                 m_screen = SCR_TITLE;
                 m_cardT = 0.0f;
             }
@@ -316,6 +409,17 @@ void FNaF3Game::TickOffice(f32 dt, const FNaF3Inputs& in) {
     }
 
     // ---- sub-systems ----
+    // the vent seal (g447-448): the progress counts to 50+Random(50) frames
+    // while the seal is armed; done -> the vent closes (glitch2)
+    if (m_sealTarget != 0) {
+        m_sealProgress += dt;
+        if (m_sealProgress >= m_sealDuration) {
+            m_sealedVent = m_sealTarget;    // only one vent closed at a time
+            m_sealTarget = 0;
+            m_sealProgress = 0.0f;
+            Sfx("snd_glitch2", false, 8, 100);
+        }
+    }
     TickClock(dt);
     TickSpringtrap(dt);
     TickLure(dt);
@@ -450,7 +554,7 @@ void FNaF3Game::ExecuteAction(i32 act) {
         case R3_ST4: if (act > 1) {
                         if (blackout)          dest = R3_GY;
                         else if (m_panelOpen)  dest = R3_GY;     // g513/515
-                        else if (m_viewing >= 2) { dest = R3_GY2; m_bigScare = true; }
+                        else if (m_viewing >= 2) { dest = R3_GY2; m_bigScare = true; m_gotYouT = 0.0f; }
                         else dest = m_stRoom;
                      } else dest = m_stRoom; break;
         default: dest = m_stRoom; break;
@@ -492,8 +596,8 @@ void FNaF3Game::EnterVent(i32 vent) {
             case R3_V11: m_stRoom = R3_ST3; break;
             case R3_V12: m_stRoom = R3_ST3; break;
             case R3_V13: m_stRoom = R3_ST1; break;
-            case R3_V14: m_stRoom = R3_GY2; m_bigScare = false; break;
-            case R3_V15: m_stRoom = R3_GY2; m_bigScare = false; break;
+            case R3_V14: m_stRoom = R3_GY2; m_bigScare = false; m_gotYouT = 0.0f; break;
+            case R3_V15: m_stRoom = R3_GY2; m_bigScare = false; m_gotYouT = 0.0f; break;
         }
     }
     m_totalTurns = 0;
@@ -647,14 +751,18 @@ void FNaF3Game::TickPhantoms(f32 dt) {
     m_phantomRollT += dt;
     if (m_phantomRollT >= 20.0f) {
         m_phantomRollT = 0.0f;
-        if (m_night >= 2 && m_phBB == 0 && m_viewing <= 1 && (rand() % 10) + 1 <= m_ai)
-            m_phBB = 1;
-        if (m_night >= 2 && m_phMangle == 0 && m_youIn != 4 && (rand() % 7) + 1 <= m_ai)
-            m_phMangle = 2;
-        if (m_night >= 4 && m_phPuppet == 0 && m_youIn != 8 && (rand() % 10) + 1 <= m_ai)
-            m_phPuppet = 2;
-        if (m_night >= 3 && m_phChica == 0 && m_youIn != 7 && (rand() % 10) + 1 <= m_ai)
-            m_phChica = 2;
+        if (m_night >= 2 && m_phBB == 0 && m_viewing <= 1 && (rand() % 10) + 1 <= m_ai) {
+            m_phBB = 1; m_phBBStare = 0.0f;      // fresh stare on re-arm
+        }
+        if (m_night >= 2 && m_phMangle == 0 && m_youIn != 4 && (rand() % 7) + 1 <= m_ai) {
+            m_phMangle = 2; m_phMangleStare = 0.0f;
+        }
+        if (m_night >= 4 && m_phPuppet == 0 && m_youIn != 8 && (rand() % 10) + 1 <= m_ai) {
+            m_phPuppet = 2; m_phPuppetStare = 0.0f;
+        }
+        if (m_night >= 3 && m_phChica == 0 && m_youIn != 7 && (rand() % 10) + 1 <= m_ai) {
+            m_phChica = 2; m_phChicaStare = 0.0f;
+        }
         if (m_night >= 3 && m_phGF == 0 && (rand() % 12) + 1 <= m_ai)
             m_phGF = 1;
         if (!m_shadowFreddy && m_viewing <= 1 && (rand() % 10000) == 0)
@@ -776,6 +884,15 @@ void FNaF3Game::TickGotYou(f32 dt) {
     // Group 204: he is at GOT YOU and the view is not past him
     if (m_gotYou == 0 && m_stRoom == R3_GY && (m_pan + 512.0f) <= 1300.0f)
         m_gotYou = 1;
+    // Groups 510/512: he is at GOT YOU 2 (the window) — while the monitor is
+    // up, after a 1 s beat, Random(2) fires the scare; the vent-error
+    // blackout (alpha > 250) fires it at once even without the monitor
+    if (m_gotYou == 0 && m_stRoom == R3_GY2) {
+        m_gotYouT += dt;
+        if ((m_viewing >= 2 && m_gotYouT >= 1.0f && (rand() % 2) == 0) ||
+            (m_blackoutAlpha > 250.0f && m_viewing <= 1))
+            m_gotYou = 2;
+    }
 
     if (m_gotYou == 1) {
         // the view yanks back (g205: -20/frame), 20 frames of it (g209/210),
@@ -816,6 +933,22 @@ void FNaF3Game::ResetNightInPlace() {
 // feed query for the renderer: is Springtrap visible on this cam?
 bool FNaF3Game::SpringtrapOnCam(i32 cam) const {
     return RoomToCam(m_stRoom) == cam;
+}
+
+// ---- v2.62: the freddy3 save bridge ----
+
+void FNaF3Game::ApplyProgressF3(const Progress::GameProgressF3& p) {
+    m_lastNight = p.level < 1 ? 1 : (p.level > 6 ? 6 : p.level);
+    m_cine = p.cine;
+    // beatgame is the nightmare unlock: the dump stores no separate flag —
+    // level 6+ implies night 5 was beaten (the title's nightmare row no-ops
+    // while !m_beat5; FNAF3's title rows are always drawn)
+    m_beat5 = (p.level > 5);
+}
+
+void FNaF3Game::FillProgressF3(Progress::GameProgressF3& p) const {
+    p.level = m_night;      // the next-day screen already incremented it
+    p.cine = m_cine;
 }
 
 } // namespace fnaf
