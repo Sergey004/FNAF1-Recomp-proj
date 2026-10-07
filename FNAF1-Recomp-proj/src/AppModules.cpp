@@ -644,6 +644,7 @@ void SLModule::Tick(f32 dt) {
         in.lookDir    = m_services.input->lookDir;
         in.flasherPressed = in.xPressed;                  // X = the flash
         in.wHeld      = m_services.input->aHeld;          // A hold walks
+        in.aHeld      = m_services.input->aHeld;          // A hold fills
         in.shiftHeld  = (m_services.input->rightDoorAxis > 0.5f);  // RT
     }
     m_prevX = xNow;

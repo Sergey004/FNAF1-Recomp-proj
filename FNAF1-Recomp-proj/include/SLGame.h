@@ -44,7 +44,6 @@ struct SLInputs {            // translated from GameInput by the module
                  upPressed(false), downPressed(false), leftPressed(false),
                  rightPressed(false), wHeld(false), aHeld(false),
                  shiftHeld(false), flasherPressed(false), lookDir(0.0f) {}
-                 flasherPressed(false), lookDir(0.0f) {}
 };
 
 struct SLAudioHooks {
