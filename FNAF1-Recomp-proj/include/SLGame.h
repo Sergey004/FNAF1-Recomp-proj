@@ -35,13 +35,15 @@ struct SLInputs {            // translated from GameInput by the module
     bool lbPressed, rbPressed;
     bool upPressed, downPressed, leftPressed, rightPressed;
     bool wHeld;              // LS up (the "walk" hold)
+    bool aHeld;              // A hold (the task fill / the flash hold)
     bool shiftHeld;          // RT (the fast/loud walk)
     bool flasherPressed;     // X-edge expression (Funtime flash)
     f32  lookDir;            // pan
     SLInputs() : aPressed(false), bPressed(false), xPressed(false),
                  yPressed(false), lbPressed(false), rbPressed(false),
                  upPressed(false), downPressed(false), leftPressed(false),
-                 rightPressed(false), wHeld(false), shiftHeld(false),
+                 rightPressed(false), wHeld(false), aHeld(false),
+                 shiftHeld(false), flasherPressed(false), lookDir(0.0f) {}
                  flasherPressed(false), lookDir(0.0f) {}
 };
 

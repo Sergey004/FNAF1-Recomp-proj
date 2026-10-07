@@ -543,18 +543,57 @@ void SLGame::TickFuntime(f32 dt, const SLInputs& in) {
 // ------------------------------------------------------------
 
 void SLGame::TickBreaker(f32 dt, const SLInputs& in) {
-    // the breaker task simplified (wave 1, labeled): hold A to reboot the
-    // meters; three panels done -> the room forwards to Baby's Room
-    (void)in;
-    TickBreakerHold(dt);
+    // v2.66: the breaker task — hold A to fill each of three panels (the
+    // dump's 4-s fill gates); Freddie Funtime gets louder the longer it
+    // runs (his counter +1 per noise roll) and kills at 7+. S exits at
+    // Script Event 85. (Dump: frame 9 "Breaker Room"; kills -> game over.)
+    if (m_cardT == 0.0f) {
+        Sfx("snd_control room power down vrs3", true, 1, 60);
+        Sfx("snd_Bin-Met_28G_HD2-28022", false, 12, 60);
+        m_brkPanel = 0; m_brkFill = 0.0f; m_brkFreddy = 0;
+        m_brkRollT = 0.0f; m_brkAnimT = 0.0f;
+    }
+    m_cardT += dt;
+    if (m_scareT > 0.0f) return;   // the scare override (the switch ticks it)
+
+    // fill the current panel while A is held (the dump's 4-s fill gates)
+    if (in.aHeld && m_brkPanel < 3) {
+        m_brkFill += dt / 0.04f * 0.5f;
+        if (m_brkFill >= 100.0f) {
+            m_brkFill = 0.0f;
+            m_brkPanel += 1;
+            Sfx("snd_Snapmouse_1_clk_2", false, 25, 80);
+        }
+    } else if (m_brkFill > 0.0f) {
+        m_brkFill -= dt * 8.0f;
+        if (m_brkFill < 0.0f) m_brkFill = 0.0f;
+    }
+    // the noise roll: he advances while the task runs
+    m_brkRollT += dt;
+    if (m_brkRollT >= (m_brkPanel > 0 ? 3.5f : 4.0f)) {
+        m_brkRollT = 0.0f;
+        if ((rand() % 2) == 0 && m_brkPanel < 3) m_brkFreddy += 1;
+    }
+    m_brkAnimT += dt;
+    if (m_brkFreddy >= 7) {
+        m_scareT = 0.001f;
+        m_scareImg = 2;
+        Sfx("snd_scream op5-8", false, 24, 100);
+    }
+    // the task done: the day-plan beat and the exit route
+    if (m_brkPanel >= 3) {
+        if (m_scriptEvent < 85) m_scriptEvent = 0;
+        SfxStop("snd_control room power down vrs3");
+        GoTo(12);                                       // -> Baby's Room
+    }
+    if (in.bPressed && m_scriptEvent >= 85) {
+        SfxStop("snd_control room power down vrs3");
+        GoTo(12);
+    }
 }
 
 void SLGame::TickBreakerHold(f32 dt) {
-    m_cardT += dt;
-    if (m_cardT >= 20.0f) {
-        m_cardT = 0.0f;
-        GoTo(12);                                       // -> Baby's Room
-    }
+    (void)dt;
 }
 
 // ------------------------------------------------------------
