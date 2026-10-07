@@ -129,6 +129,43 @@ public:
     static void ResetF3(GameProgressF3& p);
     static bool LoadF3(GameProgressF3& p);
     static bool SaveF3(const GameProgressF3& p);
+
+    // ---- v2.64: the FNAF4 save ("fn4") — the dump writes night (the
+    // next night, after the night-win increment), scene (the cutscene
+    // counter), beat5..beat8, the s1..s6 challenge-combo stars and the
+    // cheat toggles (house map / fast nights / radar / blind mode /
+    // insta foxy / mad freddy / all nightmare). ----
+    struct GameProgressF4 {
+        i32 night;        // 1..8 (the next night to play)
+        i32 scene;        // the played cutscene counter (0 = none)
+        bool beat5, beat6, beat7, beat8;
+        bool s1, s2, s3, s4, s5, s6;
+        bool test;
+        bool cheatHouseMap, fastNights, cheatRadar;
+        bool blindMode, instaFoxy, madFreddy, allNightmare;
+    };
+    static void ResetF4(GameProgressF4& p);
+    static bool LoadF4(GameProgressF4& p);
+    static bool SaveF4(const GameProgressF4& p);
+
+    // ---- v2.65: the Sister Location save ("sl") — the dump writes INI
+    // "sl" key `current` (the night), `intro`, `beat1` (Extras unlocked),
+    // `beat3` (Custom unlocked), `keycard` (star 2), `endsceneno`,
+    // `104` (star 4). The Warning-frame Delete wipes current/beat1/intro/
+    // beat3/keycard/endsceneno. ----
+    struct GameProgressSL {
+        i32  current;     // the next night (1..5; the dump clamps 1..5)
+        bool intro;       // the night-4 intro seen
+        bool beat1;       // extras unlocked
+        bool beat3;       // custom night unlocked
+        bool keycard;     // star 2
+        i32  endsceneno;
+        bool star104;
+    };
+    static void ResetSL(GameProgressSL& p);
+    static bool LoadSL(GameProgressSL& p);
+    static bool SaveSL(const GameProgressSL& p);
+    static void WipeSL();   // the Warning-frame Delete wipe
 };
 
 } // namespace fnaf

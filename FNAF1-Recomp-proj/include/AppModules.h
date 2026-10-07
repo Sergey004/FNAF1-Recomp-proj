@@ -23,6 +23,8 @@
 #include "FNaF3Render.h"
 #include "FNaF4Game.h"
 #include "FNaF4Render.h"
+#include "SLGame.h"       // v2.65: Sister Location wave 1
+#include "SLRender.h"
 
 namespace fnaf {
 
@@ -153,12 +155,15 @@ private:
 };
 
 // ------------------------------------------------------------
-//  Sister Location (placeholder) — will boot through the
+//  Sister Location (v2.65: wave 1 live) — boots through the
 //  streaming pak loader (its pak is ~1.5 GB).
 // ------------------------------------------------------------
+// SLGame.h/SLGame.cpp + SLRender.h/SLRender.cpp are NEW FILES:
+// add them to the .vcxproj by hand (the project file is user-managed).
 class SLModule : public AppModule {
 public:
-    SLModule() : m_wantsExit(false) {}
+    SLModule() : m_wantsExit(false), m_time(0.0f), m_prevAudioScreen(-2),
+                 m_prevScreen(-2), m_prevX(false), m_xHoldT(0.0f) {}
 
     virtual const char* Name()   const { return "SL"; }
     virtual const char* PakName() const { return "sisterlocation.pak"; }
@@ -174,6 +179,13 @@ public:
 private:
     AppServices m_services;
     bool        m_wantsExit;
+    SLGame      m_game;
+    SLRender    m_render;
+    f32         m_time;
+    int         m_prevAudioScreen;
+    int         m_prevScreen;
+    bool        m_prevX;
+    f32         m_xHoldT;      // the title X-hold wipe (Warning Delete beat)
 };
 
 } // namespace fnaf

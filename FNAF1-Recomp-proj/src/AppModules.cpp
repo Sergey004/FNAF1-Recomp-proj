@@ -466,6 +466,11 @@ bool FNaF4Module::Load(AppServices& services) {
     m_game.audio.stop           = FNaF4SfxStop;
     m_game.audio.channelVolume  = FNaF4ChVol;
     m_game.ResetToTitle();
+    // v2.64: the fn4 save ("fn4") through the universal backend
+    {
+        Progress::GameProgressF4 p4;
+        if (Progress::LoadF4(p4)) m_game.ApplyProgressF4(p4);
+    }
     return true;
 }
 
@@ -484,6 +489,14 @@ void FNaF4Module::Tick(f32 dt) {
     in.rightPressed = m_services.input ? m_services.input->cameraRight  : false;
 
     m_game.Tick(dt, in);
+
+    // v2.64: the fn4 save bridge (the night-win / game-over beats flip it)
+    if (m_game.ConsumeSaveDirty()) {
+        Progress::GameProgressF4 p4;
+        m_game.FillProgressF4(p4);
+        if (Progress::SaveF4(p4))
+            printf("FNAF4 SAVE: night=%d\n", p4.night);
+    }
 
     // ---- the bedroom pan eases toward the current position ----
     f32 target = 138.0f;
@@ -543,29 +556,156 @@ void FNaF4Module::Render() {
             if (m_game.GetAttackT() > 0.0f || m_game.GetBiteT() > 0.0f)
                 m_render.DrawAttack(m_game);
             break;
-        case FNaF4Game::SCR_NIGHTWIN:   m_render.RenderNightWin(); break;
+        case FNaF4Game::SCR_NIGHTWIN:
+            m_render.RenderNightWin();
+            m_render.RenderNightWinDigits(m_game);
+            break;
+        // v2.64: the new flow screens
+        case FNaF4Game::SCR_GAMEOVER:   m_render.RenderGameOver(); break;
+        case FNaF4Game::SCR_GAMEOVER2:  m_render.RenderGameOver2(); break;
+        case FNaF4Game::SCR_INTRO:      m_render.RenderIntro(); break;
+        case FNaF4Game::SCR_PLUSH:
+        case FNaF4Game::SCR_BB:         m_render.RenderMinigame(m_game); break;
+        case FNaF4Game::SCR_LOCKBOX:
+        case FNaF4Game::SCR_LOADX:      m_render.RenderLockbox(m_game); break;
+        case FNaF4Game::SCR_EXTRAS:     m_render.RenderExtras(m_game); break;
+        case FNaF4Game::SCR_CUTSCENE:   m_render.RenderCutscene(m_game); break;
+        case FNaF4Game::SCR_ENDING:     m_render.RenderEnding(m_game); break;
+        case FNaF4Game::SCR_TEST:       break;
+        case FNaF4Game::SCR_NJSCARE:    break;
     }
 }
 
 // ============================================================
-//  SLModule — placeholder. When built (stage 9) it will boot via
-//  PakLoader::LoadStreaming (sisterlocation.pak is ~1.5 GB) and
-//  drive PreloadAsync from its room-to-room frame transitions.
+//  SLModule — v2.65: Sister Location wave 1 live (SLGame + SLRender).
+//  The 1.5 GB pak boots through LoadStreaming; PreloadAsync rides the
+//  room-to-room transitions (the go-to router arms a room; its textures
+//  stream in on first use). Pad map (NO cursor): LS/W = walk hold (the
+//  "crawl" model), RT = quick/loud walk, A = confirm/shock, X = the flash,
+//  B = back, D-pad = menus. Sounds run through the shared channels.
 // ============================================================
+
+static AudioSystem* s_slAudio = 0;
+static PakLoader*   s_slPak   = 0;
+static void SLSfxPlay(const char* name, bool loop, i32 channel, i32 volume) {
+    if (!s_slAudio || !s_slPak || !name) return;
+    s_slAudio->SetChannelVolume(channel, CFVolumeToDb(volume));
+    s_slAudio->PlayOnChannel(s_slPak, name, loop, channel);
+}
+static void SLSfxStop(const char* name) {
+    if (s_slAudio && name) s_slAudio->Stop(name);
+}
+static void SLSfxPan(i32 channel, i32 pan) {
+    // Labeled: AudioSystem has no per-channel pan yet — the Ballora side
+    // cue rides the volume via the game loop instead (dump deviation).
+    (void)channel; (void)pan;
+}
 
 bool SLModule::Load(AppServices& services) {
     m_services = services;
     m_wantsExit = false;
+    m_time = 0.0f;
+    m_prevAudioScreen = -2;
+    m_prevScreen = -2;
+    m_prevX = false;
+    m_render.Init(services.pak, services.batch, services.text);
+    s_slAudio = services.audio;
+    s_slPak   = services.pak;
+    m_game.audio.play           = SLSfxPlay;
+    m_game.audio.stop           = SLSfxStop;
+    m_game.audio.channelVolume  = 0;
+    m_game.audio.pan            = SLSfxPan;
+    // v2.65: the fnaf_sl save ("sl") through the universal backend
+    {
+        Progress::GameProgressSL psl;
+        if (Progress::LoadSL(psl)) m_game.ApplyProgressSL(psl);
+    }
+    m_game.ResetToTitle();
     return true;
 }
 
-void SLModule::Tick(f32 /*dt*/) {
-    // No game yet.
+void SLModule::Tick(f32 dt) {
+    m_time += dt;
+
+    // ---- translate the pad ----
+    SLInputs in;
+    const bool xNow = m_services.input ? m_services.input->xHeld : false;
+    in.aPressed   = m_services.input ? m_services.input->cameraToggle : false;
+    in.bPressed   = m_services.input ? m_services.input->back         : false;
+    in.xPressed   = xNow && !m_prevX;
+    in.yPressed   = m_services.input ? m_services.input->yToggle      : false;
+    in.lbPressed  = m_services.input ? m_services.input->leftLightToggle  : false;
+    in.rbPressed  = m_services.input ? m_services.input->rightLightToggle : false;
+    in.upPressed    = m_services.input ? m_services.input->cameraUp     : false;
+    in.downPressed  = m_services.input ? m_services.input->cameraDown   : false;
+    in.leftPressed  = m_services.input ? m_services.input->cameraLeft   : false;
+    in.rightPressed = m_services.input ? m_services.input->cameraRight  : false;
+    if (m_services.input) {
+        in.lookDir    = m_services.input->lookDir;
+        in.flasherPressed = in.xPressed;                  // X = the flash
+        in.wHeld      = m_services.input->aHeld;          // A hold walks
+        in.shiftHeld  = (m_services.input->rightDoorAxis > 0.5f);  // RT
+    }
+    m_prevX = xNow;
+
+    // v2.65: the title X-hold wipes the fnaf_sl save (the Warning frame's
+    // Delete beat per the dump)
+    if (m_game.GetScreen() == SLGame::SCR_TITLE && m_services.input &&
+        m_services.input->xHeld) {
+        m_xHoldT += dt;
+        if (m_xHoldT >= 5.0f) {
+            m_xHoldT = 0.0f;
+            Progress::WipeSL();
+            Progress::GameProgressSL pspec;
+            Progress::ResetSL(pspec);
+            m_game.ApplyProgressSL(pspec);
+            printf("SL SAVE WIPED (X hold)\n");
+        }
+    } else {
+        m_xHoldT = 0.0f;
+    }
+
+    m_game.Tick(dt, in);
+
+    // the fnaf_sl save bridge
+    if (m_game.ConsumeSaveDirty()) {
+        Progress::GameProgressSL psl;
+        m_game.FillProgressSL(psl);
+        if (Progress::SaveSL(psl))
+            printf("SL SAVE: night=%d\n", psl.current);
+    }
+
+    // ---- screen-to-screen ambience ----
+    const int scr = (int)m_game.GetScreen();
+    if (scr != m_prevAudioScreen && m_services.audio && m_services.pak) {
+        if (scr == (int)SLGame::SCR_TITLE) {
+            m_services.audio->Play(m_services.pak, "snd_Gradual Liquidation", true, 0.3f);
+        }
+        m_prevAudioScreen = scr;
+    }
 }
 
 void SLModule::Render() {
-    if (m_services.text != 0)
-        m_services.text->DrawText(420, 344, "Sister Location - foundation stub", 0xFF88FF88);
+    switch (m_game.GetScreen()) {
+        case SLGame::SCR_WARNING:   m_render.RenderWarning(); break;
+        case SLGame::SCR_TITLE:     m_render.RenderTitle(m_game, m_time); break;
+        case SLGame::SCR_ELEVATOR:  m_render.RenderElevator(m_game, m_time); break;
+        case SLGame::SCR_VENT:      m_render.RenderVent(m_game); break;
+        case SLGame::SCR_HUB:       m_render.RenderHub(m_game); break;
+        case SLGame::SCR_BABY:      m_render.RenderBaby(m_game); break;
+        case SLGame::SCR_BALLORA:   m_render.RenderBallora(m_game, m_time); break;
+        case SLGame::SCR_BREAKER:
+        case SLGame::SCR_PS:
+        case SLGame::SCR_PS2:
+        case SLGame::SCR_UNDERDESK: m_render.RenderBreaker(m_game); break;
+        case SLGame::SCR_FUNTIME:   m_render.RenderFuntime(m_game, m_time); break;
+        case SLGame::SCR_WINNIGHT:  m_render.RenderWinNight(m_game); break;
+        case SLGame::SCR_TVSHOW:    m_render.RenderTvShow(); break;
+        case SLGame::SCR_GIRLVOICE: m_render.RenderGirlVoice(); break;
+        case SLGame::SCR_DEATH:     m_render.RenderDeath(); break;
+        case SLGame::SCR_GAMEOVER:  m_render.RenderGameOver(); break;
+        default:                    m_render.RenderHold("the wave-2 room"); break;
+    }
 }
 
 } // namespace fnaf

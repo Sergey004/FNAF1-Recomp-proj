@@ -6,6 +6,68 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.65 — Sister Location wave 1: the flow plays on the streaming pak
+
+The "monster" (the 1.5 GB game) is playable through its core loop (files
+this wave: **include/SLGame.h, src/SLGame.cpp, include/SLRender.h,
+src/SLRender.cpp — ADD THE FOUR TO THE .vcxproj BY HAND**):
+
+- **The go-to router + the load frame** (docs/SL_MECHANICS.md §2): gameplay
+  arms the global `go to` counter; the dump's frame-4 "load" consumes the
+  code every 200 ms through the route table (1 Elevator / 3 Hub / 5,8 vent
+  hop / 6,11 Breaker / 7 Ballora / 10 Funtime / 12 Baby / 13 Scooping /
+  30 bathroom), and the same router IS the death-resume path (the
+  game-over resumes the night with the Script Event presets 81/111/57/512).
+- **The walk rooms** (docs §3-4): no avatar — "you are the camera" with
+  the pan tween; W-hold arms the 15-tick crawl latch (Shift = the fast/
+  loud variant), the quick-count ticks into progress; **Ballora's dance**
+  (she joins at progress 400, the walk builds `distance`, standing decays
+  it, 5 s of continuous cranking makes her approach, her music pans the
+  side cue, death over 600) and **Funtime's flash beacon** (Space = flash:
+  the 2 s refill, flashing ADDS +50 to him, the three distance-band
+  silhouettes, death over 500 flashing / 600 walking, the backwards-exit).
+- **The ride + the hub** (frames 2/3/5/7): the elevator ride state machine
+  (the movement anim, the doors-open beat), the Circus Control desks with
+  the availability-gated vent picks, the vent crawl (100 held ticks per
+  notch, 10 notches to pass, the duct-fast/slow sounds).
+- **The win chain** (frames 6/12/24/25): Baby's Room ends the night on the
+  fade → win night (the Jingle_4b + the INI `current += 1`) → the tv show
+  hold → the Girl Voice interlude (the line per night) → the next night.
+- **The fnaf_sl save** ("sl" section: current/intro/beat1/beat3/keycard/
+  endsceneno/104) through the same storage backend; the Warning-frame
+  Delete wipe.
+- **Wave-2 leftovers, all labeled**: the HandUnit scripted beats per room,
+  the P&S face-button task + the breaker task, Under Desk (Bidybab
+  eye-match), the Scooping/final chain, the extras + the custom night
+  (frame 31, 501 groups — the FNAF1-style office), the 8-bit platformer
+  (frame 26, 12800 px), the Perspective-ease port for the room tween,
+  the real room art pins (wave 1 draws the dump's own Backdrop cells +
+  debug-font captions where the frame art rows were not captured), and
+  SLSfxPan is a no-op (AudioSystem has no per-channel pan yet — the Ballora
+  side cue rides volume; labeled).
+- Version → v2.65. Files: include/SLGame.h + src/SLGame.cpp +
+  include/SLRender.h + src/SLRender.cpp are NEW — add all four to the
+  .vcxproj.
+
+---
+
+## v2.64 — FNAF4 completed: the slot-resolved flow, Fun with Plushtrap/BB, the lockbox, the extras, the house scenes
+
+Everything the dump has is now wired (all in the existing files — nothing to add to the .vcxproj):
+
+- **The storyboard-slot resolution applied to FNAF4** (the v2.63 lesson): the real slot order is 0 level, 1 game over, 2 what night, 3 night win, 4 title, 5 intro plushtrap, 6 plushtrap game, 7 lockbox, 8 game over 2, 9 extras, 10 load extras, 11 disclaimer, 12 Cutscenes, 13 ending, 14 test, 15 nightmare jumpscare, 16 demo, 19 BB game. The big corrections: the night win's "night 7 → plushtrap" edge actually goes to the **LOCKBOX** (V7), and the cutscene exits printed as "night win" actually go to the **intro to plushtrap** (V5) — the real per-night chain is 6 AM → Cutscenes → the Plushtrap intro → the Plushtrap game → the night card → the office.
+- **The flow screens**: the real **what night** card (Night := INI night; the shadow counter forces nights 7/8 — the shadow nights are entered from the extras; ambience + the 2 s clock beat → 2.1 s → the office); the real **night win** (the four "6 AM" digit slots flicker Random(10)/250 ms and settle on the 2/2.5/3/3.5 s beats, the alarmclock4 loop, the fn4 INI writes night+1 + beat5/6/7/8 (beat8 only with no cheats) + the s1..s6 challenge stars, the 10 s route); **game over** (7 s → title, shadow cleared); **game over 2** (4 s → the night card, or the lockbox on the extras replays); the intro holds (Deep_Ambience, 6 s / A); the nightmare jumpscare hold (distortion, 5 s → the disclaimer slot); the test/demo skip screens.
+- **Fun with Plushtrap** (frame 7) — the full 63-group engine: the 9-position hall graph (in chair → hall stage 1 → the far left/right fork → hall stage 2 → the close left/right fork → hall stage 3 → got you) advanced by the darkness accumulator ("becoming active": +1 per dark tick, the move roll at ≥ 400+Random(100) every 2 s, the darkness resets on the flash), the A-hold flash (the flashlight sfx on the edge, the view states 0/1/2/3 per the dump's Active.alt0), the per-position view anims (the dump's own tables: the chair 879, the hall 748, the jump-back 14, the four room poses 15-18, stage 2/3 with the "drop" sfx), the fork rolls (Random(2)+1 per second), the per-night clocks (90/60/45/30 s), the win = flashing him at hall stage 3 ("great!" + reward), the caught = flashing at "got you" (the 21-cell jumpscare anim 23) or the clock running out, and the 150-frame win view → the night card.
+- **Fun with Balloon Boy** (frame 18) — the same engine with its config: the 45 s clock, the aggressive Random(5) roll, the 500 ms extra move at stage 3, the bb1b/bb2b/bb3b voice roll (1/3 per 2 s, always at stage 3 — the taunt), the BB reward flag (the s3 challenge star) and the exit to the lockbox/extras (BB is extras-only).
+- **The lockbox** (frame 9, slot 7): reached after beating night 7; A plays the unlock (unlock2 sfx), the lid float (10 frames) and the 20 s auto-end → title.
+- **The extras** (frame 10, the title's 4th row): the 10 dump rows — the animatronics/making-of/plushtrap-making viewers (6 picks: Nightmare Freddy/Bonnie/Chica/Foxy/Fredbear/Plushtrap), the jumpscare player (scream2/3), **fun with plushtrap** and **fun with BB** (the "minigame play" replays), the **shadow nights** (night 7 / the 20-20-20-20 night 8 — the card forces Night := 7/8), the **cheats row** (house map / fast nights / radar / blind mode / insta foxy / mad freddy / all nightmare — fast nights shortens the hours to 30 s, labeled factor), the challenges row and the exit.
+- **The house cutscenes** (frame 12, 5120×3840): the walkable world (100 ms / 25 px steps, the 5×5 page screen-follow at the 384/512 mid-lines), the boy follower, the scene number = the INI scene (0 = the title intro, = the night for the between-night plays), the exit routing (scene 0 → the card; 1-4 → the Plushtrap intro; > 4 → title) and the black-line wipe. **Labeled stop-gap**: the dump's dialogue is drawn per-letter as sprite images and no string table survives the dump — the talk box renders and advances without invented text, and the per-scene trigger scripts (202 groups) run as a timed walk.
+- **The ending** (frame 13): the typewriter talk box + the advance, same labeled stop-gap on the text content.
+- **The fn4 save**: night, scene, beat5..beat8, s1..s6, test and the cheat toggles — loaded at module boot, written on the night-win/game-over beats and the cheat flips, through the same storage backend.
+- Version → v2.64. **FNAF4 = 100 % code-side** (README ×2 updated). Next per the roadmap: **Sister Location** (the SL_MECHANICS.md digest is the plan; the streaming loader + the Perspective easing port are staged).
+
+---
+
 ## v2.63 — FNAF3 completed: the slot-resolved flow, the retro cutscenes, the six Atari minigames, the extras
 
 Everything the dump has is now wired (all in the existing files — nothing to add to the .vcxproj):

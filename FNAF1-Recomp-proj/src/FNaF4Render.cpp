@@ -205,4 +205,166 @@ void FNaF4Render::DrawAttack(const FNaF4Game& game) {
         Draw(642, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
 }
 
+// ============================================================
+// v2.64 — the new flow screens. The minigame view anims are the dump's
+// own "Active" tables (plushtrap: 735 idle, 879 chair, 748 hall, anim 14
+// = [884..879] the jump-back, 15-18 the rooms, 19 stage 2, 20 stage 3,
+// 22 the win, 23 the 21-cell jumpscare; BB mirrors them at 1225..1290).
+// ============================================================
+
+void FNaF4Render::RenderGameOver() {
+    // frame 4: the death hold (7 s) — the dump hides its art objects and
+    // waits; a dark hold with the caption stands in (labeled)
+    if (m_text) {
+        m_text->DrawText((int)(410.0f * kScaleX), (int)(300.0f * kScaleY),
+                         "G A M E   O V E R", 0xFFC0C0C0);
+        m_text->DrawText((int)(390.0f * kScaleX), (int)(420.0f * kScaleY),
+                         "Press A to continue", 0xFF808080);
+    }
+}
+
+void FNaF4Render::RenderGameOver2() {
+    // frame 8: the minigame catch hold (4 s)
+    if (m_text)
+        m_text->DrawText((int)(430.0f * kScaleX), (int)(330.0f * kScaleY),
+                         "CAUGHT", 0xFFC0C0C0);
+}
+
+void FNaF4Render::RenderIntro() {
+    // frames 6/17: the intro fade holds; a caption stands in (labeled)
+    if (m_text) {
+        m_text->DrawText((int)(330.0f * kScaleX), (int)(300.0f * kScaleY),
+                         "FUN WITH PLUSHTRAP", 0xFFE0E0E0);
+        m_text->DrawText((int)(400.0f * kScaleX), (int)(380.0f * kScaleY),
+                         "Press A to start", 0xFF909090);
+    }
+}
+
+void FNaF4Render::RenderNightWinDigits(const FNaF4Game& game) {
+    // the 6 AM clock: the four digit slots settle on the dump's beats and
+    // hold (g2-10); until the digit art lands the debug font draws them
+    if (m_text) {
+        static const f32 kX[4] = { 420.0f, 520.0f, 620.0f, 720.0f };
+        for (int i = 0; i < 4; ++i) {
+            if (game.GetNightWinDigit(i) == 0) continue;
+            char b[4];
+            const int v = game.GetNightWinVal(i);
+            if (i == 1) { b[0] = 'A'; b[1] = 'M'; b[2] = 0; }
+            else { b[0] = (char)('0' + v); b[1] = 0; }
+            m_text->DrawText((int)(kX[i] * kScaleX), (int)(300.0f * kScaleY),
+                             b, 0xFFFFFFFF);
+        }
+    }
+}
+
+void FNaF4Render::RenderMinigame(const FNaF4Game& game) {
+    const FNaF4Game::PtState& pt = game.Pt();
+    if (!m_batch) return;
+
+    // the view animation: the dump's Active.anim tables
+    static const int kPT[24] = {
+        735, 735, 735, 735, 735, 735, 735, 735, 735, 735, 735, 735,
+        879, 748, 884, 756, 776, 782, 788, 734, 872, 871, 878, 808
+    };
+    static const int kBB[24] = {
+        735, 735, 735, 735, 735, 735, 735, 735, 735, 735, 735, 735,
+        1225, 748, 1230, 1231, 1237, 1279, 1285, 1255, 1261, 1260, 1266, 1161
+    };
+    int anim = pt.viewAnim;
+    if (pt.viewState == 0) anim = 0;
+    if (pt.viewState == 1) {
+        // the light-on look: the pose per position (g23-26)
+        anim = (pt.hallPos == 0) ? 12 : (pt.hallPos == 4) ? 21 :
+               (pt.hallPos == 7) ? 22 : 13;
+    }
+    const int* tab = (pt.game == 1) ? kBB : kPT;
+    Draw(tab[anim < 24 ? anim : 0], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    // the plushtrap/BB sprite in the mid-hall positions
+    if (!pt.won && !pt.scare && pt.hallPos >= 2 && pt.hallPos <= 7)
+        Draw(849, 892.0f, 478.0f, 67.0f, 24.0f, 0xFFFFFFFF);
+
+    // the win stamp (img 868)
+    if (pt.won) Draw(868, 514.0f, 308.0f, 120.0f, 60.0f, 0xFFFFFFFF);
+    if (pt.scare) {
+        // the jumpscare anim 23 (21 / 30 cells)
+        static const int kScPT[21] = {
+            808, 809, 810, 811, 812, 813, 814, 815, 816, 817, 818,
+            819, 820, 821, 822, 823, 824, 825, 826, 827, 828
+        };
+        static const int kScBB[30] = {
+            1161, 1162, 1176, 1185, 1187, 1188, 1189, 1190, 1191, 1192,
+            1193, 1194, 1195, 1196, 1197, 1198, 1199, 1200, 1201, 1202,
+            1203, 1243, 1244, 1245, 1246, 1247, 1248, 1249, 1250, 1252
+        };
+        const int n = (pt.game == 1) ? 30 : 21;
+        const int f = (int)(game.GetClock() * (pt.game == 1 ? 45.0f : 30.0f)) % n;
+        Draw(pt.game == 1 ? kScBB[f] : kScPT[f], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    }
+    if (m_text) {
+        char b[32];
+        Snprintf(b, sizeof(b), "TIME %d", pt.clock);
+        m_text->DrawText((int)(40.0f * kScaleX), (int)(40.0f * kScaleY), b, 0xFFE0E0E0);
+        m_text->DrawText((int)(700.0f * kScaleX), (int)(700.0f * kScaleY),
+                         "A(HOLD): flash", 0xFF909090);
+    }
+}
+
+void FNaF4Render::RenderLockbox(const FNaF4Game& game) {
+    // frame 9: the unlock box hold; the box art rows were not captured —
+    // a dark hold + the caption stands in (labeled)
+    (void)game;
+    if (m_text) {
+        m_text->DrawText((int)(390.0f * kScaleX), (int)(300.0f * kScaleY),
+                         "T O Y   B O X", 0xFFE0E0E0);
+        m_text->DrawText((int)(380.0f * kScaleX), (int)(380.0f * kScaleY),
+                         "Press A to unlock", 0xFF909090);
+    }
+}
+
+void FNaF4Render::RenderExtras(const FNaF4Game& game) {
+    const FNaF4Game::ExtrasState& ex = game.Ex();
+    static const char* kRows[10] = {
+        "ANIMATRONICS", "MAKING OF", "PLUSHTRAP MAKING", "JUMPSCARES",
+        "FUN WITH PLUSHTRAP", "SHADOW NIGHTS", "CHEATS", "CHALLENGES",
+        "FUN WITH BALLOON BOY", "EXIT"
+    };
+    if (m_text) {
+        for (int i = 0; i < 10; ++i) {
+            m_text->DrawText((int)(380.0f * kScaleX),
+                             (int)((150.0f + i * 46.0f) * kScaleY), kRows[i],
+                             (ex.row == i) ? 0xFFFFFFFF : 0xFF909090);
+        }
+    }
+}
+
+void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
+    const FNaF4Game::CutsceneState& cs = game.Cut();
+    if (!m_batch) return;
+    // the house world: the scene base art was not dumped as frames — the
+    // walk layer renders the dump's hitbox/boy pieces over a dark hold
+    // (labeled stop-gap)
+    const f32 ox = 512.0f - cs.camX, oy = 384.0f - cs.camY;
+    Draw(980, ox + cs.px - 31.0f, oy + cs.py - 31.0f, 62.0f, 62.0f, 0xFFFFFFFF);
+    Draw(983, ox + cs.px - 51.0f, oy + cs.py + 20.0f, 102.0f, 120.0f, 0xFF909090);
+    if (m_text)
+        m_text->DrawText((int)(40.0f * kScaleX), (int)(40.0f * kScaleY),
+                         "WASD: walk   B: skip", 0xFF909090);
+    if (cs.done) Draw(976, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+}
+
+void FNaF4Render::RenderEnding(const FNaF4Game& game) {
+    // frame 13: the typewriter talk box; the dump's letters are sprite
+    // images without a string table — the box + advance hint render on the
+    // dump cadence with no invented text (labeled stop-gap)
+    (void)game;
+    if (m_text) {
+        m_text->DrawText((int)(300.0f * kScaleX), (int)(560.0f * kScaleY),
+                         "..................................................",
+                         0xFFE0E0E0);
+        m_text->DrawText((int)(300.0f * kScaleX), (int)(620.0f * kScaleY),
+                         "A: next   B: skip", 0xFF909090);
+    }
+}
+
 } // namespace fnaf

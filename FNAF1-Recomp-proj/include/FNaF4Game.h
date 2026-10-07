@@ -19,6 +19,7 @@
 #define FNAF4_GAME_H
 
 #include "Types.h"
+#include "Progress.h"    // v2.64: GameProgressF4 (the "fn4" save struct)
 
 namespace fnaf {
 
@@ -51,7 +52,24 @@ public:
         SCR_TITLE      = 0,   // frame 1 "titlescreen"
         SCR_NIGHTSTART = 1,   // frame 2 "what night" card
         SCR_BEDROOM    = 2,   // frame 3 "level"
-        SCR_NIGHTWIN   = 3    // frame 5 "night win" (the 5->6 AM clock)
+        SCR_NIGHTWIN   = 3,   // frame 5 "night win" (the 6 AM clock digits)
+        // v2.64: the dump's full flow (jumps = storyboard slots: 0 level,
+        // 1 game over, 2 what night, 3 night win, 4 title, 5 intro plush,
+        // 6 plush game, 7 lockbox, 8 game over 2, 9 extras, 10 load extras,
+        // 11 disclaimer, 12 Cutscenes, 13 ending, 14 test, 15 nightmare
+        // jumpscare, 16 demo, 18 BB game)
+        SCR_GAMEOVER   = 4,   // frame 4: death -> 7 s -> title
+        SCR_GAMEOVER2  = 5,   // frame 8: the minigame catch -> what night/extras
+        SCR_INTRO      = 6,   // frames 6/17: the minigame intros (6 s / A)
+        SCR_PLUSH      = 7,   // frame 7: Fun with Plushtrap
+        SCR_LOCKBOX    = 8,   // frame 9: the unlock box (after night 7)
+        SCR_LOADX      = 9,   // frame 11: instant -> lockbox
+        SCR_EXTRAS     = 10,  // frame 10
+        SCR_CUTSCENE   = 11,  // frame 12: the walkable house scenes
+        SCR_ENDING     = 12,  // frame 13: the typewriter dialogue
+        SCR_TEST       = 13,  // frame 14: the test-room skip
+        SCR_NJSCARE    = 14,  // frame 15: the nightmare jumpscare hold
+        SCR_BB         = 15   // frame 18: Fun with Balloon Boy
     };
 
     // the follow states (dump follow.alterable[0] values kept as comments)
@@ -108,6 +126,80 @@ public:
     i32    GetLastNight()      const { return m_lastNight; }
     bool   IsBeat5()           const { return m_beat5; }
 
+    // ---- v2.64: the minigame / flow state (see FNaF4Game.cpp for the
+    // dump digests). Plushtrap/BB share one engine: the 9-position hall
+    // graph (in chair / stage 1 / far left+right / stage 2 / close
+    // left+right / stage 3 / got you), the Ctrl flash (A hold on the pad),
+    // the darkness timer ("becoming active"), the per-position view anims
+    // and the stage-3 flash = the win. ----
+    struct PtState {
+        i32  game;          // 0 plushtrap, 1 BB
+        bool fromExtras;    // "minigame play" >= 1
+        i32  hallPos;       // 0 in chair, 1 stage1, 2 far left, 3 far right,
+                            // 4 stage2, 5 close left, 6 close right,
+                            // 7 stage3, 8 got you
+        i32  viewState;     // the dump's Active.alt0 (0/1/2/3/98/99)
+        i32  viewAnim;      // the dump's Active anim (12..23, 0)
+        f32  darkT;         // "becoming active" accumulator (0..500)
+        f32  moveGateT;     // the 2 s move gate
+        f32  stepT;         // the 500 ms stage-3 extra move (BB)
+        i32  fork;          // "random" = Random(2)+1
+        f32  clockT;        // the countdown clock
+        i32  clock;         // seconds left ("Counter")
+        bool won;           // reward / BB reward
+        f32  winT;          // alt2 150 frames
+        bool scare;         // alt0 = 99: the jumpscare (anim 23)
+        f32  bbVoiceT;      // the BB laugh roll
+        void Clear() {
+            game = 0; fromExtras = false; hallPos = 0; viewState = 0; viewAnim = 0;
+            darkT = 0.0f; moveGateT = 0.0f; stepT = 0.0f; fork = 0;
+            clockT = 0.0f; clock = 90; won = false; winT = 0.0f; scare = false;
+            bbVoiceT = 0.0f;
+        }
+        PtState() { Clear(); }
+    };
+
+    struct CutsceneState {
+        i32  scene;         // the INI "scene" + 1 (0 = the title intro)
+        f32  px, py;        // the hit box in the 5120x3840 house
+        f32  camX, camY;
+        f32  stepT;         // the 100 ms walk gate
+        f32  textT;         // the typewriter/dialogue beat (labeled stop-gap)
+        bool done;          // "end" == 1
+        f32  doneT;         // the 1 s exit beat
+        void Clear() {
+            scene = 0; px = 2560.0f; py = 1920.0f; camX = 2048.0f; camY = 1536.0f;
+            stepT = 0.0f; textT = 0.0f; done = false; doneT = 0.0f;
+        }
+        CutsceneState() { Clear(); }
+    };
+
+    struct ExtrasState {
+        i32  row;           // the dump's "selection" 0..9
+        i32  pick;          // the left/right viewer pick
+        void Clear() { row = 0; pick = 0; }
+        ExtrasState() { Clear(); }
+    };
+
+    // getters for the module renderer
+    const PtState&       Pt() const { return m_pt; }
+    const CutsceneState& Cut() const { return m_cut; }
+    const ExtrasState&   Ex() const { return m_ex; }
+    i32  GetNightWinDigit(i32 i) const { return m_winDigit[i]; }   // 0 flicker,1 set
+    i32  GetNightWinVal(i32 i)   const { return m_winVal[i]; }
+    bool IsMinigamePlay()        const { return m_minigamePlay; }
+    bool CheatFast()             const { return m_fastNights; }
+    bool CheatAllNightmare()     const { return m_allNightmare; }
+
+    // the minigame entry points (the office/extras call these)
+    void StartMinigame(i32 game, bool fromExtras);
+    void GoWhatNight(i32 night);
+
+    // the fn4 save bridge (the module loads at boot, writes on the beats)
+    void ApplyProgressF4(const Progress::GameProgressF4& p);
+    void FillProgressF4(Progress::GameProgressF4& p) const;
+    bool ConsumeSaveDirty() { const bool d = m_saveDirty; m_saveDirty = false; return d; }
+
 private:
     void InitNightState();
     void TickBedroom(f32 dt, const FNaF4Inputs& in);
@@ -119,7 +211,21 @@ private:
     void TickParanoia(f32 dt);
     void TriggerJumpscare(i32 overlayImg);  // scream2 + gameover flow
     void Sfx(const char* s, bool loop, i32 ch, i32 vol);
+    void SfxStop(const char* s);
     void ChVol(i32 ch, i32 vol);
+
+    // v2.64: the new flow screens
+    void TickWhatNight(f32 dt, const FNaF4Inputs& in);  // the real card
+    void TickNightWin(f32 dt, const FNaF4Inputs& in);   // the real 6 AM
+    void TickGameOver(f32 dt, const FNaF4Inputs& in);
+    void TickGameOver2(f32 dt);
+    void TickIntro(f32 dt, const FNaF4Inputs& in);
+    void TickMinigame(f32 dt, const FNaF4Inputs& in);   // Plushtrap + BB
+    void TickLockbox(f32 dt, const FNaF4Inputs& in);
+    void TickExtras(f32 dt, const FNaF4Inputs& in);
+    void TickCutscene(f32 dt, const FNaF4Inputs& in);
+    void TickEnding(f32 dt, const FNaF4Inputs& in);
+    void WriteNightResult();                            // the night-win INI keys
 
     Screen m_screen;
     i32    m_night;
@@ -178,6 +284,32 @@ private:
     i32    m_optionSelected;
     i32    m_lastNight;
     bool   m_beat5;
+
+    // v2.64: the persisted fn4 state
+    i32    m_scene;          // the INI "scene" (the last played cutscene)
+    bool   m_beat6, m_beat7, m_beat8;
+    bool   m_s1, m_s2, m_s3, m_s4, m_s5, m_s6;   // the challenge stars
+    bool   m_testFlag;
+    i32    m_shadow;         // the shadow-night pick (1 = night 7, 2 = 8)
+    bool   m_minigamePlay;   // the extras replay flag
+    bool   m_cheatHouseMap, m_fastNights, m_cheatRadar;
+    bool   m_blindMode, m_instaFoxy, m_madFreddy, m_allNightmare;
+    PtState        m_pt;
+    CutsceneState  m_cut;
+    ExtrasState    m_ex;
+    i32    m_winDigit[4];    // the 6 AM digits: 0 flickering, 1 settled
+    i32    m_winVal[4];
+    f32    m_digitT;
+    f32    m_winT;
+    f32    m_lockT;
+    f32    m_introT;
+    f32    m_goT;
+    f32    m_endT;
+    i32    m_endLine;
+    f32    m_endLetterT;
+    bool   m_saveDirty;      // the module writes fn4 when this flips
+    bool   m_ptFlashPrev;    // the minigame flash edge
+    f32    m_lockLid;        // the lockbox lid animation 0..2
 };
 
 } // namespace fnaf

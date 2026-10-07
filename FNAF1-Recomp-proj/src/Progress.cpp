@@ -736,4 +736,175 @@ bool Progress::SaveF3(const GameProgressF3& pIn) {
     return put == (size_t)len;
 }
 
+// ---- v2.64: the FNAF4 save (fn4) ----
+
+void Progress::ResetF4(GameProgressF4& p) {
+    p.night = 1;
+    p.scene = 0;
+    p.beat5 = false; p.beat6 = false; p.beat7 = false; p.beat8 = false;
+    p.s1 = false; p.s2 = false; p.s3 = false;
+    p.s4 = false; p.s5 = false; p.s6 = false;
+    p.test = false;
+    p.cheatHouseMap = false; p.fastNights = false; p.cheatRadar = false;
+    p.blindMode = false; p.instaFoxy = false; p.madFreddy = false;
+    p.allNightmare = false;
+}
+
+bool Progress::LoadF4(GameProgressF4& p) {
+    ResetF4(p);
+    FILE* f = StorageOpen("fn4", "rb", false);
+    if (!f) return false;
+    char buf[128];
+    bool inSection = false;
+    bool any = false;
+    char key[64];
+    int val = 0;
+    while (fgets(buf, sizeof(buf), f)) {
+        char* eol = strchr(buf, '\r');
+        if (eol) *eol = '\0';
+        eol = strchr(buf, '\n');
+        if (eol) *eol = '\0';
+        char* s = buf;
+        while (*s && (*s == ' ' || *s == '\t')) ++s;
+        if (*s == '\0' || *s == ';' || *s == '#') continue;
+        if (*s == '[') {
+            inSection = (strcmp(s, "[fn4]") == 0);
+            continue;
+        }
+        if (!inSection) continue;
+        if (ParseIniLine(s, key, &val)) {
+            any = true;
+            if      (strcmp(key, "night") == 0)   p.night = val;
+            else if (strcmp(key, "scene") == 0)   p.scene = val;
+            else if (strcmp(key, "beat5") == 0)   p.beat5 = val != 0;
+            else if (strcmp(key, "beat6") == 0)   p.beat6 = val != 0;
+            else if (strcmp(key, "beat7") == 0)   p.beat7 = val != 0;
+            else if (strcmp(key, "beat8") == 0)   p.beat8 = val != 0;
+            else if (strcmp(key, "s1") == 0)      p.s1 = val != 0;
+            else if (strcmp(key, "s2") == 0)      p.s2 = val != 0;
+            else if (strcmp(key, "s3") == 0)      p.s3 = val != 0;
+            else if (strcmp(key, "s4") == 0)      p.s4 = val != 0;
+            else if (strcmp(key, "s5") == 0)      p.s5 = val != 0;
+            else if (strcmp(key, "s6") == 0)      p.s6 = val != 0;
+            else if (strcmp(key, "test") == 0)    p.test = val != 0;
+            else if (strcmp(key, "housemap") == 0) p.cheatHouseMap = val != 0;
+            else if (strcmp(key, "fast") == 0)     p.fastNights = val != 0;
+            else if (strcmp(key, "radar") == 0)    p.cheatRadar = val != 0;
+            else if (strcmp(key, "blind") == 0)    p.blindMode = val != 0;
+            else if (strcmp(key, "instafoxy") == 0) p.instaFoxy = val != 0;
+            else if (strcmp(key, "madfreddy") == 0) p.madFreddy = val != 0;
+            else if (strcmp(key, "allnightmare") == 0) p.allNightmare = val != 0;
+        }
+    }
+    fclose(f);
+    StorageClose();
+    if (p.night < 1 || p.night > 8) p.night = 1;
+    if (!any) return false;
+    return true;
+}
+
+bool Progress::SaveF4(const GameProgressF4& pIn) {
+    GameProgressF4 out = pIn;
+    if (out.night < 1) out.night = 1;
+    if (out.night > 8) out.night = 8;
+    char iniBuf[512];
+    int len = fnaf::Snprintf(iniBuf, sizeof(iniBuf),
+        "[fn4]\nnight=%d\nscene=%d\nbeat5=%d\nbeat6=%d\nbeat7=%d\nbeat8=%d\n"
+        "s1=%d\ns2=%d\ns3=%d\ns4=%d\ns5=%d\ns6=%d\ntest=%d\n"
+        "housemap=%d\nfast=%d\nradar=%d\nblind=%d\ninstafoxy=%d\nmadfreddy=%d\nallnightmare=%d\n",
+        out.night, out.scene,
+        out.beat5 ? 1 : 0, out.beat6 ? 1 : 0, out.beat7 ? 1 : 0, out.beat8 ? 1 : 0,
+        out.s1 ? 1 : 0, out.s2 ? 1 : 0, out.s3 ? 1 : 0,
+        out.s4 ? 1 : 0, out.s5 ? 1 : 0, out.s6 ? 1 : 0,
+        out.test ? 1 : 0,
+        out.cheatHouseMap ? 1 : 0, out.fastNights ? 1 : 0, out.cheatRadar ? 1 : 0,
+        out.blindMode ? 1 : 0, out.instaFoxy ? 1 : 0, out.madFreddy ? 1 : 0,
+        out.allNightmare ? 1 : 0);
+    FILE* f = StorageOpen("fn4", "wb", true);
+    if (!f) return false;
+    size_t put = fwrite(iniBuf, 1, (size_t)len, f);
+    fclose(f);
+    StorageClose();
+    return put == (size_t)len;
+}
+
+// ---- v2.65: the Sister Location save ("sl") ----
+
+void Progress::ResetSL(GameProgressSL& p) {
+    p.current = 1;
+    p.intro = false;
+    p.beat1 = false;
+    p.beat3 = false;
+    p.keycard = false;
+    p.endsceneno = 0;
+    p.star104 = false;
+}
+
+bool Progress::LoadSL(GameProgressSL& p) {
+    ResetSL(p);
+    FILE* f = StorageOpen("sl", "rb", false);
+    if (!f) return false;
+    char buf[128];
+    bool inSection = false;
+    bool any = false;
+    char key[64];
+    int val = 0;
+    while (fgets(buf, sizeof(buf), f)) {
+        char* eol = strchr(buf, '\r');
+        if (eol) *eol = '\0';
+        eol = strchr(buf, '\n');
+        if (eol) *eol = '\0';
+        char* s = buf;
+        while (*s && (*s == ' ' || *s == '\t')) ++s;
+        if (*s == '\0' || *s == ';' || *s == '#') continue;
+        if (*s == '[') {
+            inSection = (strcmp(s, "[sl]") == 0);
+            continue;
+        }
+        if (!inSection) continue;
+        if (ParseIniLine(s, key, &val)) {
+            any = true;
+            if      (strcmp(key, "current") == 0)    p.current = val;
+            else if (strcmp(key, "intro") == 0)      p.intro = val != 0;
+            else if (strcmp(key, "beat1") == 0)      p.beat1 = val != 0;
+            else if (strcmp(key, "beat3") == 0)      p.beat3 = val != 0;
+            else if (strcmp(key, "keycard") == 0)    p.keycard = val != 0;
+            else if (strcmp(key, "endsceneno") == 0) p.endsceneno = val;
+            else if (strcmp(key, "104") == 0)        p.star104 = val != 0;
+        }
+    }
+    fclose(f);
+    StorageClose();
+    if (p.current < 1 || p.current > 5) p.current = 1;
+    if (!any) return false;
+    return true;
+}
+
+bool Progress::SaveSL(const GameProgressSL& pIn) {
+    GameProgressSL out = pIn;
+    if (out.current < 1) out.current = 1;
+    if (out.current > 5) out.current = 5;
+    char iniBuf[256];
+    int len = fnaf::Snprintf(iniBuf, sizeof(iniBuf),
+        "[sl]\ncurrent=%d\nintro=%d\nbeat1=%d\nbeat3=%d\nkeycard=%d\n"
+        "endsceneno=%d\n104=%d\n",
+        out.current,
+        out.intro ? 1 : 0, out.beat1 ? 1 : 0, out.beat3 ? 1 : 0,
+        out.keycard ? 1 : 0, out.endsceneno, out.star104 ? 1 : 0);
+    FILE* f = StorageOpen("sl", "wb", true);
+    if (!f) return false;
+    size_t put = fwrite(iniBuf, 1, (size_t)len, f);
+    fclose(f);
+    StorageClose();
+    return put == (size_t)len;
+}
+
+void Progress::WipeSL() {
+    // the Warning-frame Delete wipe keeps `104` and the cheats OFF; the next
+    // save starts clean (current=1)
+    GameProgressSL p;
+    ResetSL(p);
+    SaveSL(p);
+}
+
 } // namespace fnaf

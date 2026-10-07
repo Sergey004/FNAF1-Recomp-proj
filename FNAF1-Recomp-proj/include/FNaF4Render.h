@@ -27,6 +27,17 @@ public:
     void RenderBedroom(const FNaF4Game& game, f32 time, f32 pan);
     void DrawAttack(const FNaF4Game& game);      // jumpscares + the bite
 
+    // v2.64: the new flow screens
+    void RenderGameOver();                       // frame 4
+    void RenderGameOver2();                      // frame 8
+    void RenderIntro();                          // frames 6/17
+    void RenderNightWinDigits(const FNaF4Game& game);       // the 6 AM digits
+    void RenderMinigame(const FNaF4Game& game);  // Plushtrap + BB
+    void RenderLockbox(const FNaF4Game& game);   // frame 9
+    void RenderExtras(const FNaF4Game& game);    // frame 10
+    void RenderCutscene(const FNaF4Game& game);  // frame 12
+    void RenderEnding(const FNaF4Game& game);    // frame 13
+
 private:
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);
     void DrawWorld(int handle, float wx, float wy, float fw, float fh,
