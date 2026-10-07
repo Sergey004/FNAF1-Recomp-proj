@@ -149,6 +149,8 @@ private:
     void TickBreakerHold(f32 dt);            // the wave-1 task hold
     void TickPS(f32 dt, const SLInputs& in); // the face-button task
     void TickDesk(f32 dt, const SLInputs& in); // Under Desk (eye-match)
+    void TickExtras(f32 dt, const SLInputs& in);
+    void TickChain(f32 dt, const SLInputs& in); // scooping/redfade/bathroom
     void TickBaby(f32 dt, const SLInputs& in);
     void TickToVent(f32 dt);
     void TickWinNight(f32 dt);
