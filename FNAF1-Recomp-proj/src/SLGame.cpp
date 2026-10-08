@@ -61,6 +61,12 @@ void SLGame::ResetToTitle() {
     m_elevatorState = 0;
     m_elevatorT = 0.0f;
     m_elevButtonT = 0.0f;
+    m_brkPanel = 0; m_brkFill = 0.0f; m_brkFreddy = 0;
+    m_brkRollT = 0.0f; m_brkAnimT = 0.0f;
+    m_psTimer = 0.0f; m_psPuppets = 0; m_psPick = 0;
+    m_psPuppet1 = m_psPuppet2 = false;
+    m_psPup1T = m_psPup2T = 0.0f; m_psKill = 0;
+    m_deskHold = 0.0f; m_deskTotal = 0.0f; m_deskPeek = false;
     m_scareT = 0.0f;
     m_scareImg = 0;
     m_cardT = 0.0f;
@@ -536,12 +542,26 @@ void SLGame::TickFuntime(f32 dt, const SLInputs& in) {
         Sfx("snd_scream op5-2", false, 5, 100);
     }
     // the exits: 2000 fwd reaches the end; the backwards run (B) ends the
-    // night run (the always-fatal dump scare on the backward trip)
+    // night run — night 4: the backward trip IS the night-4 transition and
+    // its scooping chain; nights 1-3 park at the gallery
     if (m_progress >= 2000) {
         SfxStop("snd_Gradual Liquidation");
-        GoTo(12);                                       // -> Baby's Room
+        if (m_night >= 4) {
+            m_screen = SCR_SCOOPING;                   // the dump: night 5 -> 13
+            m_cardT = 0.0f;
+        } else {
+            GoTo(12);                                  // -> Baby's Room
+        }
     }
-    if (in.bPressed) m_backwards = true;
+    if (in.bPressed) {
+        m_backwards = true;
+        if (m_night >= 4) {
+            // the always-fatal backward trip -> the scooping chain
+            SfxStop("snd_Gradual Liquidation");
+            m_screen = SCR_SCOOPING;
+            m_cardT = 0.0f;
+        }
+    }
 }
 
 // ------------------------------------------------------------
@@ -589,9 +609,13 @@ void SLGame::TickBreaker(f32 dt, const SLInputs& in) {
     }
     // the task done: the day-plan beat and the exit route
     if (m_brkPanel >= 3) {
-        if (m_scriptEvent < 85) m_scriptEvent = 0;
         SfxStop("snd_control room power down vrs3");
-        GoTo(12);                                       // -> Baby's Room
+        // the port's day plan (the dump routes the room by go to 8/12; the
+        // per-night room order rides the Script Event spine, labeled):
+        // night 2 -> Under Desk (frame 13; the dump enters it off-router),
+        // nights 3+ -> Baby's Room
+        if (m_night == 2) { m_screen = SCR_UNDERDESK; m_cardT = 0.0f; }
+        else              GoTo(12);
     }
     if (in.bPressed && m_scriptEvent >= 85) {
         SfxStop("snd_control room power down vrs3");
@@ -740,7 +764,15 @@ void SLGame::TickPS(f32 dt, const SLInputs& in) {
     if (in.bPressed && m_scriptEvent >= 168) {
         SfxStop("snd_control room power down vrs3");
         SfxStop("snd_drips");
-        GoTo(11);                                      // -> Breaker via load
+        if (m_night >= 4) {
+            // the port's night-4/5 plan: the P&S task feeds the Funtime
+            // walk (label; the dump rides the Script Event spine)
+            m_progress = 0; m_foxyDist = 0;
+            m_screen = SCR_FUNTIME;
+            m_cardT = 0.0f;
+        } else {
+            GoTo(12);                                  // -> Baby's Room
+        }
     }
 }
 

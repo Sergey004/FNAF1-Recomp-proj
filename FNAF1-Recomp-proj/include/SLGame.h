@@ -229,6 +229,7 @@ private:
     // + P&S 2 (frame 19) night 5: Ennard.
     f32    m_psTimer;        // the 120 s countdown (kill at 0)
     i32    m_psPuppets;      // spawn counter
+    i32    m_psPick;         // the D-pad button pick 0..8
     bool   m_psPuppet1, m_psPuppet2;   // live
     f32    m_psPup1T, m_psPup2T;       // hide-off ticks
     i32    m_psKill;

@@ -29,6 +29,10 @@ public:
     void RenderBallora(const SLGame& game, f32 time);
     void RenderFuntime(const SLGame& game, f32 time);
     void RenderBreaker(const SLGame& game);
+    void RenderPS(const SLGame& game);
+    void RenderDesk(const SLGame& game);
+    void RenderChain(const SLGame& game);
+    void RenderExtrasMenu(const SLGame& game);
     void RenderHold(const char* caption);        // wave-2 hold screens
     void RenderWinNight(const SLGame& game);
     void RenderTvShow();
