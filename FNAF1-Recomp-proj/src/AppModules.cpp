@@ -395,14 +395,9 @@ void FNaF3Module::Tick(f32 dt) {
 void FNaF3Module::Render() {
     switch (m_game.GetScreen()) {
         case FNaF3Game::SCR_DISCLAIMER:
-            if (m_services.text) {
-                m_services.text->DrawText((int)(530.0f * 1.25f), (int)(313.0f * 0.9375f),
-                                          "WARNING!", 0xFFFFFFFF);
-                m_services.text->DrawText((int)(338.0f * 1.25f), (int)(360.0f * 0.9375f),
-                                          "This game contains flashing lights, loud", 0xFFFFFFFF);
-                m_services.text->DrawText((int)(390.0f * 1.25f), (int)(388.0f * 0.9375f),
-                                          "noises, and lots of jumpscares!", 0xFFFFFFFF);
-            }
+            // frame 0: the dump's own centered banner (the old debug-font
+            // paragraphs were invented — the child String never shows)
+            m_render.RenderDisclaimer();
             break;
         case FNaF3Game::SCR_TITLE:      m_render.RenderTitle(m_time, m_game.GetOptionSelected()); break;
         case FNaF3Game::SCR_NIGHTSTART: m_render.RenderNightStart(m_game.GetNight()); break;
@@ -537,15 +532,9 @@ void FNaF4Module::Tick(f32 dt) {
 void FNaF4Module::Render() {
     switch (m_game.GetScreen()) {
         case FNaF4Game::SCR_DISCLAIMER:
-            // FNAF4's warning is RED (frame 0 "Frame 17")
-            if (m_services.text) {
-                m_services.text->DrawText((int)(465.0f * 1.25f), (int)(290.0f * 0.9375f),
-                                          "WARNING!", 0xFF2020E0);
-                m_services.text->DrawText((int)(255.0f * 1.25f), (int)(365.0f * 0.9375f),
-                                          "THIS GAME CONTAINS FLASHING LIGHTS, LOUD", 0xFF2020E0);
-                m_services.text->DrawText((int)(298.0f * 1.25f), (int)(393.0f * 0.9375f),
-                                          "NOISES, AND LOTS OF JUMPSCARES!", 0xFF2020E0);
-            }
+            // frame 0: the dump's own red banner (img 962 — the old red
+            // debug-font paragraphs were invented)
+            m_render.RenderDisclaimer();
             break;
         case FNaF4Game::SCR_TITLE:
             m_render.RenderTitle(m_time, m_game.GetOptionSelected(), m_game.IsBeat5());

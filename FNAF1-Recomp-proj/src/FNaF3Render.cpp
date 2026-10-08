@@ -53,6 +53,13 @@ int FNaF3Render::StaticFrame(f32 time) const {
 
 // ---- title (frame 1 "title", 1024x768) --------------------------------
 
+void FNaF3Render::RenderDisclaimer() {
+    // frame 0: the dump's legal splash = ONE centered banner (Backdrop
+    // img 329, 477x90 at (292,308)); its String child sits off-screen in
+    // the export and is never moved (the old paragraphs were invented).
+    Draw(329, 292.0f, 308.0f, 477.0f, 90.0f, 0xFFFFFFFF);
+}
+
 void FNaF3Render::RenderTitle(f32 time, i32 optionSelected) {
     if (!m_batch || !m_pak) return;
 

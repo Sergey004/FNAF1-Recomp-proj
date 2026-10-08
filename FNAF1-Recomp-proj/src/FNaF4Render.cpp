@@ -49,6 +49,13 @@ void FNaF4Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
 
 // ---- title (frame 1 "titlescreen") -------------------------------------
 
+void FNaF4Render::RenderDisclaimer() {
+    // frame 0: the dump's legal splash = ONE centered banner (Active
+    // img 962, 551x92 at (248,284)); its String child sits off-screen in
+    // the export and is never moved (the old red paragraphs were invented).
+    Draw(962, 248.0f, 284.0f, 551.0f, 92.0f, 0xFFFFFFFF);
+}
+
 void FNaF4Render::RenderTitle(f32 time, i32 optionSelected, bool beat5) {
     if (!m_batch || !m_pak) return;
     (void)time;

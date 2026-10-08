@@ -21,6 +21,7 @@ public:
     void Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text);
 
     void RenderTitle(f32 time, i32 optionSelected);
+    void RenderDisclaimer();                     // frame 0: the banner (img 329)
     void RenderNightStart(i32 night);
     void RenderStatic6();
     void RenderNextDay(i32 night);

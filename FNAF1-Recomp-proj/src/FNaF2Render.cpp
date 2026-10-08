@@ -55,13 +55,12 @@ int FNaF2Render::StaticFrame(f32 time) const {
 
 // ---- disclaimer (frame 0 "Frame 17"): black + white mono warning ----
 void FNaF2Render::RenderDisclaimer(const FNaF2Game& game) {
-    if (!m_text) return;
+    // frame 0 "Frame 17": the dump draws ONE centered banner (Backdrop
+    // img 574, 535x121 at (268,278), hot (-17,-7)); its String child sits
+    // off-screen in the export and is never moved — the legal splash IS
+    // the banner (the old debug-font paragraphs were invented).
     (void)game;
-    m_text->DrawText((int)(455.0f * 1.25f), (int)(288.0f * kScaleY), "WARNING!", 0xFFFFFFFF);
-    m_text->DrawText((int)(283.0f * 1.25f), (int)(345.0f * kScaleY),
-                     "This game contains flashing lights, loud", 0xFFFFFFFF);
-    m_text->DrawText((int)(341.0f * 1.25f), (int)(382.0f * kScaleY),
-                     "noises, and lots of jumpscares!", 0xFFFFFFFF);
+    Draw(574, 268.0f, 278.0f, 535.0f, 121.0f, 0xFFFFFFFF);
 }
 
 // ---- title (frame 1 "title", 1024x768) --------------------------------
@@ -252,8 +251,17 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         }
     }
 
-    // layer 3 — viewport-space static over everything
-    Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    // layer 3 — viewport-space static over everything. v2.66: the alpha is
+    // the dump's coefficient treatment (the title's recipe: re-roll per
+    // 1.8 s); drawing it OPAQUE drowned the feed and the HUD text (the
+    // sweep caught it in the offline frames).
+    {
+        u32 h = (u32)(int)(time / 1.8f) * 2654435761u + 11u;
+        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+        const u32 sAlpha = 90u + h % 60u;      // 0.35..0.59
+        Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f,
+             (sAlpha << 24) | 0x00FFFFFFu);
+    }
 
     // v2.59: the mask overlay (dump "mask come down"/"mask"/"mask up")
     {

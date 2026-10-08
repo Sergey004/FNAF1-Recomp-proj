@@ -22,6 +22,7 @@ public:
     void Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text);
 
     void RenderTitle(f32 time, i32 optionSelected, bool beat5);
+    void RenderDisclaimer();                     // frame 0: the red banner (img 962)
     void RenderNightStart(i32 night);
     void RenderNightWin();
     void RenderBedroom(const FNaF4Game& game, f32 time, f32 pan);
