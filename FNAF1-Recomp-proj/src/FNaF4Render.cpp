@@ -375,13 +375,17 @@ void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
         Snprintf(b, sizeof(b), "%d am", game.GetHour() == 0 ? 12 : game.GetHour());
         m_text->DrawText(1080, 40, b, 0xFF606060);
     }
-    // the talk box with the CURRENT line (verbatim + the speaker color)
+    // the talk box: the dump's OWN plate (img 1083, 812x158 — the dark
+    // navy panel with the gray border, Active 13) at the screenshot spot,
+    // the line left-aligned on it with the speaker color (the real font
+    // on the console is the game's serif; the stub shows its own).
+    Draw(1083, 106.0f, 66.0f, 812.0f, 158.0f, 0xFFFFFFFF);
     if (m_text && cs.lineCount > 0) {
         extern const char* Fnaf4CsLineText(i32 row);
         extern u32 Fnaf4CsLineColor(i32 row);
         const char* line = Fnaf4CsLineText(cs.curLine);
         if (line)
-            m_text->DrawTextCentered(600, line, Fnaf4CsLineColor(cs.curLine), 0);
+            m_text->DrawText(150, 110, line, Fnaf4CsLineColor(cs.curLine));
     }
     if (cs.done) Draw(976, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
 }
