@@ -115,6 +115,8 @@ public:
     f32    GetCardT()     const { return m_cardT; }
     i32    GetGoTo()      const { return m_goTo; }
     i32    GetScriptEvent() const { return m_scriptEvent; }
+    i32    GetPick()      const { return m_psPick; }        // the P&S button pick
+    f32    GetDeskHold()  const { return m_deskHold; }      // the eye-match fill
 
     // the walk model
     i32    GetProgress()  const { return m_progress; }

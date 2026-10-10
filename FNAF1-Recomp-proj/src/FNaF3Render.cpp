@@ -742,20 +742,22 @@ void FNaF3Render::RenderMinigame(const FNaF3Game& game, f32 time) {
     if (mg.game == FNaF3Game::MG_MANGLE) {
         static const int kKid[4][2] = { {882, 883}, {884, 885}, {886, 887}, {888, 890} };
         static const f32 kOff[4][2] = { {-61,41}, {-21,17}, {25,29}, {47,27} };
+        const int kF = mg.facing & 1;              // (in-bounds for the table)
         for (int i = 0; i < 4; ++i) {
             if (!mg.kidFollow[i]) continue;
             const f32 kx = mg.px + (mg.facing == 0 ? -kOff[i][0] : kOff[i][0]);
-            Draw(kKid[i][mg.facing], ox + kx - 56.0f, oy + mg.py + kOff[i][1] - 60.0f,
+            Draw(kKid[i][kF], ox + kx - 56.0f, oy + mg.py + kOff[i][1] - 60.0f,
                  112.0f, 119.0f, 0xFFFFFFFF);
         }
     }
 
     // the player sprite per game (dump cells; right/left pairs)
+    const int kF2 = mg.facing & 1;
     static const int kPlayer[7][2] = {
         { 713, 713 }, { 716, 717 }, { 875, 876 }, { 907, 908 },
         { 931, 932 }, { 944, 945 }, { 969, 970 }
     };
-    const int pimg = kPlayer[mg.game][mg.facing];
+    const int pimg = kPlayer[mg.game][kF2];
     const f32 pw = (mg.game == FNaF3Game::MG_TOYCHICA || mg.game == FNaF3Game::MG_GFREDDY ||
                     mg.game == FNaF3Game::MG_RWQ || mg.game == FNaF3Game::MG_MARION) ? 112.0f : 112.0f;
     Draw(pimg, ox + mg.px - pw * 0.5f, oy + mg.py - 60.0f, pw, 119.0f, 0xFFFFFFFF);

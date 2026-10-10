@@ -195,4 +195,55 @@ void SLRender::RenderHold(const char* caption) {
         m_text->DrawText(440, 340, caption ? caption : "the wave-2 room", 0xFF909090);
 }
 
+void SLRender::RenderPS(const SLGame& game) {
+    // the face-button task (frames 11/19): the nine picks with the current
+    // highlight, the Script Event beat, the exit hint. The dump's button
+    // art rows are not frame-dumped whole — labeled block labels stand in.
+    static const char* const kBtn[9] = {
+        "R.CHEEK", "L.CHEEK", "R.EYE", "NOSE", "CHIN", "MODULE", "UNIT 1", "UNIT 2", "-"
+    };
+    if (m_text) {
+        char b[80];
+        Snprintf(b, sizeof(b), "PARTS AND SERVICE   event %d", game.GetScriptEvent());
+        m_text->DrawText(40, 40, b, 0xFFE0E0E0);
+        for (int i = 0; i < 9; ++i) {
+            const u32 col = (i == game.GetPick()) ? 0xFFFFFFFF : 0xFF808080;
+            m_text->DrawText(120 + (i % 3) * 340, 420 + (i / 3) * 60, kBtn[i], col);
+        }
+        m_text->DrawText(40, 660, "L/R: pick   A: click   B: exit (event 168)", 0xFF909090);
+    }
+}
+
+void SLRender::RenderDesk(const SLGame& game) {
+    // Under Desk (frame 13): the dark under-desk hold; the eye-match fill
+    if (m_text) {
+        char b[64];
+        Snprintf(b, sizeof(b), "UNDER DESK   hold %.1f", game.GetDeskHold());
+        m_text->DrawText(40, 40, b, 0xFFE0E0E0);
+        m_text->DrawText(40, 660, "A(hold): keep the eye-match", 0xFF909090);
+    }
+}
+
+void SLRender::RenderChain(const SLGame& game) {
+    // the night-4/5 end chain (frames 20/21/22/23)
+    if (m_text) {
+        const char* cap = "SCOOPING ROOM";
+        if (game.GetScreen() == SLGame::SCR_REDFADE)  cap = "RED FADE";
+        if (game.GetScreen() == SLGame::SCR_BATHROOM) cap = "THE BATHROOM";
+        if (game.GetScreen() == SLGame::SCR_CREDITS)  cap = "CREDITS";
+        m_text->DrawText(480, 320, cap, 0xFFE0E0E0);
+        m_text->DrawText(440, 420, "A/B: continue", 0xFF909090);
+    }
+}
+
+void SLRender::RenderExtrasMenu(const SLGame& game) {
+    static const char* const kRows[4] = { "CHARACTERS", "JUMPSCARES", "SCENES", "EXIT" };
+    if (m_text) {
+        for (int i = 0; i < 4; ++i) {
+            m_text->DrawText(420, 240 + i * 64, kRows[i],
+                             (game.GetOptionSelected() == i) ? 0xFFFFFFFF : 0xFF909090);
+        }
+    }
+}
+
 } // namespace fnaf

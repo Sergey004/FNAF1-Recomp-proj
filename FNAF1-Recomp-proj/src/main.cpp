@@ -224,9 +224,11 @@ static void FrameEnd() {
     // DEV menu is open — the FNAF2+ titles render clean (user call: the boot
     // log was drawn over the FNAF2 menu).
     {
-        AppModule* act = AppRegistry_Active();
-        const bool fnaf1Flow = (act == 0) || (strcmp(AppRegistry_Active()->Name(), "FNAF1") == 0);
-        if (g_showConsole && (fnaf1Flow || g_devMode))
+        // v2.66: the console shows on every game (user: "верни консоль ...
+        // как это для всех игр" — the debug readout is wanted on the
+        // FNAF2/3/4/SL screens too). In module mode the renderers draw
+        // before FrameEnd, so this lands over them.
+        if (g_showConsole)
             g_debugConsole.Render(SCREEN_W, SCREEN_H);
     }
     if (g_goldenScareT >= 0.0f) g_render.RenderScareFlash(g_scareFlashImg, g_goldenScareT);   // scare flash
@@ -1368,6 +1370,14 @@ int main(int argc, char* argv[]){
             if (gi.back) {
                 // v2.32: B = back to the boot selector (NOT a console kill):
                 // drop the current pak, pick another game, load its bundle.
+                // v2.66: STOP ALL AUDIO BEFORE THE PAK UNLOAD — the live
+                // source voices reference the pak's sound buffers, and
+                // unloading under a playing voice crashes the XAudio2
+                // resampler on the driver's thread (oapresamplelinear;
+                // seen on the FNAF2/SL exits). StopAll drops every voice
+                // on the spot; the 50 ms sleep lets the mixer hand them off.
+                g_audio.StopAll();
+                Sleep(50);
                 g_pak.Unload();
                 g_pakLoaded = false;
                 s_loadedModule = 0;

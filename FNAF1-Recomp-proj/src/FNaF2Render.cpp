@@ -180,7 +180,7 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
     Draw(294,  26.0f, 738.0f,  69.0f,  12.0f, 0xFFFFFFFF);
     Draw(631, 335.0f, 736.0f, 396.0f,  13.0f, 0xFFFFFFFF);
     if (m_text)
-        m_text->DrawText((int)(790.0f * kScaleX), (int)(738.0f * kScaleY),
+        m_text->DrawText((int)(740.0f * kScaleX), (int)(738.0f * kScaleY),
                          "(c)2014 Scott Cawthon", 0xFFFFFFFF);
 }
 
@@ -241,6 +241,15 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         DrawWorld(187, 620.0f, 260.0f, 520.0f, 340.0f, pan, 0xFFFFFFFF);  // toy Bonnie office pose
     if (game.HasBBInOffice())
         DrawWorld(221, 700.0f, 300.0f, 380.0f, 320.0f, pan, 0xFFFFFFFF);  // BB at the desk
+    // v2.66: Mangle crawls the ceiling (dump "Active 20" anims: 0=218,
+    // 12=217, 13=219, 14=78 — the picks show her hull overhead); the game
+    // state drives which cell; the entry point = the office frame's
+    // wall-piece position
+    if (game.GetMangleOfficeView() > 0) {
+        static const i32 kMangleCells[3] = { 217, 219, 78 };  // hanging frames
+        const i32 pick = (game.GetMangleOfficeView() - 1) % 3;
+        DrawWorld(kMangleCells[pick], 460.0f, 60.0f, 480.0f, 240.0f, pan, 0xFF909090);
+    }
     // danger darkening ("blackout" img_225): alpha ramps over the 300-frame window
     {
         const f32 df = game.GetDangerDark();

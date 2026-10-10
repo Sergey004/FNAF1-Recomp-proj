@@ -684,11 +684,16 @@ void SLModule::Render() {
         case SLGame::SCR_HUB:       m_render.RenderHub(m_game); break;
         case SLGame::SCR_BABY:      m_render.RenderBaby(m_game); break;
         case SLGame::SCR_BALLORA:   m_render.RenderBallora(m_game, m_time); break;
-        case SLGame::SCR_BREAKER:
+        case SLGame::SCR_BREAKER:   m_render.RenderBreaker(m_game); break;
         case SLGame::SCR_PS:
-        case SLGame::SCR_PS2:
-        case SLGame::SCR_UNDERDESK: m_render.RenderBreaker(m_game); break;
+        case SLGame::SCR_PS2:       m_render.RenderPS(m_game); break;
+        case SLGame::SCR_UNDERDESK: m_render.RenderDesk(m_game); break;
         case SLGame::SCR_FUNTIME:   m_render.RenderFuntime(m_game, m_time); break;
+        case SLGame::SCR_SCOOPING:
+        case SLGame::SCR_REDFADE:
+        case SLGame::SCR_BATHROOM:
+        case SLGame::SCR_CREDITS:   m_render.RenderChain(m_game); break;
+        case SLGame::SCR_EXTRAS:    m_render.RenderExtrasMenu(m_game); break;
         case SLGame::SCR_WINNIGHT:  m_render.RenderWinNight(m_game); break;
         case SLGame::SCR_TVSHOW:    m_render.RenderTvShow(); break;
         case SLGame::SCR_GIRLVOICE: m_render.RenderGirlVoice(); break;

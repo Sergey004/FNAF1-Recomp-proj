@@ -985,4 +985,40 @@ void SLGame::TickGameOver(f32 dt, const SLInputs& in) {
     }
 }
 
+// ------------------------------------------------------------
+// the fnaf_sl save bridge ("sl" INI keys: current/intro/beat1/beat3/
+// keycard/endsceneno/104 — the Warning-frame Delete wipes via WipeSave)
+// ------------------------------------------------------------
+
+void SLGame::ApplyProgressSL(const Progress::GameProgressSL& p) {
+    m_current = p.current < 1 ? 1 : (p.current > 5 ? 5 : p.current);
+    m_intro = p.intro;
+    m_beat1 = p.beat1;
+    m_beat3 = p.beat3;
+    m_keycard = p.keycard;
+    m_endsceneno = p.endsceneno;
+    m_star104 = p.star104;
+}
+
+void SLGame::FillProgressSL(Progress::GameProgressSL& p) const {
+    p.current = m_current;
+    p.intro = m_intro;
+    p.beat1 = m_beat1;
+    p.beat3 = m_beat3;
+    p.keycard = m_keycard;
+    p.endsceneno = m_endsceneno;
+    p.star104 = m_star104;
+}
+
+void SLGame::WipeSave() {
+    m_current = 1;
+    m_intro = false;
+    m_beat1 = false;
+    m_beat3 = false;
+    m_keycard = false;
+    m_endsceneno = 0;
+    m_star104 = false;
+    m_saveDirty = true;
+}
+
 } // namespace fnaf

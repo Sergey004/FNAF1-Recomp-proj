@@ -87,8 +87,14 @@ void FNaF4Game::InitNightState() {
     m_foxyRollT = 0.0f;
     m_closetTickT = 0.0f;
     m_fredbearSndT = 0.0f;
-
-    m_freddyCounter = 0;
+    // the cheat toggles pre-arm the night where the dump would (Extras):
+    // blind = start with the flashlight dark, mad_freddy = Freddy already
+    // warm, insta_foxy = Foxy in the closet from 12 AM, all_nightmare =
+    // Fredbear replaces everyone from hour 0. house map/radar handled by the
+    // renderer's overlay (labeled approximation of the excluded objects)
+    if (m_instaFoxy) { m_closetCounter = 3; }
+    if (m_allNightmare && m_fredbearAI == 0) m_fredbearAI = 12;
+    if (m_madFreddy)   m_freddyCounter = 20;
     m_miniArt = rand() % 4;
     m_freddyT = 0.0f;
     m_bedTickT = 0.0f;
@@ -707,7 +713,8 @@ void FNaF4Game::TickExtras(f32 dt, const FNaF4Inputs& in) {
 
 void FNaF4Game::TickCutscene(f32 dt, const FNaF4Inputs& in) {
     CutsceneState& cs = m_cut;
-    // the walk (g11/12: 100 ms, 25 px) in the 5x5-page world
+    // the walk (g11/12: 100 ms, 25 px) in the house pages; the beds and
+    // walls bound (dump frame 12 layout: houseHal b/walls at the edges)
     cs.stepT += dt;
     if (!cs.done && cs.stepT >= 0.1f) {
         cs.stepT -= 0.1f;
@@ -716,10 +723,10 @@ void FNaF4Game::TickCutscene(f32 dt, const FNaF4Inputs& in) {
         if (in.leftPressed)  nx -= 25.0f;
         if (in.downPressed)  ny += 25.0f;
         if (in.upPressed)    ny -= 25.0f;
-        if (nx < 60.0f) nx = 60.0f;
-        if (nx > 5060.0f) nx = 5060.0f;
-        if (ny < 60.0f) ny = 60.0f;
-        if (ny > 3780.0f) ny = 3780.0f;
+        if (nx < 180.0f) nx = 180.0f;
+        if (nx > 1900.0f) nx = 1900.0f;
+        if (ny < 200.0f) ny = 200.0f;
+        if (ny > 560.0f) ny = 560.0f;
         cs.px = nx; cs.py = ny;
     }
     // the screen follow (g14-19: the 384/512 mid-lines, 768/1024 pages)
@@ -732,10 +739,10 @@ void FNaF4Game::TickCutscene(f32 dt, const FNaF4Inputs& in) {
     if (cs.camX > 4096.0f) cs.camX = 4096.0f;
     if (cs.camY > 3072.0f) cs.camY = 3072.0f;
 
-    // the scene timer: the dump's scenes run on scripted triggers; here the
-    // labeled stop-gap runs the talk box for a fixed beat (60 s or A skip)
+    // the scene timer: beats per the layout, B skips (= dump's "any key ->
+    // game over" for scene 4/5 which auto-play)
     cs.textT += dt;
-    if (in.bPressed || cs.textT >= 60.0f) cs.done = true;
+    if (in.bPressed || cs.textT >= 60.0f || cs.scene == 5) cs.done = true;
     if (cs.done) {
         cs.doneT += dt;
         if (cs.doneT >= 1.0f) {
