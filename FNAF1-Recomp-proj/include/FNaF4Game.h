@@ -164,12 +164,17 @@ public:
         f32  px, py;        // the hit box in the 5120x3840 house
         f32  camX, camY;
         f32  stepT;         // the 100 ms walk gate
-        f32  textT;         // the typewriter/dialogue beat (labeled stop-gap)
+        f32  textT;         // the scene clock
         bool done;          // "end" == 1
         f32  doneT;         // the 1 s exit beat
+        i32  line;          // the line index within the scene
+        i32  curLine;       // the kCsScript row (the renderer reads it)
+        i32  lineCount;     // the scene's line count
+        f32  lineT;         // the per-line beat
         void Clear() {
             scene = 0; px = 2560.0f; py = 1920.0f; camX = 2048.0f; camY = 1536.0f;
             stepT = 0.0f; textT = 0.0f; done = false; doneT = 0.0f;
+            line = 0; curLine = 0; lineCount = 0; lineT = 0.0f;
         }
         CutsceneState() { Clear(); }
     };

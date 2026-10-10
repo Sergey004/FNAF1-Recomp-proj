@@ -361,15 +361,28 @@ void FNaF4Render::RenderExtras(const FNaF4Game& game) {
 void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
     const FNaF4Game::CutsceneState& cs = game.Cut();
     if (!m_batch) return;
-    // the house world: the scene base art was not dumped as frames — the
-    // walk layer renders the dump's hitbox/boy pieces over a dark hold
-    // (labeled stop-gap)
+    // the house world: the walk layer + the dump's own pieces (hitbox 980,
+    // the boy 983, the screen-follow 979). v2.66g: the REAL dialogue —
+    // the strings recovered from the frame-12 events (act #88), the
+    // speaker colors verbatim; the talk box (img 1083 plate family).
     const f32 ox = 512.0f - cs.camX, oy = 384.0f - cs.camY;
     Draw(980, ox + cs.px - 31.0f, oy + cs.py - 31.0f, 62.0f, 62.0f, 0xFFFFFFFF);
     Draw(983, ox + cs.px - 51.0f, oy + cs.py + 20.0f, 102.0f, 120.0f, 0xFF909090);
-    if (m_text)
-        m_text->DrawText((int)(40.0f * kScaleX), (int)(40.0f * kScaleY),
-                         "WASD: walk   B: skip", 0xFF909090);
+    // the WASD hint (img 311) rides above the player per the dump instance
+    Draw(311, ox + cs.px - 55.0f, oy + cs.py - 120.0f, 110.0f, 46.0f, 0xFFFFFFFF);
+    if (m_text) {
+        char b[48];
+        Snprintf(b, sizeof(b), "%d am", game.GetHour() == 0 ? 12 : game.GetHour());
+        m_text->DrawText(1080, 40, b, 0xFF606060);
+    }
+    // the talk box with the CURRENT line (verbatim + the speaker color)
+    if (m_text && cs.lineCount > 0) {
+        extern const char* Fnaf4CsLineText(i32 row);
+        extern u32 Fnaf4CsLineColor(i32 row);
+        const char* line = Fnaf4CsLineText(cs.curLine);
+        if (line)
+            m_text->DrawTextCentered(600, line, Fnaf4CsLineColor(cs.curLine), 0);
+    }
     if (cs.done) Draw(976, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
 }
 

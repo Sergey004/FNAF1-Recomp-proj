@@ -705,11 +705,79 @@ void FNaF4Game::TickExtras(f32 dt, const FNaF4Inputs& in) {
     }
 }
 
-// ---- the house cutscenes (frame 12): the walkable 5120x3840 world. The
-// dump's dialogue letters are sprite images whose strings did not survive
-// the dump — the talk box + arrow render and advance on the dump cadence,
-// the text content is a labeled stop-gap. Scene routing: 0 -> what night,
-// 1-4 -> intro to plushtrap, > 4 -> title. ----
+// ---- the house cutscenes (frame 12): the walkable 5120x3840 world.
+// v2.66g: THE DIALOGUE IS RECOVERED — the strings live in the frame-12
+// events (act #88 "set paragraph text" per group), with the speaker color
+// per line (act #83). The script below is verbatim; the scenes: 0 = the
+// first-launch bedroom (g49-53), 1 = the hide-and-seek (g81-93), 2 = the
+// plush/party day (g95-115), 3 = the closet (g117-133), 5 = the birthday
+// finale (g143-154). Scene routing: 0 -> what night, 1-4 -> intro to
+// plushtrap, > 4 -> title. ----
+
+namespace {
+
+struct CsLine { i32 scene; const char* text; u32 color; };
+static const CsLine kCsScript[] = {
+    // scene 0 — the bedroom (the brother's lines, yellow)
+    { 0, "What did he do this time?", 0xFFFFFF57 },
+    { 0, "He locked you in your room again.", 0xFFFFFF57 },
+    { 0, "Don't be scared. I am here with you.", 0xFFFFFF57 },
+    { 0, "Tomorrow is another day.", 0xFFFFFF57 },
+    // scene 1 — the hide-and-seek (yellow)
+    { 1, "You know he is hiding again.", 0xFFFFFF57 },
+    { 1, "He won't stop until you find him.", 0xFFFFFF57 },
+    { 1, "Over there.", 0xFFFFFF57 },
+    { 1, "He left without you.", 0xFFFFFF57 },
+    { 1, "He knows that you hate it here.", 0xFFFFFF57 },
+    { 1, "You are right beside the exit. If you run, you can make it.", 0xFFFFFF57 },
+    { 1, "Hurry, run toward the exit.", 0xFFFFFF57 },
+    { 1, "Be careful.", 0xFFFFFF57 },
+    // scene 2 — the plush toy / the party (green girl, orange bully, pink girl)
+    { 2, "Where is your plush toy? Mine is Spring Bonnie.", 0xC0FFA0 },
+    { 2, "My Daddy says I have to be careful with him or I will pinch my finger.", 0xC0FFA0 },
+    { 2, "He is a finger trap, he says.", 0xC0FFA0 },
+    { 2, "Why are you crying? Don't you like my toy collection?", 0xFFC0A0 },
+    { 2, "Aren't you the kid who always hides under the table and cries?", 0xC0FFA0 },
+    { 2, "Hahaha! No one else is scared! Why are you? Stop being such a baby!", 0xC0FFA0 },
+    { 2, "Are you going to the party? Everyone is going to the party.", 0xFFA0FF },
+    { 2, "Oh wait, you have to go! It's YOUR birthday! Haha!", 0xFFA0FF },
+    { 2, "You'd better watch out! I hear they come to life at night.", 0xFFFFA0 },
+    { 2, "And if you die, they hide your body and never tell anyone.", 0xFFFFA0 },
+    { 2, "Why do you look so worried? See you at the party! Ha ha ha!", 0xFFFFA0 },
+    // scene 3 — the escape / the closet (yellow, then the child's white)
+    { 3, "NO! Don't you remember what you saw? The exit is the other way!", 0xFFFFFF57 },
+    { 3, "It's too late. Hurry the other way and find someone who will help you!", 0xFFFFFF57 },
+    { 3, "You can find help if you can get past them. You have to be strong!", 0xFFFFFF57 },
+    { 3, "He hates you.", 0xFFFFFF57 },
+    { 3, "You have to get up.", 0xFFFFFF57 },
+    { 3, "You can get out this time, but you have to hurry.", 0xFFFFFF57 },
+    { 3, "Please let me out.", 0xFFFFFFFF },
+    { 3, "PLEASE!", 0xFFFFFFFF },
+    { 3, "...please let me out....", 0xFFFFFFFF },
+    // scene 5 — the birthday finale (blue friend, gray bullies, white child)
+    { 5, "Wow, your brother is kind of a baby isn't he?", 0x57C0FF },
+    { 5, "It's hilarious.", 0x787878 },
+    { 5, "Why don't we help him get a closer look! He will love it!", 0x787878 },
+    { 5, "No! Please!", 0xFFFFFFFF },
+    { 5, "Come on guys, let's give this little man a lift. He wants to get a closer look!", 0x787878 },
+    { 5, "No! I don't want to go!", 0xFFFFFFFF },
+    { 5, "You heard the little man! He wants to get even closer! Ha ha ha!", 0x787878 },
+    { 5, "Hey guys, I think the little man said he wants to give Fredbear a big kiss!", 0x787878 },
+    { 5, "On THREE! One.... two.....", 0x787878 },
+    { 5, "These are my friends.", 0xFFFFFFFF },
+};
+
+} // file-local
+
+// the renderer's read-only access to the recovered script
+const char* Fnaf4CsLineText(i32 row) {
+    const i32 n = (i32)(sizeof(kCsScript) / sizeof(kCsScript[0]));
+    return (row >= 0 && row < n) ? kCsScript[row].text : "";
+}
+u32 Fnaf4CsLineColor(i32 row) {
+    const i32 n = (i32)(sizeof(kCsScript) / sizeof(kCsScript[0]));
+    return (row >= 0 && row < n) ? kCsScript[row].color : 0xFFFFFFFF;
+}
 
 void FNaF4Game::TickCutscene(f32 dt, const FNaF4Inputs& in) {
     CutsceneState& cs = m_cut;
@@ -739,10 +807,29 @@ void FNaF4Game::TickCutscene(f32 dt, const FNaF4Inputs& in) {
     if (cs.camX > 4096.0f) cs.camX = 4096.0f;
     if (cs.camY > 3072.0f) cs.camY = 3072.0f;
 
-    // the scene timer: beats per the layout, B skips (= dump's "any key ->
-    // game over" for scene 4/5 which auto-play)
+    // the scene timer + the REAL dialogue playback (the dump's act #88
+    // lines, one per beat; Space/A advances like the original's click)
     cs.textT += dt;
-    if (in.bPressed || cs.textT >= 60.0f || cs.scene == 5) cs.done = true;
+    {
+        // the lines of this scene
+        i32 first = -1, count = 0;
+        for (i32 i = 0; i < (i32)(sizeof(kCsScript) / sizeof(kCsScript[0])); ++i) {
+            if (kCsScript[i].scene != cs.scene) continue;
+            if (first < 0) first = i;
+            count += 1;
+        }
+        if (first >= 0) {
+            const f32 kLineBeat = 3.0f;
+            cs.lineT += dt;
+            if (cs.lineT >= kLineBeat || in.aPressed) {
+                cs.lineT = 0.0f;
+                if (cs.line < count - 1) cs.line += 1;
+            }
+            cs.curLine = first + cs.line;
+            cs.lineCount = count;
+        }
+    }
+    if (in.bPressed || cs.textT >= 90.0f) cs.done = true;
     if (cs.done) {
         cs.doneT += dt;
         if (cs.doneT >= 1.0f) {
