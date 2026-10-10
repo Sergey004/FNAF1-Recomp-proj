@@ -160,16 +160,14 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
 
     // "Night N" under the Continue row (dump groups 51/52: night word 270 +
     // the night number counter at (185,567) show only while Continue is
-    // selected; the counter value is the Ini level capped at 5, g58)
+    // selected; the counter value is the Ini level capped at 5, g58).
+    // v2.66 (CNTR-proven): the counter's glyph list = [230..243] (the
+    // alphabet 0-9-+.e, 14x17) — the digit 'N' = 230 + N.
     if (game.GetOptionSelected() == 1) {
         Draw(270,  97.0f, 549.0f,  63.0f,  22.0f, 0xFFFFFFFF);   // "Night" art
-        if (m_text) {
-            char num[8];
-            const i32 lv = game.GetLastNight();
-            Snprintf(num, sizeof(num), "%d", lv < 1 ? 1 : (lv > 5 ? 5 : lv));
-            m_text->DrawText((int)(185.0f * kScaleX), (int)(567.0f * kScaleY),
-                             num, 0xFFFFFFFF);
-        }
+        const i32 lv = game.GetLastNight();
+        Draw(230 + (lv < 1 ? 1 : (lv > 9 ? 9 : lv)),
+             185.0f, 560.0f, 14.0f, 17.0f, 0xFFFFFFFF);
     }
 
     // footer — img_294 "v 1.033" (26,738) and img_631 "Press and hold delete
@@ -288,17 +286,9 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         }
     }
 
-    // ---- HUD (debug font for now): night, hour, battery % ----
-    if (m_text) {
-        char buf[40];
-        Snprintf(buf, sizeof(buf), "Night %d", game.GetNight());
-        m_text->DrawText(180, 20, buf, 0xFFFFFFFF);
-        Snprintf(buf, sizeof(buf), "%d AM", game.GetHour());
-        m_text->DrawText(600, 20, buf, 0xFFFFFFFF);
-        const int pct = (int)((f32)game.GetBatteryLife() * 100.0f / (f32)game.GetBatteryMax() + 0.5f);
-        Snprintf(buf, sizeof(buf), "Battery %d%%", pct);
-        m_text->DrawText(950, 20, buf, game.IsLit() ? 0xFF80FF80 : 0xFFB0B0B0);
-    }
+    // v2.66: the FNAF2 office has NO HUD in the original (no clock, no
+    // battery text — the flashlight drain is felt, not shown) — the debug
+    // text is gone.
 
     // v2.60: the office-side danger face ("danger 1", img_494/495, angry 496/497)
     if (game.IsMusicBoxDanger()) {
@@ -397,21 +387,9 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
         Draw(20, 0.0f, 0.0f, 1024.0f, 768.0f,
              (u32)((int)(game.GetMoveStatic() * 255.0f) << 24) | 0x00FFFFFFu);
 
-    if (m_text) {
-        char buf[24];
-        Snprintf(buf, sizeof(buf), "CAM %02d", v);
-        m_text->DrawText(180, 20, buf, 0xFFFFFFFF);
-        for (int c = 1; c <= 12; ++c) {   // placeholder strip (real map later)
-            char cb[4];
-            Snprintf(cb, sizeof(cb), "%02d", c);
-            m_text->DrawText(430 + c * 26, 690, cb, c == v ? 0xFF80FF80 : 0xFF909090);
-        }
-        Snprintf(buf, sizeof(buf), "%d AM", game.GetHour());
-        m_text->DrawText(600, 20, buf, 0xFFFFFFFF);
-        const int pct = (int)((f32)game.GetBatteryLife() * 100.0f / (f32)game.GetBatteryMax() + 0.5f);
-        Snprintf(buf, sizeof(buf), "Battery %d%%", pct);
-        m_text->DrawText(950, 20, buf, 0xFFB0B0B0);
-    }
+    // v2.66: the FNAF2 monitor shows no text in the original — no cam
+    // label, no clock, no battery (the map's own buttons carry the state;
+    // the per-cam labels are dumped images to wire in the label pass).
 }
 // v2.59: the jumpscare — "attack animation" values 12..21 (anim per attacker,
 // dump g440-449) drawn full-screen over whatever is underneath. Frame lists
@@ -457,13 +435,13 @@ void FNaF2Render::RenderAd() {
 void FNaF2Render::RenderCard(const FNaF2Game& game) {
     // frame 2: the "12:00 AM / Nst Night" card (429 @ 512,374) — the
     // per-night cells ARE in application.json (objInfo 45 anims 0/12-17):
-    // night 1->429, 2->430, 3->431, 4->436, 5->437, 6->426, 7->425
+    // night 1->429, 2->430, 3->431, 4->436, 5->437, 6->426, 7->425.
+    // v2.66: the dump position verbatim (hot 117,58 → topleft 395,316,
+    // native 235x116) and the stray debug line is gone.
     static const i32 kNightCell[7] = { 429, 430, 431, 436, 437, 426, 425 };
     const i32 n = game.GetNight();
     const i32 cell = kNightCell[(n < 1) ? 0 : (n > 7 ? 6 : n - 1)];
-    Draw(cell, 394.0f, 316.0f, 235.0f, 116.0f, 0xFFFFFFFF);
-    if (m_text)
-        m_text->DrawText((int)(480.0f * kScaleX), (int)(200.0f * kScaleY), "12:00 AM", 0xFFB0B0B0);
+    Draw(cell, 395.0f, 316.0f, 235.0f, 116.0f, 0xFFFFFFFF);
 }
 
 void FNaF2Render::RenderStatic() {
@@ -487,7 +465,10 @@ void FNaF2Render::RenderNextDay(const FNaF2Game& game) {
 void FNaF2Render::RenderDream(const FNaF2Game& game) {
     // frame 13: the 2500x768 panning room (616), the slumped pair
     // (609 Bonnie @243 / 614 Chica @2348), the night props, the static
-    // flicker and the slow blackout
+    // flicker and the slow blackout. v2.66: the dump's OWN perspective
+    // wraps this layer (frame 13 "Perspective" obj 300 @ (0,0): object
+    // 1024x768, EDATA zoom=200 curve=4) — the dream's mild bend.
+    m_batch->BeginSceneCapture(0xFF000000);
     const f32 pan = game.GetDreamPan();
     DrawWorld(616, 0.0f, 0.0f, 2500.0f, 768.0f, pan, 0xFFFFFFFF);
     DrawWorld(609, 243.0f, 300.0f, 400.0f, 460.0f, pan, 0xFFFFFFFF);   // Bonnie
@@ -500,6 +481,9 @@ void FNaF2Render::RenderDream(const FNaF2Game& game) {
         if (px > -300.0f && px < 1330.0f)
             DrawWorld(626, 2170.0f, 330.0f, 260.0f, 420.0f, pan, 0xFFFFFFFF);
     }
+    m_batch->EndSceneCapture();
+    m_batch->SetPerspectiveGeometry({ 1024.0f, 768.0f, 0.0f, 0.0f, 1280.0f, 720.0f });
+    m_batch->DrawPerspective(200.0f, 384.0f, 4.0f);
     // the static flicker (alpha tiers per the re-roll)
     {
         const i32 roll = game.GetRareRoll();

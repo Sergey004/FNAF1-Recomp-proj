@@ -78,6 +78,15 @@ public:
     //   EDRAM capture into a sampleable texture) -> DrawPerspective (full-
     //   screen parabola pass). Layers 2/3 are drawn flat afterwards.
     bool PerspectiveReady() const { return m_panReady; }
+    // v2.66: the perspective geometry is PER GAME (the FNAF1 office object
+    // is 1324x754 @(-22,-22) over 1280x720; other games set their own
+    // serialized-object size/origin/window before DrawPerspective).
+    struct PerspGeom {
+        float objW, objH;    // the serialized object size (the capture space)
+        float orgX, orgY;    // the object origin vs the window
+        float winW, winH;    // the visible window
+    };
+    void SetPerspectiveGeometry(const PerspGeom& g);
     void BeginSceneCapture(u32 clearColor);
     void EndSceneCapture();
     void DrawPerspective(float zoom, float centerY, float curve);
@@ -100,6 +109,7 @@ private:
     void* m_panPS;                    // D3DPixelShader* (parabola panorama)
     void* m_backRT;                   // D3DSurface*     (saved back-buffer RT0)
     bool  m_panReady;
+    PerspGeom m_perspGeom;   // v2.66: per-game perspective geometry
     bool  m_ready;
     char  m_initError[192];
 };

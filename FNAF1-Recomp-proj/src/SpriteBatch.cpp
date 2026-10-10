@@ -103,17 +103,19 @@ static const char* kPanoramaPS_HLSL =
     "sampler2D tex0 : register(s0);\n"
     "struct PS_IN { float4 color : COLOR0; float2 uv : TEXCOORD0; };\n"
     "float4 gParams : register(c0);\n"   // x = zoom, y = pivot (obj-normalized), z = curve
+    "float4 gGeom  : register(c1);\n"    // x = objW, y = objH, z = orgX, w = orgY
+    "float4 gWin   : register(c2);\n"    // x = winW, y = winH
     "float4 main(PS_IN i) : COLOR0\n"
     "{\n"
     "    float zoom = gParams.x;\n"
     "    float vc   = gParams.y;\n"
     "    float kc   = gParams.z;\n"
-    "    float fB = 1.0 - zoom / 754.0;\n"
+    "    float fB = 1.0 - zoom / gGeom.y;\n"
     "    float a  = i.uv.x - 0.5;\n"
     "    float fC = max(0.02, 1.0 + (fB - 1.0) * kc * a * a);\n"
     "    float2 src = float2(i.uv.x, (i.uv.y - vc) * fC + vc);\n"
-    "    float2 win = float2((src.x * 1324.0 - 22.0) / 1280.0,\n"
-    "                        (src.y *  754.0 - 22.0) /  720.0);\n"
+    "    float2 win = float2((src.x * gGeom.x - gGeom.z) / gWin.x,\n"
+    "                        (src.y *  gGeom.y - gGeom.w) /  gWin.y);\n"
     "    return tex2D(tex0, win) * i.color;\n"
     "}\n";
 
@@ -205,9 +207,14 @@ SpriteBatch::SpriteBatch()
     , m_panPS(0)
     , m_backRT(0)
     , m_panReady(false)
+    , m_perspGeom()      // v2.66: defaults set in Init (FNAF1's office)
     , m_ready(false)
 {
     m_initError[0] = '\0';
+    // FNAF1's serialized office object: 1324x754 at (-22,-22) over 1280x720
+    m_perspGeom.objW = 1324.0f; m_perspGeom.objH = 754.0f;
+    m_perspGeom.orgX = -22.0f;  m_perspGeom.orgY = -22.0f;
+    m_perspGeom.winW = 1280.0f; m_perspGeom.winH = 720.0f;
 }
 
 SpriteBatch::~SpriteBatch()
@@ -420,19 +427,30 @@ void SpriteBatch::DrawPerspective(float zoom, float centerY, float curve)
 
     float p[4];
     p[0] = zoom;
-    p[1] = (centerY + 22.0f) / 754.0f;   // object-normalized vertical pivot
+    p[1] = (centerY - m_perspGeom.orgY) / m_perspGeom.objH;  // object-normalized pivot
     p[2] = curve;
     p[3] = 0.0f;
     dev->SetPixelShaderConstantF(0, p, 1);
 
+    // v2.66: the per-game geometry (FNAF1's defaults = 1324x754 @(-22,-22)
+    // over 1280x720; every game sets its own before the warp).
+    float geo[4];
+    geo[0] = m_perspGeom.objW; geo[1] = m_perspGeom.objH;
+    geo[2] = m_perspGeom.orgX; geo[3] = m_perspGeom.orgY;
+    dev->SetPixelShaderConstantF(1, geo, 1);
+    float wn[4];
+    wn[0] = m_perspGeom.winW; wn[1] = m_perspGeom.winH;
+    wn[2] = 0.0f; wn[3] = 0.0f;
+    dev->SetPixelShaderConstantF(2, wn, 1);
+
     // Full-screen quad whose UVs are the object-normalized coords of the
-    // 1324x754 object at (-22,-22): the visible 1280x720 window sits in the
-    // interior, so the parabola is sampled only over its real sub-range.
+    // serialized object: the visible window sits in the interior, so the
+    // parabola is sampled only over its real sub-range.
     SpriteVertex q[4];
-    const float u0 = 22.0f  / 1324.0f;
-    const float v0 = 22.0f  / 754.0f;
-    const float u1 = 1302.0f / 1324.0f;
-    const float v1 = 742.0f  / 754.0f;
+    const float u0 = -m_perspGeom.orgX          / m_perspGeom.objW;
+    const float v0 = -m_perspGeom.orgY          / m_perspGeom.objH;
+    const float u1 = (m_perspGeom.winW - m_perspGeom.orgX) / m_perspGeom.objW;
+    const float v1 = (m_perspGeom.winH - m_perspGeom.orgY) / m_perspGeom.objH;
     const u32 white = 0xFFFFFFFFu;
 
     q[0].x = 0.0f;    q[0].y = 0.0f;    q[0].z = 0.0f; q[0].w = 1.0f; q[0].u = u0; q[0].v = v0; q[0].color = white;
@@ -441,6 +459,10 @@ void SpriteBatch::DrawPerspective(float zoom, float centerY, float curve)
     q[3].x = 1280.0f; q[3].y = 720.0f;  q[3].z = 0.0f; q[3].w = 1.0f; q[3].u = u1; q[3].v = v1; q[3].color = white;
 
     dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, q, sizeof(SpriteVertex));
+}
+
+void SpriteBatch::SetPerspectiveGeometry(const PerspGeom& g) {
+    m_perspGeom = g;
 }
 
 void SpriteBatch::End()

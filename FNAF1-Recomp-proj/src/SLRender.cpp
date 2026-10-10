@@ -88,9 +88,13 @@ void SLRender::RenderVent(const SLGame& game) {
 }
 
 void SLRender::RenderHub(const SLGame& game) {
+    // frame 5 "Main Hub": the room art = img 2085 (1900x1000 @0,0 — the
+    // hub's own anim cell; the wide room pans with the camera). The old
+    // draw stretched the spark sprite (56) over the screen.
     (void)game;
     if (m_batch)
-        D(m_pak, m_batch, 56, 0.0f, 0.0f, 1280.0f, 720.0f, 0xFF606060);
+        D(m_pak, m_batch, 2085, -game.GetPan() * 0.3f, -80.0f, 1900.0f, 1000.0f,
+          0xFFFFFFFF);
     if (m_text) {
         m_text->DrawText(40, 40, "CIRCUS CONTROL", 0xFFE0E0E0);
         m_text->DrawText(40, 660, "A: the day route   D: shock test", 0xFF909090);

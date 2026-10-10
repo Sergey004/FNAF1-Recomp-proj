@@ -91,14 +91,13 @@ void FNaF3Render::RenderTitle(f32 time, i32 optionSelected) {
 // ---- the between-night cards ------------------------------------------
 
 void FNaF3Render::RenderNightStart(i32 night) {
-    // frame 2 "what day": the "Night N" art (img 1098) — debug-font digits
-    // under it until the card anims land
-    Draw(1098, 411.0f, 300.0f, 201.0f, 104.0f, 0xFFFFFFFF);
-    if (m_text) {
-        char buf[24];
-        Snprintf(buf, sizeof(buf), "%d", night);
-        m_text->DrawText((int)(620.0f * kScaleX), (int)(420.0f * kScaleY), buf, 0xFFFFFFFF);
-    }
+    // frame 2 "what day": the card's OWN plates (Active a0 = 1098 "12 AM",
+    // a12..a17 = 837/838/842/843/844/430 = "2nd".."7th Night"), 201x104 at
+    // the Active's (512,374) — verbatim from the dump (the debug digit is
+    // gone; the night value picks the cell like the dump's act #17).
+    static const i32 kPlate[7] = { 1098, 837, 838, 842, 843, 844, 430 };
+    const i32 img = kPlate[night < 1 ? 0 : (night > 7 ? 6 : night - 1)];
+    Draw(img, 512.0f, 374.0f, 201.0f, 104.0f, 0xFFFFFFFF);
 }
 
 void FNaF3Render::RenderStatic6() {
@@ -123,9 +122,19 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
     if (!m_batch || !m_pak) return;
     const f32 pan = game.GetPan();
 
+    // v2.66: the dump's OWN perspective (frame 3, "Perspective" obj 60 at
+    // (-8,-8): object 1048x790, EDATA zoom=150 curve=4) wraps the office
+    // layer — the mild bend FNAF3's office really has.
+    m_batch->BeginSceneCapture(0xFF000000);
+
     // the office "foreground" states (dump objInfo 123: anim 0 = 203 normal,
     // anim 12 = 204 — the VENT-ERROR variant; groups 337/338/344 switch it
-    // while the vent meter is <= -10, flickering under the hallucinations)
+    // while the vent meter is <= -10, flickering under the hallucinations).
+    // v2.66: the frame's BACKDROP (img 205, 2000x768 @0,0) draws FIRST —
+    // 203/204 carry the transparent holes (the window, the wall gaps) and
+    // the original shows the back layer through them (the "transparent"
+    // blackness in the sweep frames was this missing backdrop).
+    DrawWorld(205, 0.0f, 0.0f, 2000.0f, 768.0f, pan, 0xFFFFFFFF);
     const bool ventError = game.GetVentMeter() <= -10;
     if (ventError) {
         // the error state: the 204 foreground at the dump's alpha coefficient
@@ -191,15 +200,17 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
         Draw(362, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0xFFFFFFFFu);
     }
 
-    // HUD (debug-font stopgap)
-    if (m_text) {
-        char buf[40];
-        const i32 ton = game.GetTimeOfNight();
-        Snprintf(buf, sizeof(buf), "%d AM", ton == 0 ? 12 : ton);
-        m_text->DrawText(40, 20, buf, 0xFFB0B0B0);
-        Snprintf(buf, sizeof(buf), "Night %d", game.GetNight());
-        m_text->DrawText(40, 44, buf, 0xFF707070);
-    }
+    // v2.66: the FNAF3 office has NO HUD in the original (no clock, no
+    // night label — the time lives only on the between-night cards), so
+    // the debug text is gone entirely.
+
+    // the layer-0 warp: end the capture and run the dump's own bend
+    // (zoom 150 / curve 4 over the 1048x790 object at (-8,-8)). The HUD
+    // drew into the layer before the warp — like the original's office
+    // object composition (the HUD counters are frame objects there too).
+    m_batch->EndSceneCapture();
+    m_batch->SetPerspectiveGeometry({ 1048.0f, 790.0f, -8.0f, -8.0f, 1280.0f, 720.0f });
+    m_batch->DrawPerspective(150.0f, 355.0f, 4.0f);
 }
 
 // ---- monitor (feed + map + maintenance panel) ---------------------------
@@ -291,16 +302,8 @@ void FNaF3Render::RenderMonitor(const FNaF3Game& game, f32 time) {
         Draw(676, -11.0f, -3.0f, 1046.0f, 775.0f, (a << 24) | 0xFFFFFFFFu);
     }
 
-    // HUD (debug-font stopgap)
-    if (m_text) {
-        char buf[40];
-        const i32 ton = game.GetTimeOfNight();
-        Snprintf(buf, sizeof(buf), "%d AM   CAM %02d", ton == 0 ? 12 : ton, cam);
-        m_text->DrawText(40, 20, buf, 0xFFB0B0B0);
-        if (game.GetAudioMeter() <= -10 || game.GetCameraMeter() <= -10 ||
-            game.GetVentMeter() <= -10)
-            m_text->DrawText(40, 44, "SYSTEM ERROR", 0xFF6060FF);
-    }
+    // v2.66: the FNAF3 monitor shows no text in the original (the errors
+    // surface as the maintenance-panel icons and the 204 office state).
 }
 
 void FNaF3Render::RenderMap(const FNaF3Game& game) {

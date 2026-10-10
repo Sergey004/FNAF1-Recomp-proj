@@ -82,14 +82,11 @@ void FNaF4Render::RenderTitle(f32 time, i32 optionSelected, bool beat5) {
         Draw(kRows[i].img, kRows[i].x, kRows[i].y, kRows[i].w, kRows[i].h, tint);
     }
 
-    // footer texts (per the composite)
+    // footer texts (v2.66: spread on the 1280 row — they used to overlap)
     if (m_text) {
-        m_text->DrawText((int)(160.0f + 398.0f * 0.9375f), (int)(737.0f * 0.9375f),
-                         "Press and hold DELETE to erase all data.", 0xFFC04040);
-        m_text->DrawText((int)(160.0f + 770.0f * 0.9375f), (int)(737.0f * 0.9375f),
-                         "Copyright (c) 2015 Scott Cawthon", 0xFFC04040);
-        m_text->DrawText((int)(160.0f + 975.0f * 0.9375f), (int)(715.0f * 0.9375f),
-                         "v1.1", 0xFFC04040);
+        m_text->DrawText(300, 738, "Press and hold DELETE to erase all data.", 0xFFC04040);
+        m_text->DrawText(850, 738, "Copyright (c) 2015 Scott Cawthon", 0xFFC04040);
+        m_text->DrawText(1090, 712, "v1.1", 0xFFC04040);
     }
 }
 
@@ -190,17 +187,25 @@ void FNaF4Render::RenderBedroom(const FNaF4Game& game, f32 time, f32 pan) {
         Draw(99, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
     }
 
-    // HUD (debug-font stopgap)
-    if (m_text) {
-        char buf[40];
+    // v2.66 (CNTR list + visual check): the bedroom clock = the "hour"
+    // counter at (947,68). Its glyph list [629..649] = the seven-seg digits
+    // '0'..'9' (21x50); 650/651 = '--'/'+' service glyphs; 668 = the clock
+    // icon, 671 = the lamp blob (NOT letters — the earlier blob came from
+    // drawing them). The "AM" plate = img 652 (49x26, seven-seg).
+    // Hour 12 → '1','2'; hours 1..5 one digit; then AM.
+    {
+        static const i32 kHr[10] = { 629, 630, 631, 633, 643, 645, 646, 647, 648, 649 };
         const i32 h = game.GetHour();
-        Snprintf(buf, sizeof(buf), "%d AM", h == 0 ? 12 : h);
-        m_text->DrawText(40, 20, buf, 0xFFB0B0B0);
-        Snprintf(buf, sizeof(buf), "Night %d", game.GetNight());
-        m_text->DrawText(40, 44, buf, 0xFF707070);
-        if (game.GetFoxyGotYou())
-            m_text->DrawText(480, 20, "FLASH THE CLOSET", 0xFF6060FF);
+        if (h == 0 || h == 12) {
+            Draw(kHr[1], 884.0f, 62.0f, 21.0f, 50.0f, 0xFFFFFFFF);
+            Draw(kHr[2], 906.0f, 62.0f, 21.0f, 50.0f, 0xFFFFFFFF);
+        } else if (h >= 1 && h <= 5) {
+            Draw(kHr[h], 906.0f, 62.0f, 21.0f, 50.0f, 0xFFFFFFFF);
+        }
+        Draw(652, 930.0f, 74.0f, 49.0f, 26.0f, 0xFFFFFFFF);
     }
+    if (m_text && game.GetFoxyGotYou())
+        m_text->DrawText(480, 20, "FLASH THE CLOSET", 0xFF6060FF);
 }
 
 // ---- the jumpscare / bite overlays ---------------------------------------
@@ -308,13 +313,21 @@ void FNaF4Render::RenderMinigame(const FNaF4Game& game) {
         const int f = (int)(game.GetClock() * (pt.game == 1 ? 45.0f : 30.0f)) % n;
         Draw(pt.game == 1 ? kScBB[f] : kScPT[f], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     }
-    if (m_text) {
-        char b[32];
-        Snprintf(b, sizeof(b), "TIME %d", pt.clock);
-        m_text->DrawText((int)(40.0f * kScaleX), (int)(40.0f * kScaleY), b, 0xFFE0E0E0);
+    // v2.66: the minigame clock = the dump's own 20x39 digit strip
+    // ([211..220], the same strip the bedroom clock uses)
+    {
+        static const i32 kHr[10] = { 211, 212, 213, 214, 215, 216, 217, 218, 219, 220 };
+        const int t = pt.clock < 0 ? 0 : pt.clock;
+        if (t >= 10) {
+            Draw(kHr[(t / 10) % 10], 40.0f, 20.0f, 20.0f, 39.0f, 0xFFFFFFFF);
+            Draw(kHr[t % 10], 62.0f, 20.0f, 20.0f, 39.0f, 0xFFFFFFFF);
+        } else {
+            Draw(kHr[t], 40.0f, 20.0f, 20.0f, 39.0f, 0xFFFFFFFF);
+        }
+    }
+    if (m_text)
         m_text->DrawText((int)(700.0f * kScaleX), (int)(700.0f * kScaleY),
                          "A(HOLD): flash", 0xFF909090);
-    }
 }
 
 void FNaF4Render::RenderLockbox(const FNaF4Game& game) {
