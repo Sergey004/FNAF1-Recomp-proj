@@ -248,20 +248,20 @@ void FNaF4Render::RenderIntro() {
 }
 
 void FNaF4Render::RenderNightWinDigits(const FNaF4Game& game) {
-    // the 6 AM clock: the four digit slots settle on the dump's beats and
-    // hold (g2-10); until the digit art lands the debug font draws them
-    if (m_text) {
-        static const f32 kX[4] = { 420.0f, 520.0f, 620.0f, 720.0f };
-        for (int i = 0; i < 4; ++i) {
-            if (game.GetNightWinDigit(i) == 0) continue;
-            char b[4];
-            const int v = game.GetNightWinVal(i);
-            if (i == 1) { b[0] = 'A'; b[1] = 'M'; b[2] = 0; }
-            else { b[0] = (char)('0' + v); b[1] = 0; }
-            m_text->DrawText((int)(kX[i] * kScaleX), (int)(300.0f * kScaleY),
-                             b, 0xFFFFFFFF);
-        }
+    // the 6 AM clock: the dump's OWN digit strip — the "num 1..4" actives
+    // run a 10-frame sequence [663,664,665,666,667,669,672,673,674,675]
+    // (index = digit; act #40 writes Random(10) until the settles at the
+    // 2/2.5/3/3.5 s beats → "06:00") plus the colon (img 678). Layout:
+    // num1..4 at (315,266)(413,266)(544,266)(642,266), cells 100x200,
+    // colon 23x88 at (519,325)  — verbatim from frame_5 Night win.
+    static const i32 kNum[10] = { 663, 664, 665, 666, 667, 669, 672, 673, 674, 675 };
+    static const f32 kX[4] = { 315.0f, 413.0f, 544.0f, 642.0f };
+    for (int i = 0; i < 4; ++i) {
+        const int v = game.GetNightWinVal(i);
+        Draw(kNum[v < 0 ? 0 : (v > 9 ? 9 : v)], kX[i], 266.0f, 100.0f, 200.0f,
+             0xFFFFFFFF);
     }
+    Draw(678, 519.0f, 325.0f, 23.0f, 88.0f, 0xFFFFFFFF);
 }
 
 void FNaF4Render::RenderMinigame(const FNaF4Game& game) {

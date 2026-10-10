@@ -121,13 +121,11 @@ cycle for any game in the series:
 
 ```bash
 # 1) dump assets (images/sounds/packed data):
-./build/ctfak-cpp -path <game>.exe -tool "Dump Everything"         -closeonfinish
-# 2) events (per-frame Groups/ON/DO) — the source of game logic:
-./build/ctfak-cpp -path <game>.exe -tool "Events Listing"           -closeonfinish
-# 3) structure (application.json: objects, frames, animations):
-./build/ctfak-cpp -path <game>.exe -tool "Export Structure as JSON" -closeonfinish
-# 4) GPU-ready pak + asset table (DXT textures + PCM, big-endian 'FNAF'):
-./build/ctfak-cpp -path <game>.exe -tool "Recomp Pack"              -closeonfinish
+./build/ctfak-cpp  <game>.exe 
+Type "1" for dump assets 
+# 2) GPU-ready pak + asset table (DXT textures + PCM, big-endian 'FNAF'):
+./build/ctfak-cpp  <game>.exe 
+Type "10" for pack assets 
 ```
 
 Results land in `build/Dumps/<Game>/`:
