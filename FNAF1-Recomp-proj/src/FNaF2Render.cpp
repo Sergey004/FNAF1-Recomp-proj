@@ -230,6 +230,10 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
     DrawWorld(608, 1038.0f, 476.0f, 117.0f, 172.0f, pan, worldCol);  // toy bonnie
     DrawWorld(555, 1122.0f, 509.0f,  84.0f, 147.0f, pan, worldCol);  // cupcake
     DrawWorld(611, 1218.0f, 522.0f, 129.0f, 156.0f, pan, worldCol);  // golden fred
+    // v2.66: the monitor-flip arrow strips (dump: 119 white @ (251,725),
+    // 95 pink @ (737,724) — the bottom-center raise zone)
+    DrawWorld(119, 251.0f, 725.0f, 500.0f, 40.0f, pan, worldCol);
+    DrawWorld( 95, 737.0f, 724.0f, 500.0f, 40.0f, pan, worldCol);
     }   // end of the panned room (skipped during hall views)
 
     // layer 2 — v2.59: office sprites from the encounter pipeline
@@ -512,6 +516,9 @@ void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
     // challenge mode, READY; the icons are the dumped row images
     static const i32 kIcons[10] = { 551, 339, 338, 341, 344, 352, 346, 576, 577, 578 };
     Draw(524, 262.0f, 20.0f, 500.0f, 90.0f, 0xFFFFFFFF);    // "Customize Night"
+    // v2.66: the dump's difficulty legend (img 558, 822x29 —
+    // "(0-2)easy (3-6)med (7-12)hard (13-20)extreme")
+    Draw(558, 101.0f, 626.0f, 822.0f, 29.0f, 0xFFFFFFFF);
     for (i32 i = 0; i < 10; ++i) {
         const f32 y = 130.0f + 46.0f * i;
         const u32 tint = (game.GetOptionSelected() == i) ? 0xFF50A0FF : 0xFFFFFFFF;

@@ -204,6 +204,17 @@ void FNaF4Render::RenderBedroom(const FNaF4Game& game, f32 time, f32 pan) {
         }
         Draw(652, 930.0f, 74.0f, 49.0f, 26.0f, 0xFFFFFFFF);
     }
+    // v2.66: the tutorial plate is the dump's OWN image (1183, 300x79 at
+    // (20,15) — "Close doors- Hold SHIFT / Use Flashlight- Hold CTRL /
+    // Press X to hide tips. / Perhaps some things are best left forgotten,
+    // for now."), shown at the night start; plus the big WARNING box 1175
+    // at its dump spot (512,294). The first 8 s, then they fade.
+    if (game.GetHour() == 0 && game.GetClock() < 8.0f) {
+        const f32 k = 1.0f - game.GetClock() / 8.0f;
+        const u32 a = (u32)(255.0f * (k > 1.0f ? 1.0f : k));
+        Draw(1183, 20.0f, 15.0f, 300.0f, 79.0f, (a << 24) | 0xFFFFFFFFu);
+        Draw(1175, 512.0f, 294.0f, 401.0f, 188.0f, (a << 24) | 0xFFFFFFFFu);
+    }
     if (m_text && game.GetFoxyGotYou())
         m_text->DrawText(480, 20, "FLASH THE CLOSET", 0xFF6060FF);
 }
@@ -236,10 +247,9 @@ void FNaF4Render::RenderGameOver() {
 }
 
 void FNaF4Render::RenderGameOver2() {
-    // frame 8: the minigame catch hold (4 s)
-    if (m_text)
-        m_text->DrawText((int)(430.0f * kScaleX), (int)(330.0f * kScaleY),
-                         "CAUGHT", 0xFFC0C0C0);
+    // frame 8: the minigame catch hold (4 s) — the dump's own plate
+    // "TOO BAD." (img 867, 308x47 @ (512,376))
+    Draw(867, 512.0f, 376.0f, 308.0f, 47.0f, 0xFFFFFFFF);
 }
 
 void FNaF4Render::RenderIntro() {
@@ -334,12 +344,12 @@ void FNaF4Render::RenderLockbox(const FNaF4Game& game) {
     // frame 9: the unlock box hold; the box art rows were not captured —
     // a dark hold + the caption stands in (labeled)
     (void)game;
-    if (m_text) {
-        m_text->DrawText((int)(390.0f * kScaleX), (int)(300.0f * kScaleY),
-                         "T O Y   B O X", 0xFFE0E0E0);
+    // the dump's hint plate (img 733, 379x61 @ (512,184) — the
+    // "EXTRA STARS... CHEATS NOT ALLOWED / BONUS HOUR FROM FUN WITH BB" text)
+    Draw(733, 512.0f, 184.0f, 379.0f, 61.0f, 0xFFFFFFFF);
+    if (m_text)
         m_text->DrawText((int)(380.0f * kScaleX), (int)(380.0f * kScaleY),
                          "Press A to unlock", 0xFF909090);
-    }
 }
 
 void FNaF4Render::RenderExtras(const FNaF4Game& game) {

@@ -405,11 +405,15 @@ void FNaF3Render::RenderRare2() {
 void FNaF3Render::RenderEndScreen(i32 which) {
     // frame 9 "bad end" = img 346 / frame 10 "good end" = img 172 /
     // frame 11 "the end 2" = img 123 (the backdrops from the layouts);
-    // the chooser (frame 17) holds its backdrop img 29 while the sting plays
+    // the chooser (frame 17) draws its OWN plate (img 505, 1044x124 at
+    // (478,364) — the "the end" title art) over the backdrop img 29
     if (which == 1)      Draw(346, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     else if (which == 2) Draw(172, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     else if (which == 3) Draw(123, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-    else                 Draw(29, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    else {
+        Draw(29, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        Draw(505, 478.0f, 364.0f, 1044.0f, 124.0f, 0xFFFFFFFF);
+    }
 }
 
 // ============================================================
