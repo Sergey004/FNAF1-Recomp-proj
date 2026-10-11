@@ -69,6 +69,10 @@ public:
 private:
     // pak texture by handle, FNAF2 frame coords (1024x768 -> 1280x720 full-stretch)
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);
+    // same at the pak's native size (plates / glyph cells)
+    void DrawNat(int handle, float fx, float fy, u32 color);
+    // CNTR-strip counter: digits of `value` left-aligned at (fx,fy), native cells
+    void DrawCounterNat(int value, const int* strip, float fx, float fy, u32 color);
     // world-space draw for the panning office (wx 0..1600, pan 0..576)
     void DrawWorld(int handle, float wx, float wy, float fw, float fh,
                    float pan, u32 color);

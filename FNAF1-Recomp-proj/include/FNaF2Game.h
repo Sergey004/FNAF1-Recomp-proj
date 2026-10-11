@@ -255,6 +255,8 @@ public:
     i32    GetCustomAI(i32 i) const { return m_customAI[i]; }
     bool   GetAllAre20()      const { return m_allAre20; }
     bool   Is1987()           const { return m_combo1987; }
+    // v2.67: the per-preset beaten flag (Ini "c"+mode → dump's did-challenge star)
+    bool   GetChallengeBeat(i32 i) const { return (i >= 0 && i < 10) ? m_cFlags[i] : false; }
     const FNaF2MgState& Mg()  const { return m_mg; }
     bool   ExitRequested()    const { return m_exitRequested; }  // dump End application
 

@@ -35,6 +35,38 @@ void FNaF2Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
                   fw * kScaleX, fh * kScaleY, color);
 }
 
+// native-size draw (counters/glyphs and plates whose dims live in the pak)
+void FNaF2Render::DrawNat(int handle, float fx, float fy, u32 color) {
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", handle);
+    PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+    if (!t || !t->texture || !m_batch) return;
+    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
+                  (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
+}
+
+// v2.67: a Clickteam counter rendered from its CNTR glyph list — the dump's
+// dt=0 strips are the alphabet [0-9 - + . e] (14 cells, per-glyph native
+// widths); only the digits matter for these games. Left-aligned at the
+// instance point (verified against frame_1/12 layouts + HUD counters).
+void FNaF2Render::DrawCounterNat(int value, const int* strip, float fx, float fy,
+                                 u32 color) {
+    if (value < 0) value = -value;                 // the '-' cell rides strip[10]
+    char digits[12];
+    Snprintf(digits, sizeof(digits), "%d", value);
+    f32 x = fx;
+    for (const char* c = digits; *c; ++c) {
+        const int h = strip[*c - '0'];
+        char name[32];
+        Snprintf(name, sizeof(name), "img_%d", h);
+        PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+        if (!t || !t->texture || !m_batch) return;
+        m_batch->Draw(t->texture, x * kScaleX, fy * kScaleY,
+                      (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
+        x += (f32)t->origWidth + 1.0f;             // CTF digits butt-join + 1px
+    }
+}
+
 void FNaF2Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
                             float pan, u32 color) {
     const f32 sx = (wx - pan) * kScaleX;
@@ -170,16 +202,14 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
              185.0f, 560.0f, 14.0f, 17.0f, 0xFFFFFFFF);
     }
 
-    // footer — img_294 "v 1.033" (26,738) and img_631 "Press and hold delete
-    // to reset all data." (335,736) are ART (verified the PNGs); only
-    // "(c)2014 Scott Cawthon" is a Text object (debug font stopgap, placed
-    // so it fits inside 1280). The "Demo" tag (img_487) is hidden in the
-    // full game (DEMO? == 0) — never drawn.
-    Draw(294,  26.0f, 738.0f,  69.0f,  12.0f, 0xFFFFFFFF);
-    Draw(631, 335.0f, 736.0f, 396.0f,  13.0f, 0xFFFFFFFF);
-    if (m_text)
-        m_text->DrawText((int)(740.0f * kScaleX), (int)(738.0f * kScaleY),
-                         "(c)2014 Scott Cawthon", 0xFFFFFFFF);
+    // footer — v2.67: ALL THREE rows are the dump's own art. img_294
+    // "v 1.033" (25,733), img_631 "Press and hold delete to reset all
+    // data." (334,732), img_253 "©2014 Scott Cawthon v 1.033" (790,730 —
+    // the frame_1 "Active 6" instance; the old debug-font (c) line is gone).
+    // The "Demo" tag (img_487) stays hidden in the full game (DEMO? == 0).
+    DrawNat(294,  25.0f, 733.0f, 0xFFFFFFFF);
+    DrawNat(631, 334.0f, 732.0f, 0xFFFFFFFF);
+    DrawNat(253, 790.0f, 735.0f, 0xFFFFFFFF);
 }
 
 // ---- office (frame 3 "Frame 1", 1600x768, panning window) -------------
@@ -290,9 +320,22 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         }
     }
 
-    // v2.66: the FNAF2 office has NO HUD in the original (no clock, no
-    // battery text — the flashlight drain is felt, not shown) — the debug
-    // text is gone.
+    // v2.67 (layout-proven): the FNAF2 office DOES carry a HUD on layer 3 —
+    // the dump's own pieces (un-panned): "Night" word img_120 @(863,34),
+    // the night counter @(996,58), the hour counter ("time of the night")
+    // @(942,102), the "AM" art img_327 @(956,78). The counters' CNTR strips
+    // = [101,124,126,131,146,147,149,150,167,169,170,171,172,173]
+    // (alphabet 0-9-+.e). The monitor sits on the same layer above them, so
+    // these read only in the office view.
+    {
+        static const int kHudStrip[14] = { 101, 124, 126, 131, 146, 147, 149,
+                                           150, 167, 169, 170, 171, 172, 173 };
+        DrawNat(120, 863.0f, 34.0f, 0xFFFFFFFF);                    // "Night"
+        DrawCounterNat(game.GetNight(), kHudStrip, 996.0f, 58.0f, 0xFFFFFFFF);
+        DrawNat(327, 956.0f, 78.0f, 0xFFFFFFFF);                    // "AM"
+        DrawCounterNat(game.GetHour() == 0 ? 12 : game.GetHour(),
+                       kHudStrip, 942.0f, 102.0f, 0xFFFFFFFF);
+    }
 
     // v2.60: the office-side danger face ("danger 1", img_494/495, angry 496/497)
     if (game.IsMusicBoxDanger()) {
@@ -338,9 +381,10 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
 
     // ---- the MAP (layer 3, screen-fixed): panel img_2 (416x312) at its
     // instance (727,499) + 12 buttons img_16/img_17 (60x40) at their
-    // instance positions; the selected cam shows the pressed look. The
-    // numbers are our text for now (the dump buttons share one image —
-    // per-cam labels are separate graphics, identify from a screenshot).
+    // instance positions; the selected cam shows the pressed look.
+    // v2.67: the per-cam name plates are the dump's OWN images 19..30
+    // ("Active 3".."Active 14" objects on the same layer, each riding its
+    // button) — the debug-font numbers are gone.
     Draw(2, 727.0f, 499.0f, 416.0f, 312.0f, 0xFFFFFFFF);
     {
         static const struct { int cam; float x, y; } kButtons[12] = {
@@ -355,34 +399,41 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
             Draw(kButtons[i].cam == v ? 17 : 16,
                  kButtons[i].x, kButtons[i].y, 60.0f, 40.0f, 0xFFFFFFFF);
         }
-        if (m_text) {
-            for (int i = 0; i < 12; ++i) {
-                char cb[4];
-                Snprintf(cb, sizeof(cb), "%02d", kButtons[i].cam);
-                m_text->DrawText((int)((kButtons[i].x + 18.0f) * kScaleX),
-                                 (int)((kButtons[i].y + 13.0f) * kScaleY), cb,
-                                 kButtons[i].cam == v ? 0xFF202020 : 0xFF303030);
-            }
-        }
+        // the label plates at their dump instance points (camera-matched):
+        static const struct { int img; float x, y; } kLabel[12] = {
+            { 19, 579.0f, 544.0f }, { 20, 711.0f, 545.0f },
+            { 21, 579.0f, 478.0f }, { 22, 714.0f, 478.0f },
+            { 23, 585.0f, 638.0f }, { 24, 700.0f, 638.0f },
+            { 25, 735.0f, 416.0f }, { 26, 580.0f, 407.0f },
+            { 27, 892.0f, 376.0f }, { 28, 824.0f, 495.0f },
+            { 29, 927.0f, 452.0f }, { 30, 910.0f, 546.0f },
+        };
+        for (int i = 0; i < 12; ++i)
+            DrawNat(kLabel[i].img, kLabel[i].x, kLabel[i].y, 0xFFFFFFFF);
     }
 
-    // CAM 11 (Prize Corner): the MUSIC BOX — wind button img_251/273, the
-    // gauge (0..2000) and the danger faces (dump "danger 2": img_307/308,
-    // angry 489/490) once the Puppet has left the box.
+    // CAM 11 (Prize Corner): the MUSIC BOX at its dump spots — the button
+    // img_251 (357,566), the "Wind Up Music Box" plate img_472 (364,577)
+    // and the "click & hold" plate img_486 (357,635) — all SHOWN only while
+    // viewing cam 11 (dump groups 488/489 hide them otherwise). The gauge
+    // is the dump's icon counter ("music box counter", 22 cells at
+    // (292,590): the strip runs from the full-moon to the empty shell —
+    // value scale 0..2000 -> cell 0..20). The danger faces ("danger 1"/
+    // angry pair) at their dump point (884,449) once the Puppet is loose.
     if (v == 11) {
-        Draw(251, 90.0f, 560.0f, 156.0f, 65.0f, 0xFFFFFFFF);
-        const int gpct = (int)(game.GetMusicGauge() * 100.0f / 2000.0f + 0.5f);
-        if (m_text) {
-            m_text->DrawText((int)(20.0f), (int)(640.0f),
-                             "Hold X to wind the music box", 0xFFC0C0C0);
-            char gb[32];
-            Snprintf(gb, sizeof(gb), "Music box %d%%", gpct);
-            m_text->DrawText((int)(20.0f), (int)(665.0f), gb,
-                             gpct <= 20 ? 0xFFFF6060 : 0xFFC0C0C0);
-        }
+        Draw(251, 357.0f, 566.0f, 156.0f, 65.0f, 0xFFFFFFFF);
+        DrawNat(472, 364.0f, 577.0f, 0xFFFFFFFF);
+        DrawNat(486, 357.0f, 635.0f, 0xFFFFFFFF);
+        static const int kGauge[22] = {
+            502, 525, 526, 527, 528, 529, 530, 531, 532, 533, 534,
+            535, 536, 537, 538, 539, 540, 541, 542, 543, 544, 545
+        };
+        int cell = (int)(game.GetMusicGauge() / 2000.0f * 21.0f);
+        if (cell < 0) cell = 0; if (cell > 21) cell = 21;
+        DrawNat(kGauge[cell], 292.0f, 590.0f, 0xFFFFFFFF);
         if (game.IsMusicBoxDanger()) {
             const bool angry = game.GetMusicGauge() <= 200.0f;
-            Draw(angry ? 490 : 308, 700.0f, 120.0f, 220.0f, 220.0f, 0xFFFFFFFF);
+            DrawNat(angry ? 490 : 308, 884.0f, 449.0f, 0xFFFFFFFF);
         }
     }
 
@@ -512,55 +563,58 @@ void FNaF2Render::RenderEnd(i32 which) {
 }
 
 void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
-    // frame 12: the header, the ten AI rows (icon + arrows + number), the
-    // challenge mode, READY; the icons are the dumped row images
-    static const i32 kIcons[10] = { 551, 339, 338, 341, 344, 352, 346, 576, 577, 578 };
-    Draw(524, 262.0f, 20.0f, 500.0f, 90.0f, 0xFFFFFFFF);    // "Customize Night"
-    // v2.66: the dump's difficulty legend (img 558, 822x29 —
-    // "(0-2)easy (3-6)med (7-12)hard (13-20)extreme")
-    Draw(558, 101.0f, 626.0f, 822.0f, 29.0f, 0xFFFFFFFF);
+    // v2.67: frame 12 "customize" rebuilt 1:1 from the dump layout — the
+    // 2x5 icon grid, per-column arrows, the TEN AI counters (CNTR strip
+    // [547,548,549,550,552,553,554,580..586], alphabet 0-9-+.e native cells)
+    // at their instance points, the mode row ("mode" is the frame's Text
+    // object — the preset names come from the dump's own set-text actions),
+    // READY and the beaten-challenge star (img 593; "did challenge" gets
+    // alt[0] := Ini["c"+mode] in group 46 — shown here when the flag is 1).
+    // The debug-font number/mode/ALL-20/1987 texts are gone ("1987" and
+    // "all are 20" are parked counters in the dump — never drawn).
+    static const i32 kIcons[10]  = { 551, 339, 338, 341, 344, 352, 346, 576, 577, 578 };
+    static const f32 kIconX[10]  = { 68, 252, 436, 622, 814,  64, 250, 432, 616, 806 };
+    static const f32 kIconY[10]  = { 78,  78,  78,  80,  80, 342, 340, 342, 340, 340 };
+    static const f32 kNumX[10]   = { 153, 337, 520, 714, 904, 154, 337, 522, 708, 900 };
+    static const f32 kNumY[10]   = { 315, 315, 316, 315, 316, 603, 602, 603, 600, 601 };
+    static const f32 kArrowL[10][2] = {
+        { 57, 262 }, { 242, 262 }, { 427, 263 }, { 620, 262 }, { 812, 263 },
+        { 62, 552 }, { 246, 552 }, { 428, 552 }, { 614, 552 }, { 806, 552 }
+    };
+    static const f32 kArrowR[10][2] = {
+        { 164, 262 }, { 347, 262 }, { 531, 263 }, { 723, 262 }, { 915, 263 },
+        { 165, 552 }, { 349, 552 }, { 531, 552 }, { 717, 552 }, { 909, 552 }
+    };
+    static const int kAIStrip[14] = { 547, 548, 549, 550, 552, 553, 554,
+                                      580, 581, 582, 583, 584, 585, 586 };
+    Draw(524, 68.0f, 18.0f, 384.0f, 44.0f, 0xFFFFFFFF);    // "Customize Night"
+    Draw(558, 97.0f, 631.0f, 822.0f, 29.0f, 0xFFFFFFFF);   // difficulty legend
+    const i32 sel = game.GetOptionSelected();
     for (i32 i = 0; i < 10; ++i) {
-        const f32 y = 130.0f + 46.0f * i;
-        const u32 tint = (game.GetOptionSelected() == i) ? 0xFF50A0FF : 0xFFFFFFFF;
-        Draw(kIcons[i], 320.0f, y, 44.0f, 44.0f, tint);
-        Draw(557, 420.0f, y + 4.0f, 34.0f, 34.0f, 0xFFFFFFFF);   // left arrow
-        Draw(556, 700.0f, y + 4.0f, 34.0f, 34.0f, 0xFFFFFFFF);   // right arrow
-        if (m_text) {
-            char buf[8];
-            Snprintf(buf, sizeof(buf), "%d", game.GetCustomAI(i));
-            m_text->DrawText((int)(600.0f * kScaleX), (int)((y + 6.0f) * kScaleY), buf, tint);
-        }
+        const u32 tint = (sel == i) ? 0xFF50A0FF : 0xFFFFFFFF;
+        DrawNat(kIcons[i], kIconX[i], kIconY[i], tint);
+        DrawNat(557, kArrowL[i][0], kArrowL[i][1], 0xFFFFFFFF);
+        DrawNat(556, kArrowR[i][0], kArrowR[i][1], 0xFFFFFFFF);
+        DrawCounterNat(game.GetCustomAI(i), kAIStrip, kNumX[i], kNumY[i], tint);
     }
-    // the challenge mode row (the dumped arrows 595/602)
-    Draw(602, 320.0f, 620.0f, 34.0f, 34.0f, 0xFFFFFFFF);
-    Draw(595, 700.0f, 620.0f, 34.0f, 34.0f, 0xFFFFFFFF);
-    if (m_text) {
-        char buf[64];
+    // the challenge mode row: arrows (dump 595/602) + the Text object
+    // "mode" at (69,676) — the preset strings are the dump's act-#88 text.
+    DrawNat(602, 159.0f, 700.0f, 0xFFFFFFFF);
+    DrawNat(595, 696.0f, 700.0f, 0xFFFFFFFF);
+    {
         static const char* const kModes[10] = {
             "20/20/20/20", "New and Shiny", "Double Trouble", "Night of Misfits",
             "Foxy Foxy", "Ladies Night", "Freddy's Circus", "Cupcake Challenge",
             "Fazbear Fever", "Golden Freddy"
         };
         const i32 mode = game.GetCustomMode();
-        if (mode >= 1 && mode <= 10) {
-            Snprintf(buf, sizeof(buf), "%s%s", kModes[mode - 1],
-                     game.GetDoingCustom() ? "" : " (not armed)");
-            m_text->DrawText((int)(380.0f * kScaleX), (int)(628.0f * kScaleY), buf, 0xFFB0B0B0);
-        }
-        if (game.GetAllAre20())
-            m_text->DrawText((int)(460.0f * kScaleX), (int)(90.0f * kScaleY), "ALL 20", 0xFF60FF60);
-        if (game.Is1987())
-            m_text->DrawText((int)(560.0f * kScaleX), (int)(120.0f * kScaleY), "1987", 0xFF6060FF);
+        if (mode >= 1 && mode <= 10 && m_text)
+            m_text->DrawText((int)(69.0f * kScaleX), (int)(676.0f * kScaleY),
+                             kModes[mode - 1], 0xFFB0B0B0);
+        if (mode >= 1 && mode <= 10 && game.GetChallengeBeat(mode - 1))
+            DrawNat(593, 90.0f, 697.0f, 0xFFFFFFFF);       // the beaten star
     }
-    Draw(546, 818.0f, 671.0f, 150.0f, 56.0f, 0xFFFFFFFF);    // READY
-    // the did-challenge stars (dump groups 78/79: the INI c<mode> check)
-    const i32 mode = game.GetCustomMode();
-    if (mode >= 1 && mode <= 10 && game.GetDoingCustom() == 0 && m_text) {
-        // the beat flags ride the game (c-flags); the star shows for the
-        // beaten challenge of the CURRENT mode slot
-        m_text->DrawText((int)(560.0f * kScaleX), (int)(580.0f * kScaleY),
-                         "* *", 0xFFC0C040);
-    }
+    Draw(546, 823.0f, 696.0f, 186.0f, 58.0f, 0xFFFFFFFF);  // READY
 }
 
 void FNaF2Render::RenderRare(i32 which) {
