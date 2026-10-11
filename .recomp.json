@@ -1,0 +1,28 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Five Nights at Freddy's",
+  "system": "PC (Windows)",
+  "type": "port",
+  "project": "FNAF1-Recomp-proj",
+  "status": "in-progress",
+  "targets": ["Xbox 360"],
+  "toolchain": "CTFAK-CPP",
+  "approach": "Native C++ source port with a custom Clickteam Fusion runtime, reconstructed game logic, and Direct3D 9 rendering for Xbox 360.",
+  "maintainers": [
+    {
+      "name": "Sergey004",
+      "link": "https://github.com/Sergey004"
+    }
+  ],
+  "links": [
+    {
+      "label": "Source code",
+      "url": "https://github.com/Sergey004/FNAF1-Recomp-proj"
+    },
+    {
+      "label": "CTFAK-CPP",
+      "url": "https://github.com/Sergey004/ctfak-cpp"
+    }
+  ],
+  "notes": "Native Xbox 360 ports of classic Five Nights at Freddy's games, using a custom C++ runtime. The project has expanded beyond FNAF 1."
+}
