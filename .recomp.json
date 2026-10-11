@@ -8,7 +8,7 @@
   "status": "playable",
   "targets": ["Xbox 360"],
   "toolchain": "Xbox 360 XDK",
-  "approach": "Native C++ reimplementation: game logic is rebuilt by hand from the original game's own data (event programs, object tables), rendered with Direct3D 9 and XAudio2 on Xbox 360. No original assets or code are included; you supply your own copy.",
+  "approach": "Native C++ reimplementation: game logic is rebuild from the original game's own data (event programs, object tables), rendered with Direct3D 9 and XAudio2 on Xbox 360. No original assets or code are included; you supply your own copy.",
   "maintainers": [
     { "name": "Sergey004", "link": "https://github.com/Sergey004" }
   ],
