@@ -5,25 +5,19 @@
   "system": "PC (Windows)",
   "type": "port",
   "project": "FNAF1-Recomp-proj",
-  "status": "in-progress",
+  "status": "playable",
   "targets": ["Xbox 360"],
-  "toolchain": "CTFAK-CPP",
-  "approach": "Native C++ source port with a custom Clickteam Fusion runtime, reconstructed game logic, and Direct3D 9 rendering for Xbox 360.",
+  "toolchain": "Xbox 360 XDK",
+  "approach": "Native C++ reimplementation: game logic is rebuilt by hand from the original game's own data (event programs, object tables), rendered with Direct3D 9 and XAudio2 on Xbox 360. No original assets or code are included; you supply your own copy.",
   "maintainers": [
-    {
-      "name": "Sergey004",
-      "link": "https://github.com/Sergey004"
-    }
+    { "name": "Sergey004", "link": "https://github.com/Sergey004" }
+  ],
+  "help": [
+    "Testers with an RGH/JTAG Xbox 360",
+    "Gameplay logic for FNAF 3, FNAF 4 and Sister Location"
   ],
   "links": [
-    {
-      "label": "Source code",
-      "url": "https://github.com/Sergey004/FNAF1-Recomp-proj"
-    },
-    {
-      "label": "CTFAK-CPP",
-      "url": "https://github.com/Sergey004/ctfak-cpp"
-    }
+    { "label": "Source code", "url": "https://github.com/Sergey004/FNAF1-Recomp-proj" }
   ],
-  "notes": "Native Xbox 360 ports of classic Five Nights at Freddy's games, using a custom C++ runtime. The project has expanded beyond FNAF 1."
+  "notes": "Xbox 360 ports of the classic Five Nights at Freddy's games. FNAF 1 is complete, FNAF 2 is about 90%, FNAF 3 and 4 are in progress, Sister Location has only the startup flow."
 }
