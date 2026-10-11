@@ -1,6 +1,7 @@
 {
   "$schema": "https://recomp.fyi/schema/v1.json",
   "game": "Five Nights at Freddy's",
+  "wikidata": "Q17618314",
   "system": "PC (Windows)",
   "type": "port",
   "project": "FNAF1-Recomp-proj",
