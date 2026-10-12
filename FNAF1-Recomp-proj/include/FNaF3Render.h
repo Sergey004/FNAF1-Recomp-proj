@@ -28,6 +28,8 @@ public:
     void RenderOffice(const FNaF3Game& game, f32 time);
     void RenderMonitor(const FNaF3Game& game, f32 time);
     void DrawAttack(const FNaF3Game& game);      // the office jumpscares
+    void RenderPanel(const FNaF3Game& game);     // maintenance panel (also used
+                                                 //  directly by the offline audit)
 
     // v2.62: the dump's end screens
     void RenderAd();                             // frame 8: COMING SOON newspaper
@@ -46,11 +48,13 @@ public:
 
 private:
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);
+    // v2.67: native-size draw from the pak cell + CNTR-strip counter digits
+    void DrawNat(int handle, float fx, float fy, u32 color);
+    void DrawCounterNat(int value, const int* strip, float fx, float fy, u32 color);
     void DrawWorld(int handle, float wx, float wy, float fw, float fh,
                    float pan, u32 color);
     int  StaticFrame(f32 time) const;
     void RenderMap(const FNaF3Game& game);       // map overlay (screen space)
-    void RenderPanel(const FNaF3Game& game);     // maintenance panel
 
     PakLoader*    m_pak;
     SpriteBatch*  m_batch;

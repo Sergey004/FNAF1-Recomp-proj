@@ -34,6 +34,35 @@ void FNaF3Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
                   fw * kScaleX, fh * kScaleY, color);
 }
 
+// v2.67: native-size draw (the pak cells carry their own dimensions)
+void FNaF3Render::DrawNat(int handle, float fx, float fy, u32 color) {
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", handle);
+    PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+    if (!t || !t->texture || !m_batch) return;
+    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
+                  (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
+}
+
+// v2.67: Clickteam counter from its CNTR glyph list (alphabet 0-9-+.e);
+// digits only, left-aligned at the instance point.
+void FNaF3Render::DrawCounterNat(int value, const int* strip, float fx, float fy,
+                                 u32 color) {
+    char digits[12];
+    Snprintf(digits, sizeof(digits), "%d", value < 0 ? 0 : value);
+    f32 x = fx;
+    for (const char* c = digits; *c; ++c) {
+        const int h = strip[*c - '0'];
+        char name[32];
+        Snprintf(name, sizeof(name), "img_%d", h);
+        PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+        if (!t || !t->texture || !m_batch) return;
+        m_batch->Draw(t->texture, x * kScaleX, fy * kScaleY,
+                      (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
+        x += (f32)t->origWidth + 1.0f;
+    }
+}
+
 void FNaF3Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
                             float pan, u32 color) {
     const f32 sx = (wx - pan) * kScaleX;
@@ -91,28 +120,36 @@ void FNaF3Render::RenderTitle(f32 time, i32 optionSelected) {
 // ---- the between-night cards ------------------------------------------
 
 void FNaF3Render::RenderNightStart(i32 night) {
-    // frame 2 "what day": the card's OWN plates (Active a0 = 1098 "12 AM",
-    // a12..a17 = 837/838/842/843/844/430 = "2nd".."7th Night"), 201x104 at
-    // the Active's (512,374) — verbatim from the dump (the debug digit is
-    // gone; the night value picks the cell like the dump's act #17).
+    // frame 2 "what day": the card's OWN plates (Active a0 = 1098 "12:00 AM
+    // 1ST NIGHT", a12..a17 = 837/838/842/843/844/430 = 2nd..7th), 201x104 —
+    // the instance point is hotspot-centered (hot 100,52), so the draw box
+    // starts at (412,322); the night value picks the cell like act #17.
     static const i32 kPlate[7] = { 1098, 837, 838, 842, 843, 844, 430 };
     const i32 img = kPlate[night < 1 ? 0 : (night > 7 ? 6 : night - 1)];
-    Draw(img, 512.0f, 374.0f, 201.0f, 104.0f, 0xFFFFFFFF);
+    Draw(img, 412.0f, 322.0f, 201.0f, 104.0f, 0xFFFFFFFF);
 }
 
 void FNaF3Render::RenderStatic6() {
+    // the nightmare-win hold: the dump's HUD strip spells "6 AM" —
+    // digit '6' = img 306 of the [318,195,247,248,249,250,306,310,311,312,
+    // 313,314,315,316] strip (alphabet 0-9-+.e) + the "AM" art img 246.
     if (m_batch) Draw(StaticFrame(0.0f), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-    if (m_text) m_text->DrawText((int)(590.0f * kScaleX), (int)(350.0f * kScaleY),
-                                 "6 AM", 0xFFFFFFFF);
+    DrawNat(306, 560.0f, 330.0f, 0xFFFFFFFF);
+    DrawNat(246, 590.0f, 330.0f, 0xFFFFFFFF);
 }
 
 void FNaF3Render::RenderNextDay(i32 night) {
-    if (m_text) {
-        char buf[32];
-        Snprintf(buf, sizeof(buf), "Night %d complete", night);
-        m_text->DrawText((int)(500.0f * kScaleX), (int)(330.0f * kScaleY), buf, 0xFFFFFFFF);
-        m_text->DrawText((int)(560.0f * kScaleX), (int)(380.0f * kScaleY),
-                         "$4 earned", 0xFF909090);
+    // frame 5 "next day": the dump's own set — the green scan band
+    // (img 1136, 1024x30 at top), the "5:59" clock plate (obj "5", img
+    // 1129, 341x72 at (359,341)) and the confetti rows (img 501) that rain
+    // while the crowd cheers; no text of ours (the old caption invented).
+    (void)night;
+    DrawNat(1136, 0.0f, 0.0f, 0xFFFFFFFF);
+    DrawNat(1129, 359.0f, 341.0f, 0xFFFFFFFF);
+    {
+        static const f32 kConfY[6] = { 317.0f, 335.0f, 355.0f, 378.0f, 392.0f, 411.0f };
+        for (int i = 0; i < 6; ++i)
+            DrawNat(501, (f32)((i % 3) * 341), kConfY[i], 0xFFFFFFFF);
     }
 }
 
@@ -339,22 +376,30 @@ void FNaF3Render::RenderMap(const FNaF3Game& game) {
             Draw(611, kMapX + 130.0f, kMapY + 300.0f, w, 30.0f, 0xFFFFFFFF);
         }
     }
-    if (m_text) {
-        m_text->DrawText((int)(kMapX * kScaleX), (int)((kMapY + 405.0f) * kScaleY),
-                         game.IsVentMap() ? "VENT MAP  (X: seal)" : "ROOM MAP  (X: lure)",
-                         0xFF909090);
+    // v2.67: the dump's own overlay plates replace the debug caption —
+    // "play text" img 366 / "toggle text" img 431 (room map) and "seal vent
+    // text" img 80 (vent map), parked next to our toggle button (the dump
+    // sits them beside its own, at (1461..1508, 625..640) world space).
+    if (game.IsVentMap()) DrawNat(80,  kMapX + 250.0f, kMapY + 362.0f, 0xFFFFFFFF);
+    else {
+        DrawNat(366, kMapX +  10.0f, kMapY + 338.0f, 0xFFFFFFFF);
+        DrawNat(431, kMapX + 250.0f, kMapY + 362.0f, 0xFFFFFFFF);
     }
 }
 
 void FNaF3Render::RenderPanel(const FNaF3Game& game) {
-    // the maintenance screen (img 734) + the dump's text rows
-    Draw(734, 262.0f, 80.0f, 756.0f, 611.0f, 0xFFFFFFFF);
+    // the maintenance screen (img 734) + the dump's text rows at their
+    // instance points (frame 3, layer 4): audio 544 (206,357), camera 545
+    // (206,417), ventilation 555 (206,471), reboot all 594 (206,578),
+    // exit 600 (206,627); the error badges (img 601) at (506,362/418/475).
+    // The old eye-balled rows and the debug hint text are gone.
+    Draw(734, 160.0f, 300.0f, 720.0f, 430.0f, 0xFFFFFFFF);
     static const struct { i32 img; f32 y; i32 meter; } kRows[5] = {
-        { 544, 180.0f, 0 },   // audio devices   (img 544)
-        { 545, 270.0f, 0 },   // camera devices
-        { 555, 360.0f, 0 },   // ventilation
-        { 594, 450.0f, 0 },   // reboot all
-        { 600, 520.0f, 0 }    // exit
+        { 544, 357.0f, 0 },   // audio devices   (img 544)
+        { 545, 417.0f, 0 },   // camera devices
+        { 555, 471.0f, 0 },   // ventilation
+        { 594, 578.0f, 0 },   // reboot all
+        { 600, 627.0f, 0 }    // exit
     };
     for (i32 i = 0; i < 5; ++i) {
         u32 tint = 0xFFFFFFFF;
@@ -363,23 +408,21 @@ void FNaF3Render::RenderPanel(const FNaF3Game& game) {
                         : (i == 1) ? game.GetCameraMeter() : game.GetVentMeter();
             if (m <= -10) tint = 0xFF5050FF;               // the error rows
         }
-        Draw(kRows[i].img, 400.0f, kRows[i].y, 286.0f, 39.0f, tint);
+        DrawNat(kRows[i].img, 206.0f, kRows[i].y, tint);
     }
     // the cursor (img 596) beside the selected row
-    Draw(596, 330.0f, kRows[game.GetPanelCursor() - 1].y + 4.0f, 73.0f, 31.0f,
-         0xFFFFFFFF);
-    // the error icons (img 601) on the far side of the broken rows
-    if (game.GetAudioMeter()  <= -10) Draw(601, 720.0f, 182.0f, 120.0f, 34.0f, 0xFFFFFFFF);
-    if (game.GetCameraMeter() <= -10) Draw(601, 720.0f, 272.0f, 120.0f, 34.0f, 0xFFFFFFFF);
-    if (game.GetVentMeter()   <= -10) Draw(601, 720.0f, 362.0f, 120.0f, 34.0f, 0xFFFFFFFF);
-    // the reboot progress bar (img 611)
+    DrawNat(596, 166.0f, kRows[game.GetPanelCursor() - 1].y + 4.0f, 0xFFFFFFFF);
+    // the error icons (img 601) in the dump's own slots
+    if (game.GetAudioMeter()  <= -10) DrawNat(601, 506.0f, 362.0f, 0xFFFFFFFF);
+    if (game.GetCameraMeter() <= -10) DrawNat(601, 506.0f, 418.0f, 0xFFFFFFFF);
+    if (game.GetVentMeter()   <= -10) DrawNat(601, 506.0f, 475.0f, 0xFFFFFFFF);
+    // the reboot progress bar (img 611) rides under the reboot-all row while
+    // it runs (panel-relative placement — the dump parks its marker object,
+    // so the bar spot is our layout, the ART is the dump's cell).
     if (game.GetRebooting() != 0) {
         const f32 w = 165.0f * (game.GetRebootProgress() / 10.0f);
-        Draw(611, 560.0f, 560.0f, w, 50.0f, 0xFFFFFFFF);
+        Draw(611, 206.0f, 520.0f, w, 24.0f, 0xFFFFFFFF);
     }
-    if (m_text)
-        m_text->DrawText((int)(330.0f * kScaleX), (int)(660.0f * kScaleY),
-                         "UP/DOWN: select   A: reboot   Y: exit", 0xFF909090);
 }
 
 // ---- the office jumpscare ----------------------------------------------
@@ -437,14 +480,13 @@ void FNaF3Render::RenderStaticDeath() {
 }
 
 void FNaF3Render::RenderGameOver() {
-    // frame 6: black + the game-over words (the frame's art rows were not
-    // captured — the debug-font caption stands in, labeled)
-    if (m_text) {
-        m_text->DrawText((int)(430.0f * kScaleX), (int)(300.0f * kScaleY),
-                         "G A M E   O V E R", 0xFFC0C0C0 & 0xFFFFFFFF);
-        m_text->DrawText((int)(390.0f * kScaleX), (int)(420.0f * kScaleY),
-                         "Press A to continue", 0xFF808080 & 0xFFFFFFFF);
-    }
+    // frame 6 "gameover": the dump's own composition — the dark backdrop
+    // (img 339) + the static wash (img 37) + the green line band
+    // ("green line", img 709, 1024x30 at (0,376)). NO words — the original
+    // shows none (the debug-font caption was invented).
+    Draw(339, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    Draw( 37, 0.0f, 0.0f, 1024.0f, 768.0f, 0xB0FFFFFF);
+    DrawNat(709, 0.0f, 361.0f, 0xFFFFFFFF);
 }
 
 void FNaF3Render::RenderRare(i32 id) {
@@ -464,9 +506,9 @@ void FNaF3Render::RenderLoad(f32 t) {
         for (int k = 0; k <= step && k < 4; ++k)
             Draw(696, 470.0f + k * 33.0f, kRowY[i], 32.0f, 32.0f, 0xFFFFFFFF);
     }
-    if (m_text)
-        m_text->DrawText((int)(470.0f * kScaleX), (int)(560.0f * kScaleY),
-                         "LOADING", 0xFF909090 & 0xFFFFFFFF);
+    // v2.67: the frame draws NO text in the original (the bars/dots park
+    // off-screen and the events move them in) — the "LOADING" debug line
+    // is gone.
 }
 
 // ---- the cutscenes frame (16) ------------------------------------------
@@ -798,9 +840,8 @@ void FNaF3Render::RenderMinigame(const FNaF3Game& game, f32 time) {
 
     // the win overlay (img 775) + the CRT frame
     if (mg.won) Draw(775, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-    if (m_text)
-        m_text->DrawText((int)(40.0f * kScaleX), (int)(700.0f * kScaleY),
-                         "A/UP: jump   X: leave", 0xFF909090 & 0xFFFFFFFF);
+    // v2.67: no hint text in the original minigames (the BB/frame layouts
+    // carry none) — the "A/UP: jump X: leave" debug line is gone.
 }
 
 // ---- the extras menu (frame 25) -----------------------------------------
@@ -809,27 +850,36 @@ void FNaF3Render::RenderExtras(const FNaF3Game& game, f32 time) {
     const FNaF3Game::ExtrasState& ex = game.Ex();
     if (!m_batch) return;
 
-    // the static wash (alpha ~225 per dump g63) over black
+    // v2.67: frame 25 "extra" from the dump — the row plates are the dump's
+    // OWN images (animatronics 357 / minigames 359 / jumpscares 360 /
+    // cheats 1010 / exit 361) at their instance spots; the cursor is the
+    // dump's ">>>" (img 833, like the title); the green row bands (img
+    // 1043) and the static wash stay. The invented debug-font menu is gone.
+    Draw(1017, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);     // the backdrop
     Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0x18FFFFFF);
 
-    static const char* kRows[5] = {
-        "ANIMATRONICS", "MINIGAMES", "JUMPSCARES", "CHEATS", "EXIT"
-    };
-    if (m_text) {
-        for (int i = 0; i < 5; ++i) {
-            const bool locked = (i == 1 && !game.IsGoodEnd()) ||
-                                (i == 2 && !game.IsBeat6()) ||
-                                (i == 3 && !(game.IsGoodEnd() && game.IsBeat6()));
-            u32 col = (ex.row == i) ? 0xFFFFFFFF : 0xFF909090 & 0xFFFFFFFF;
-            if (locked) col = 0xFF404040;
-            m_text->DrawText((int)(420.0f * kScaleX),
-                             (int)((220.0f + i * 60.0f) * kScaleY), kRows[i], col);
-        }
-        Draw(596, 384.0f, 222.0f + ex.row * 60.0f, 32.0f, 32.0f, 0xFFFFFFFF);
+    static const i32 kRowImg[5] = { 357, 359, 360, 1010, 361 };
+    static const f32 kRowY[5]  = { 138.0f, 200.0f, 262.0f, 324.0f, 433.0f };
+    // the dump's row-band strips (img 1043) at their frame spots
+    static const f32 kBandY[5] = { 143.0f, 206.0f, 269.0f, 438.0f, 46.0f };
+    static const f32 kBandX[5] = { 0.0f, 0.0f, 0.0f, 0.0f, 460.0f };
+    for (int i = 0; i < 5; ++i)
+        DrawNat(1043, kBandX[i], kBandY[i], 0xFFFFFFFF);
+    for (int i = 0; i < 5; ++i) {
+        const bool locked = (i == 1 && !game.IsGoodEnd()) ||
+                            (i == 2 && !game.IsBeat6()) ||
+                            (i == 3 && !(game.IsGoodEnd() && game.IsBeat6()));
+        u32 tint = 0xFFFFFFFF;
+        if (locked) tint = 0xFF505050;
+        DrawNat(kRowImg[i], 72.0f, kRowY[i], tint);
     }
+    // cursor 833 (the dump's "cursor" object) at (34, rowY-4)
+    DrawNat(833, 34.0f, kRowY[ex.row] - 4.0f, 0xFFFFFFFF);
 
     if (ex.row == 0) {
-        // the animatronics viewer (anims 0,12-17 = imgs 393/395/438/1015/1014/828/1008)
+        // the animatronics viewer (anims 0,12-17 = imgs 393/395/438/1015/1014/828/1008);
+        // the name rides the frame's own Text object spot ("name", (416,694))
+        // — its strings are the dump's set-text actions (act #88).
         static const int kViewer[7] = { 393, 395, 438, 1015, 1014, 828, 1008 };
         static const char* kNames[7] = {
             "Springtrap", "Springtrap", "Phantom Foxy", "Phantom BB",
@@ -837,39 +887,39 @@ void FNaF3Render::RenderExtras(const FNaF3Game& game, f32 time) {
         };
         Draw(kViewer[ex.viewer], 412.0f, 120.0f, 200.0f, 220.0f, 0xFFFFFFFF);
         if (m_text)
-            m_text->DrawText((int)(440.0f * kScaleX), (int)(560.0f * kScaleY),
+            m_text->DrawText((int)(416.0f * kScaleX), (int)(694.0f * kScaleY),
                              kNames[ex.viewer], 0xFFFFFFFF);
     } else if (ex.row == 1 && game.IsGoodEnd()) {
+        // "play game" plate (img 436) at its dump spot; the pick name sits
+        // on the same "name" object spot (no dump strings exist for these —
+        // our names from the frame events, labeled).
+        Draw(436, 541.0f, 468.0f, 218.0f, 43.0f, 0xFFFFFFFF);
         static const char* kMg[5] = {
             "BB's Air Adventure", "Mangle's Quest", "Chica's Party",
             "Stage01", "Glitch Minigame"
         };
-        Draw(436, 430.0f, 540.0f, 218.0f, 43.0f, 0xFFFFFFFF);   // "play game"
         if (m_text)
-            m_text->DrawText((int)(400.0f * kScaleX), (int)(500.0f * kScaleY),
+            m_text->DrawText((int)(416.0f * kScaleX), (int)(694.0f * kScaleY),
                              kMg[ex.mgPick], 0xFFFFFFFF);
     } else if (ex.row == 2 && game.IsBeat6()) {
         // the jumpscare viewer (the six anims; play the pick as a hold)
         if (ex.jsT > 0.0f) {
             static const int kScare[6] = { 778, 792, 428, 184, 362, 226 };
             Draw(kScare[ex.jsPick], 112.0f, -40.0f, 800.0f, 840.0f, 0xFFFFFFFF);
-        } else if (m_text) {
-            m_text->DrawText((int)(380.0f * kScaleX), (int)(520.0f * kScaleY),
-                             "A: play the jumpscare", 0xFF909090 & 0xFFFFFFFF);
         }
     } else if (ex.row == 3 && game.IsGoodEnd() && game.IsBeat6()) {
-        static const char* kCheat[4] = { "Fast nights", "Vent proof", "Hyper Springtrap", "No cameras" };
-        static const bool* kVal[4];
+        // v2.67: the cheat names are the dump's OWN plates ("cheats 2..5" =
+        // imgs 469/1022/1020/1026 at (469,190/257/324/391)); the ON badge is
+        // the dump indicator cell (img 352) beside the enabled row.
+        static const i32 kCheatImg[4] = { 469, 1022, 1020, 1026 };
+        static const f32 kCheatY[4]  = { 190.0f, 257.0f, 324.0f, 391.0f };
         bool vals[4] = { game.CheatFast(), game.CheatVentProof(),
                          game.CheatHyper(), game.CheatNoCams() };
-        (void)kVal;
         for (int i = 0; i < 4; ++i) {
-            char buf[64];
-            Snprintf(buf, sizeof(buf), "%s: %s", kCheat[i], vals[i] ? "ON" : "OFF");
-            if (m_text)
-                m_text->DrawText((int)(360.0f * kScaleX),
-                                 (int)((440.0f + i * 40.0f) * kScaleY), buf,
-                                 i == (ex.viewer % 4) ? 0xFFFFFFFF : (0xFF909090 & 0xFFFFFFFF));
+            DrawNat(kCheatImg[i], 469.0f, kCheatY[i],
+                    (i == (ex.viewer % 4)) ? 0xFFFFFFFF : 0xFF909090);
+            if (vals[i])
+                DrawNat(352, 850.0f, kCheatY[i] + 4.0f, 0xFFFFFFFF);
         }
     }
 }

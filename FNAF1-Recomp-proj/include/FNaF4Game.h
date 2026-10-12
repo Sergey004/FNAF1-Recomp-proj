@@ -195,6 +195,9 @@ public:
     bool IsMinigamePlay()        const { return m_minigamePlay; }
     bool CheatFast()             const { return m_fastNights; }
     bool CheatAllNightmare()     const { return m_allNightmare; }
+    // v2.67: the ending typewriter (frame 13 "talk box" Text object)
+    i32  GetEndLine()            const { return m_endLine; }    // script row
+    i32  GetEndLetters()         const { return m_endLetters; } // typed so far
 
     // the minigame entry points (the office/extras call these)
     void StartMinigame(i32 game, bool fromExtras);
@@ -204,6 +207,10 @@ public:
     void ApplyProgressF4(const Progress::GameProgressF4& p);
     void FillProgressF4(Progress::GameProgressF4& p) const;
     bool ConsumeSaveDirty() { const bool d = m_saveDirty; m_saveDirty = false; return d; }
+
+    // v2.67: the ending typewriter tick — public so the offline audit can
+    // step the script deterministically (Tick routes here when SCR_ENDING)
+    void TickEnding(f32 dt, const FNaF4Inputs& in);
 
 private:
     void InitNightState();
@@ -229,7 +236,6 @@ private:
     void TickLockbox(f32 dt, const FNaF4Inputs& in);
     void TickExtras(f32 dt, const FNaF4Inputs& in);
     void TickCutscene(f32 dt, const FNaF4Inputs& in);
-    void TickEnding(f32 dt, const FNaF4Inputs& in);
     void WriteNightResult();                            // the night-win INI keys
 
     Screen m_screen;
@@ -312,6 +318,7 @@ private:
     f32    m_endT;
     i32    m_endLine;
     f32    m_endLetterT;
+    i32    m_endLetters;    // letters typed so far on the current line (v2.67)
     bool   m_saveDirty;      // the module writes fn4 when this flips
     bool   m_ptFlashPrev;    // the minigame flash edge
     f32    m_lockLid;        // the lockbox lid animation 0..2

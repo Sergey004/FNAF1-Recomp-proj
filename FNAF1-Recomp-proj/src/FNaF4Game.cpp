@@ -10,6 +10,7 @@
 
 #include "FNaF4Game.h"
 #include <stdlib.h>
+#include <string.h>   // strlen — the ending typewriter wraps the dump lines
 
 namespace fnaf {
 
@@ -51,6 +52,7 @@ void FNaF4Game::ResetToTitle() {
     for (i32 i = 0; i < 4; ++i) { m_winDigit[i] = 0; m_winVal[i] = 0; }
     m_digitT = 0.0f; m_winT = 0.0f; m_lockT = 0.0f;
     m_introT = 0.0f; m_goT = 0.0f; m_endT = 0.0f; m_endLine = 0; m_endLetterT = 0.0f;
+    m_endLetters = 0;
     m_saveDirty = false;
     m_ptFlashPrev = false;
     m_lockLid = 0.0f;
@@ -400,7 +402,7 @@ void FNaF4Game::TickNightWin(f32 dt, const FNaF4Inputs& in) {
             Sfx("snd_Deep_Ambience_With_Sc", true, 1, 15);
         } else if (m_night == 6) {
             m_screen = SCR_ENDING;                    // g20: the ending
-            m_endT = 0.0f; m_endLine = 0; m_endLetterT = 0.0f;
+            m_endT = 0.0f; m_endLine = 0; m_endLetterT = 0.0f; m_endLetters = 0;
         } else if (m_night == 7) {
             m_screen = SCR_LOCKBOX;                   // g21 (V7 = the lockbox)
             m_lockT = 0.0f;
@@ -849,16 +851,47 @@ void FNaF4Game::TickCutscene(f32 dt, const FNaF4Inputs& in) {
     }
 }
 
-// ---- the ending (frame 13): the typewriter talk box; the dump's letters
-// are sprite images (no string table) — a labeled stop-gap timeline ----
+// ---- the ending (frame 13): the typewriter talk box. v2.67: the REAL
+// script recovered from the frame's events (act #88 set-string + act #83
+// color on the "talk box" Text object — child rows grey (120,120,120), the
+// plush yellow (255,255,160)); the typewriter cadence and A/B advance come
+// from the frame's own groups. ----
+
+static const struct { const char* text; u32 color; } kEndScript[8] = {
+    { "Can you hear me?",                   0xFF787878 },   // rgb(120,120,120)
+    { "I don't know if you can hear me.",   0xFF787878 },
+    { "....I'm sorry.",                     0xFF787878 },
+    { "You're broken.",                     0xFFFFFFA0 },   // rgb(255,255,160)
+    { "We are still your friends.",         0xFFFFFFA0 },
+    { "Do you still believe that?",         0xFFFFFFA0 },
+    { "I'm still here.",                    0xFFFFFFA0 },
+    { "I will put you back together.",      0xFFFFFFA0 },
+};
+
+const char* Fnaf4EndLineText(i32 row) {
+    return (row >= 0 && row < 8) ? kEndScript[row].text : (const char*)0;
+}
+u32 Fnaf4EndLineColor(i32 row) {
+    return (row >= 0 && row < 8) ? kEndScript[row].color : 0xFFFFFFFF;
+}
 
 void FNaF4Game::TickEnding(f32 dt, const FNaF4Inputs& in) {
     m_endT += dt;
     m_endLetterT += dt;
-    if (m_endLetterT >= 0.05f && m_endLine < 8) {      // the letter cadence
-        m_endLetterT = 0.0f;
+    if (m_endLine < 8) {
+        const char* line = Fnaf4EndLineText(m_endLine);
+        const i32 len = line ? (i32)strlen(line) : 0;
+        if (m_endLetterT >= 0.05f) {                     // the letter cadence
+            m_endLetterT = 0.0f;
+            if (m_endLetters < len) m_endLetters += 1;   // type one more
+        }
     }
-    if (in.aPressed) m_endLine += 1;                   // Space/Enter advance
+    if (in.aPressed && m_endLine < 8) {                  // advance:
+        const char* line = Fnaf4EndLineText(m_endLine);
+        const i32 len = line ? (i32)strlen(line) : 0;
+        if (m_endLetters < len) m_endLetters = len;      // A = finish the line
+        else { m_endLine += 1; m_endLetters = 0; m_endLetterT = 0.0f; }
+    }
     if (m_endT >= 90.0f || in.bPressed || m_endLine >= 8) {
         SfxStop("snd_Deep_Ambience_With_Sc");
         m_screen = SCR_TITLE;

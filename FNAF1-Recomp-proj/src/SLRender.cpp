@@ -28,36 +28,68 @@ static void D(PakLoader* pak, SpriteBatch* batch, int handle,
     batch->Draw(t->texture, x, y, w, h, color);
 }
 
+// native-size draw (the layout tables' left/top = origin minus the hot spot)
+static void DN(PakLoader* pak, SpriteBatch* batch, int handle,
+               float x, float y, u32 color) {
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", handle);
+    PakLoadedTexture* t = pak ? pak->FindTexture(name) : 0;
+    if (!t || !t->texture || !batch) return;
+    batch->Draw(t->texture, x, y, (f32)t->origWidth, (f32)t->origHeight, color);
+}
+
 void SLRender::RenderWarning() {
-    // frame 0: the legal splash (the dump's warning cell run 414-417)
+    // frame 0: the legal splash (the dump's warning cell run 414-417).
+    // The dump frame has NO hint caption — the old "press A" debug line is
+    // gone (img 366 is the thin rule under the legal block, drawn at its
+    // layout point 550,687).
     if (m_batch) {
         static f32 s_t = 0.0f;
         s_t += 1.0f / 60.0f;
         D(m_pak, m_batch, 414 + ((int)(s_t * 4.0f) % 4), 0.0f, 0.0f,
           1280.0f, 720.0f, 0xFFFFFFFF);
-    }
-    if (m_text) {
-        m_text->DrawText(430, 620, "WARNING - press A", 0xFFC0C0C0);
+        DN(m_pak, m_batch, 366, 550.0f, 687.0f, 0xFFFFFFFF);
     }
 }
 
 void SLRender::RenderTitle(const SLGame& game, f32 time) {
-    // frame 1: the title scene (anim cell by the dump table) + the menu
+    // frame 1 "title screen" per the dump's FrameLayout table:
+    //   layer 0: Backdrop 100 @(0,0) — the only bg cell the dump lists
+    //            (the wave-1 267-269 cycle was a guess, corrected);
+    //            Active13/14/15 (402/406/410) are the flicker alternates —
+    //            the dump swaps them via act #17/#31 groups, schedule not
+    //            decoded yet, so the rest state (402) stands (DEVIATION).
+    //   layer 1: the menu rows are BAKED plates at left/top from the table
+    //            (hotY=11 folded in): new game 398 @(849,239), continue 399
+    //            @(849,289), extras 400 @(849,339), custom night 2095
+    //            @(849,392); the underline Active 12 (img 401, 1280x10)
+    //            follows the selected row (act #3; snapshot sits it +12
+    //            under the row top); the bottom bar Active 7 = 394
+    //            (750x40) @ (364,648).
+    // Rows tint by the groups 23-26/65-72 state machine: selected / normal /
+    // locked(beat1||beat3 gate). act #65's exact coefficients are undecoded
+    // — the three dump STATES are kept, the tint values are ours (DEVIATION).
+    (void)time;
     if (m_batch) {
-        static const int kBg[4] = { 100, 267, 268, 269 };
-        D(m_pak, m_batch, kBg[(int)(time * 4.0f) % 4], 0.0f, 0.0f,
-          1280.0f, 720.0f, 0xFFFFFFFF);
-    }
-    static const char* kRows[4] = { "NEW GAME", "CONTINUE", "EXTRAS", "CUSTOM NIGHT" };
-    if (m_text) {
+        D(m_pak, m_batch, 100, 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+        D(m_pak, m_batch, 402, 0.0f, 0.0f, 1280.0f, 720.0f, 0xFFFFFFFF);
+        static const struct { int img; float top; } kRows[4] = {
+            { 398, 239.0f }, { 399, 289.0f }, { 400, 339.0f }, { 2095, 392.0f }
+        };
+        const int sel = game.GetOptionSelected();
         for (int i = 0; i < 4; ++i) {
             const bool lock = (i == 2 && !game.IsBeat1()) ||
                               (i == 3 && !game.IsBeat3());
-            u32 col = (game.GetOptionSelected() == i) ? 0xFFFFFFFF : 0xFF909090;
+            u32 col = (sel == i) ? 0xFFFFFFFF : 0xFF909090;
             if (lock) col = 0xFF404040;
-            m_text->DrawText(80, 300 + i * 56, kRows[i], col);
+            DN(m_pak, m_batch, kRows[i].img, 849.0f, kRows[i].top, col);
         }
+        if (sel >= 0 && sel < 4)
+            DN(m_pak, m_batch, 401, 0.0f, kRows[sel].top + 12.0f, 0xFFFFFFFF);
+        DN(m_pak, m_batch, 394, 364.0f, 648.0f, 0xFFFFFFFF);
     }
+    // the dump's own text ends there; the night-number counter (img 698
+    // @(1030,309), one dumped digit frame) waits for the counter-art pass.
 }
 
 void SLRender::RenderElevator(const SLGame& game, f32 time) {

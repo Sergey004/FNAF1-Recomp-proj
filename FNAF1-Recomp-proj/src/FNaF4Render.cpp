@@ -17,6 +17,7 @@
 #include "TextRenderer.h"
 #include "XdkCompat.h"
 #include <cstdio>
+#include <cstring>   // strlen — the ending types the dump's talk-box lines
 
 namespace fnaf {
 
@@ -34,6 +35,35 @@ void FNaF4Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
     if (!t || !t->texture || !m_batch) return;
     m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
                   fw * kScaleX, fh * kScaleY, color);
+}
+
+// v2.67: native-size draw from the pak cell (plates / glyph strips)
+void FNaF4Render::DrawNat(int handle, float fx, float fy, u32 color) {
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", handle);
+    PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+    if (!t || !t->texture || !m_batch) return;
+    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
+                  (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
+}
+
+// v2.67: Clickteam counter from its CNTR strip (alphabet 0-9-+.e cells);
+// digits only, left-aligned at the instance point.
+void FNaF4Render::DrawCounterNat(int value, const int* strip, float fx, float fy,
+                                 u32 color) {
+    char digits[12];
+    Snprintf(digits, sizeof(digits), "%d", value < 0 ? 0 : value);
+    f32 x = fx;
+    for (const char* c = digits; *c; ++c) {
+        const int h = strip[*c - '0'];
+        char name[32];
+        Snprintf(name, sizeof(name), "img_%d", h);
+        PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+        if (!t || !t->texture || !m_batch) return;
+        m_batch->Draw(t->texture, x * kScaleX, fy * kScaleY,
+                      (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
+        x += (f32)t->origWidth + 1.0f;
+    }
 }
 
 void FNaF4Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
@@ -82,33 +112,35 @@ void FNaF4Render::RenderTitle(f32 time, i32 optionSelected, bool beat5) {
         Draw(kRows[i].img, kRows[i].x, kRows[i].y, kRows[i].w, kRows[i].h, tint);
     }
 
-    // footer texts (v2.66: spread on the 1280 row — they used to overlap)
-    if (m_text) {
-        m_text->DrawText(300, 738, "Press and hold DELETE to erase all data.", 0xFFC04040);
-        m_text->DrawText(850, 738, "Copyright (c) 2015 Scott Cawthon", 0xFFC04040);
-        m_text->DrawText(1090, 712, "v1.1", 0xFFC04040);
-    }
+    // footer rows — v2.67: the dump's own art cells at their instance
+    // spots: img 257 (398,733) "Press and hold DELETE…", img 964 (773,733)
+    // the copyright banner, img 317 (979,712) the version badge. The debug
+    // font rows (and their overlap struggle) are gone.
+    DrawNat(257, 398.0f, 733.0f, 0xFFFFFFFF);
+    DrawNat(964, 773.0f, 733.0f, 0xFFFFFFFF);
+    DrawNat(317, 979.0f, 712.0f, 0xFFFFFFFF);
 }
 
 // ---- the between-night cards -------------------------------------------
 
 void FNaF4Render::RenderNightStart(i32 night) {
-    if (m_text) {
-        char buf[24];
-        Snprintf(buf, sizeof(buf), "Night %d", night);
-        m_text->DrawText((int)(540.0f * kScaleX), (int)(340.0f * kScaleY), buf, 0xFFFFFFFF);
-        m_text->DrawText((int)(560.0f * kScaleX), (int)(390.0f * kScaleY), "12 AM", 0xFF909090);
-    }
+    // frame 2 "what night": black + the dump's own row — the "Night" word
+    // art (img 670, 95x24 at (41,31)) + the Night COUNTER (strip 685..698,
+    // alphabet 0-9-+.e, the white serif digits) at its instance (212,93),
+    // the wipe band (img 676) it plays behind and the corner clock icon
+    // (img 656, 38x39 at (960,706)). No debug font left.
+    DrawNat(676,   0.0f,  26.0f, 0xFFFFFFFF);
+    DrawNat(670,  41.0f,  31.0f, 0xFFFFFFFF);
+    static const int kNightStrip[14] = { 685, 686, 687, 688, 689, 690, 691,
+                                         692, 693, 694, 695, 696, 697, 698 };
+    DrawCounterNat(night, kNightStrip, 212.0f, 93.0f, 0xFFFFFFFF);
+    DrawNat(656, 960.0f, 706.0f, 0xFFFFFFFF);
 }
 
 void FNaF4Render::RenderNightWin() {
-    // frame 5 "night win": the clock digits (img 663/678) animate 5 -> 6;
-    // debug-font stopgap until the digit art is wired
-    if (m_text) {
-        m_text->DrawText((int)(560.0f * kScaleX), (int)(320.0f * kScaleY), "6 AM", 0xFFFFFFFF);
-        m_text->DrawText((int)(520.0f * kScaleX), (int)(380.0f * kScaleY),
-                         "night complete", 0xFF909090);
-    }
+    // frame 5 "night win": the frame draws ONLY the four num cells + the
+    // colon (see RenderNightWinDigits) over black — nothing else (the old
+    // "6 AM / night complete" debug caption is gone).
 }
 
 // ---- bedroom (frame 3 "level", 1300x768) --------------------------------
@@ -215,8 +247,9 @@ void FNaF4Render::RenderBedroom(const FNaF4Game& game, f32 time, f32 pan) {
         Draw(1183, 20.0f, 15.0f, 300.0f, 79.0f, (a << 24) | 0xFFFFFFFFu);
         Draw(1175, 512.0f, 294.0f, 401.0f, 188.0f, (a << 24) | 0xFFFFFFFFu);
     }
-    if (m_text && game.GetFoxyGotYou())
-        m_text->DrawText(480, 20, "FLASH THE CLOSET", 0xFF6060FF);
+    // v2.67: the forced-closet state is shown by its own art (the
+    // no-look-away closet views above); the "FLASH THE CLOSET" caption was
+    // ours, not the game's — gone.
 }
 
 // ---- the jumpscare / bite overlays ---------------------------------------
@@ -236,14 +269,10 @@ void FNaF4Render::DrawAttack(const FNaF4Game& game) {
 // ============================================================
 
 void FNaF4Render::RenderGameOver() {
-    // frame 4: the death hold (7 s) — the dump hides its art objects and
-    // waits; a dark hold with the caption stands in (labeled)
-    if (m_text) {
-        m_text->DrawText((int)(410.0f * kScaleX), (int)(300.0f * kScaleY),
-                         "G A M E   O V E R", 0xFFC0C0C0);
-        m_text->DrawText((int)(390.0f * kScaleX), (int)(420.0f * kScaleY),
-                         "Press A to continue", 0xFF808080);
-    }
+    // frame 4 "game over": the dump's own two cells — the blood-splat hold
+    // (img 78) under the white flash (img 260). No words in the original.
+    Draw( 78, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    Draw(260, 0.0f, 0.0f, 1024.0f, 768.0f, 0x30FFFFFF);
 }
 
 void FNaF4Render::RenderGameOver2() {
@@ -253,13 +282,10 @@ void FNaF4Render::RenderGameOver2() {
 }
 
 void FNaF4Render::RenderIntro() {
-    // frames 6/17: the intro fade holds; a caption stands in (labeled)
-    if (m_text) {
-        m_text->DrawText((int)(330.0f * kScaleX), (int)(300.0f * kScaleY),
-                         "FUN WITH PLUSHTRAP", 0xFFE0E0E0);
-        m_text->DrawText((int)(400.0f * kScaleX), (int)(380.0f * kScaleY),
-                         "Press A to start", 0xFF909090);
-    }
+    // frames 6/17 "intro to plushtrap": the frame holds ONE object — the
+    // dump's own title card (img 1267, 630x346 native, hotspot-corrected
+    // (203,188)). The debug-font caption is gone.
+    DrawNat(1267, 203.0f, 188.0f, 0xFFFFFFFF);
 }
 
 void FNaF4Render::RenderNightWinDigits(const FNaF4Game& game) {
@@ -306,8 +332,8 @@ void FNaF4Render::RenderMinigame(const FNaF4Game& game) {
     if (!pt.won && !pt.scare && pt.hallPos >= 2 && pt.hallPos <= 7)
         Draw(849, 892.0f, 478.0f, 67.0f, 24.0f, 0xFFFFFFFF);
 
-    // the win stamp (img 868)
-    if (pt.won) Draw(868, 514.0f, 308.0f, 120.0f, 60.0f, 0xFFFFFFFF);
+    // the win stamp ("great!", img 868) at its dump spot (395,285 native)
+    if (pt.won) DrawNat(868, 395.0f, 285.0f, 0xFFFFFFFF);
     if (pt.scare) {
         // the jumpscare anim 23 (21 / 30 cells)
         static const int kScPT[21] = {
@@ -323,49 +349,52 @@ void FNaF4Render::RenderMinigame(const FNaF4Game& game) {
         const int f = (int)(game.GetClock() * (pt.game == 1 ? 45.0f : 30.0f)) % n;
         Draw(pt.game == 1 ? kScBB[f] : kScPT[f], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     }
-    // v2.66: the minigame clock = the dump's own 20x39 digit strip
-    // ([211..220], the same strip the bedroom clock uses)
+    // v2.67: the minigame counter = the dump's OWN 46x78 strip [829..838]
+    // (alphabet 0-9-+.e behind it: [829..842]) at its instance (1009,88),
+    // right-anchored for two digits. The "A(HOLD): flash" hint was ours —
+    // the original wallpaper teaches the controls (intro card) — gone.
     {
-        static const i32 kHr[10] = { 211, 212, 213, 214, 215, 216, 217, 218, 219, 220 };
+        static const i32 kHr[10] = { 829, 830, 831, 832, 833, 834, 835, 836, 837, 838 };
         const int t = pt.clock < 0 ? 0 : pt.clock;
         if (t >= 10) {
-            Draw(kHr[(t / 10) % 10], 40.0f, 20.0f, 20.0f, 39.0f, 0xFFFFFFFF);
-            Draw(kHr[t % 10], 62.0f, 20.0f, 20.0f, 39.0f, 0xFFFFFFFF);
+            Draw(kHr[(t / 10) % 10], 919.0f, 88.0f, 46.0f, 78.0f, 0xFFFFFFFF);
+            Draw(kHr[t % 10], 963.0f, 88.0f, 46.0f, 78.0f, 0xFFFFFFFF);
         } else {
-            Draw(kHr[t], 40.0f, 20.0f, 20.0f, 39.0f, 0xFFFFFFFF);
+            Draw(kHr[t], 963.0f, 88.0f, 46.0f, 78.0f, 0xFFFFFFFF);
         }
     }
-    if (m_text)
-        m_text->DrawText((int)(700.0f * kScaleX), (int)(700.0f * kScaleY),
-                         "A(HOLD): flash", 0xFF909090);
 }
 
 void FNaF4Render::RenderLockbox(const FNaF4Game& game) {
-    // frame 9: the unlock box hold; the box art rows were not captured —
-    // a dark hold + the caption stands in (labeled)
+    // frame 9 "lockbox": the dump's own set — the box art (img 736,
+    // 1024x768 cover) + the two lock dials (img 750, 23x58 at (455,485) and
+    // (544,485)) + the hint plate (img 733 "Perhaps some things are best
+    // left forgotten, for now." — hotspot-corrected (323,154)). The debug
+    // "Press A to unlock" caption is gone.
     (void)game;
-    // the dump's hint plate (img 733, 379x61 @ (512,184) — the
-    // "EXTRA STARS... CHEATS NOT ALLOWED / BONUS HOUR FROM FUN WITH BB" text)
-    Draw(733, 512.0f, 184.0f, 379.0f, 61.0f, 0xFFFFFFFF);
-    if (m_text)
-        m_text->DrawText((int)(380.0f * kScaleX), (int)(380.0f * kScaleY),
-                         "Press A to unlock", 0xFF909090);
+    Draw(736, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    DrawNat(750, 455.0f, 485.0f, 0xFFFFFFFF);
+    DrawNat(750, 544.0f, 485.0f, 0xFFFFFFFF);
+    DrawNat(733, 323.0f, 154.0f, 0xFFFFFFFF);
 }
 
 void FNaF4Render::RenderExtras(const FNaF4Game& game) {
+    // frame 10 "extras": the menu rows are the dump's OWN plates —
+    // animatronics 911 (79,47) / making foxy 904 (80,87) / making fredbear
+    // 912 (80,127) / jumpscares 914 (79,167) / fun with plushtrap 913
+    // (80,207) / shadow freddy 1133 (82,247) / cheats 315 (84,288) /
+    // challenges 361 (85,328) / BB 1253 (85,369) / exit 915 (80,707) —
+    // over the static (img 936) + the red line (img 925). The invented
+    // debug-font rows are gone; the selection keeps a red highlight.
     const FNaF4Game::ExtrasState& ex = game.Ex();
-    static const char* kRows[10] = {
-        "ANIMATRONICS", "MAKING OF", "PLUSHTRAP MAKING", "JUMPSCARES",
-        "FUN WITH PLUSHTRAP", "SHADOW NIGHTS", "CHEATS", "CHALLENGES",
-        "FUN WITH BALLOON BOY", "EXIT"
-    };
-    if (m_text) {
-        for (int i = 0; i < 10; ++i) {
-            m_text->DrawText((int)(380.0f * kScaleX),
-                             (int)((150.0f + i * 46.0f) * kScaleY), kRows[i],
-                             (ex.row == i) ? 0xFFFFFFFF : 0xFF909090);
-        }
-    }
+    Draw(936, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    DrawNat(925, 0.0f, 28.0f, 0xFFFFFFFF);
+    static const i32 kImg[10] = { 911, 904, 912, 914, 913, 1133, 315, 361, 1253, 915 };
+    static const f32 kX[10]  = { 79, 80, 80, 79, 80, 82, 84, 85, 85, 80 };
+    static const f32 kY[10]  = { 47, 87, 127, 167, 207, 247, 288, 328, 369, 707 };
+    for (int i = 0; i < 10; ++i)
+        DrawNat(kImg[i], kX[i], kY[i], (ex.row == i) ? 0xFFFF8080 : 0xFFFFFFFF);
+    (void)kX; (void)kY;
 }
 
 void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
@@ -380,11 +409,8 @@ void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
     Draw(983, ox + cs.px - 51.0f, oy + cs.py + 20.0f, 102.0f, 120.0f, 0xFF909090);
     // the WASD hint (img 311) rides above the player per the dump instance
     Draw(311, ox + cs.px - 55.0f, oy + cs.py - 120.0f, 110.0f, 46.0f, 0xFFFFFFFF);
-    if (m_text) {
-        char b[48];
-        Snprintf(b, sizeof(b), "%d am", game.GetHour() == 0 ? 12 : game.GetHour());
-        m_text->DrawText(1080, 40, b, 0xFF606060);
-    }
+    // v2.67: the debug "N am" corner clock is gone — the cutscene frame
+    // carries no clock object.
     // the talk box: the dump's OWN plate (img 1083, 812x158 — the dark
     // navy panel with the gray border, Active 13) at the screenshot spot,
     // the line left-aligned on it with the speaker color (the real font
@@ -401,16 +427,35 @@ void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
 }
 
 void FNaF4Render::RenderEnding(const FNaF4Game& game) {
-    // frame 13: the typewriter talk box; the dump's letters are sprite
-    // images without a string table — the box + advance hint render on the
-    // dump cadence with no invented text (labeled stop-gap)
-    (void)game;
+    // frame 13 "ending": the dump's set — the scanline backdrop (img 977),
+    // the children sprites (1172 at (280,580), 1169 (780,540), 1170
+    // (420,580)) + the talk box plate (img 1083, 812x158, hotspot-corrected
+    // (140,100)) with the "talk box" Text object's REAL script typed out at
+    // (160,120) in the dump's own colors, and the advance arrow (img 1084)
+    // at (900,200) once the line is done typing (the game cadence lives in
+    // FNaF4Game::TickEnding — v2.67; no invented text).
+    Draw(977, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    DrawNat(1172, 280.0f, 580.0f, 0xFFFFFFFF);
+    DrawNat(1170, 420.0f, 580.0f, 0xFFFFFFFF);
+    DrawNat(1169, 780.0f, 540.0f, 0xFFFFFFFF);
+    Draw(1083, 140.0f, 100.0f, 812.0f, 158.0f, 0xFFFFFFFF);
     if (m_text) {
-        m_text->DrawText((int)(300.0f * kScaleX), (int)(560.0f * kScaleY),
-                         "..................................................",
-                         0xFFE0E0E0);
-        m_text->DrawText((int)(300.0f * kScaleX), (int)(620.0f * kScaleY),
-                         "A: next   B: skip", 0xFF909090);
+        extern const char* Fnaf4EndLineText(i32 row);
+        extern u32         Fnaf4EndLineColor(i32 row);
+        const i32 row = game.GetEndLine();
+        const char* line = Fnaf4EndLineText(row);
+        if (line) {
+            const i32 n = game.GetEndLetters();
+            char buf[96];
+            i32 i = 0;
+            for (const char* c = line; *c && i < n && i < 90; ++c, ++i)
+                buf[i] = *c;
+            buf[i] = '\0';
+            m_text->DrawText(160, 120, buf, Fnaf4EndLineColor(row));
+            // the arrow shows only when the line finished typing
+            const int len = (int)strlen(line);
+            if (n >= len) DrawNat(1084, 900.0f, 200.0f, 0xFFFFFFFF);
+        }
     }
 }
 

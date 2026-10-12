@@ -41,6 +41,9 @@ public:
 
 private:
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);
+    // v2.67: native-size draw from the pak cell + CNTR-strip counter digits
+    void DrawNat(int handle, float fx, float fy, u32 color);
+    void DrawCounterNat(int value, const int* strip, float fx, float fy, u32 color);
     void DrawWorld(int handle, float wx, float wy, float fw, float fh,
                    float pan, u32 color);
 
