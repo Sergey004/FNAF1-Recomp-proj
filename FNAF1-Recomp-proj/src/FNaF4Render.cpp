@@ -48,19 +48,29 @@ void FNaF4Render::DrawNat(int handle, float fx, float fy, u32 color) {
 }
 
 // v2.67: Clickteam counter from its CNTR strip (alphabet 0-9-+.e cells);
-// digits only, left-aligned at the instance point.
+// v2.69 anchor fix: the instance point is the string's BOTTOM-RIGHT corner —
+// proven on frame_2 (the "Night" word art 121x65 @(41,31) ends flush left of
+// the counter @(212,93)) and the frame_3 clock (the AM plate @(958,32) pairs
+// with the hour counter @(947,68)).
 void FNaF4Render::DrawCounterNat(int value, const int* strip, float fx, float fy,
                                  u32 color) {
     char digits[12];
     Snprintf(digits, sizeof(digits), "%d", value < 0 ? 0 : value);
-    f32 x = fx;
+    f32 total = -1.0f;
+    for (const char* c = digits; *c; ++c) {
+        char name[32];
+        Snprintf(name, sizeof(name), "img_%d", strip[*c - '0']);
+        PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+        if (!t || !t->texture || !m_batch) return;
+        total += (f32)t->origWidth + 1.0f;
+    }
+    f32 x = fx - total;
     for (const char* c = digits; *c; ++c) {
         const int h = strip[*c - '0'];
         char name[32];
         Snprintf(name, sizeof(name), "img_%d", h);
         PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
-        if (!t || !t->texture || !m_batch) return;
-        m_batch->Draw(t->texture, x * kScaleX, fy * kScaleY,
+        m_batch->Draw(t->texture, x * kScaleX, (fy - (f32)t->origHeight) * kScaleY,
                       (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
         x += (f32)t->origWidth + 1.0f;
     }
@@ -124,11 +134,15 @@ void FNaF4Render::RenderTitle(f32 time, i32 optionSelected, bool beat5) {
 // ---- the between-night cards -------------------------------------------
 
 void FNaF4Render::RenderNightStart(i32 night) {
-    // frame 2 "what night": black + the dump's own row — the "Night" word
-    // art (img 670, 95x24 at (41,31)) + the Night COUNTER (strip 685..698,
-    // alphabet 0-9-+.e, the white serif digits) at its instance (212,93),
-    // the wipe band (img 676) it plays behind and the corner clock icon
-    // (img 656, 38x39 at (960,706)). No debug font left.
+    // frame 2 "what night": the fullscreen bedroom backdrop (img 654,
+    // 1024x768 at (0,0), layer 0 — the bed with plush Fredbear) under the
+    // dump's own row — the "Night" word art (img 670, 121x65 at (41,31)) +
+    // the Night COUNTER (strip 685..698, alphabet 0-9-+.e, the white serif
+    // 30x72 digits) at its instance (212,93) — bottom-right anchored, so the
+    // digit row ends flush right of the word; the wipe band (img 676) it
+    // plays behind and the corner clock icon (img 656, 38x39 at (960,706)).
+    // No debug font left.
+    DrawNat(654,   0.0f,   0.0f, 0xFFFFFFFF);
     DrawNat(676,   0.0f,  26.0f, 0xFFFFFFFF);
     DrawNat(670,  41.0f,  31.0f, 0xFFFFFFFF);
     static const int kNightStrip[14] = { 685, 686, 687, 688, 689, 690, 691,
@@ -219,22 +233,25 @@ void FNaF4Render::RenderBedroom(const FNaF4Game& game, f32 time, f32 pan) {
         Draw(99, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
     }
 
-    // v2.66 (CNTR list + visual check): the bedroom clock = the "hour"
-    // counter at (947,68). Its glyph list [629..649] = the seven-seg digits
-    // '0'..'9' (21x50); 650/651 = '--'/'+' service glyphs; 668 = the clock
-    // icon, 671 = the lamp blob (NOT letters — the earlier blob came from
-    // drawing them). The "AM" plate = img 652 (49x26, seven-seg).
-    // Hour 12 → '1','2'; hours 1..5 one digit; then AM.
+    // the bedroom clock = the "hour" Counter. Its glyph list [629..649] =
+    // the seven-seg digits '0'..'9' (21x50); 650/651 = '--'/'+' service
+    // glyphs; 668 = the clock icon, 671 = the lamp blob (NOT letters — the
+    // earlier blob came from drawing them). The "AM" plate = img 652
+    // (49x26, seven-seg). Hour 12 → '1','2'; hours 1..5 one digit; then AM.
+    // v2.69: dump-exact placement — the counter instance point (947,68) is
+    // the string's BOTTOM-RIGHT ("12" stacks leftwards), and the AM plate
+    // sits at its layout left/top (958,32); the cluster rides the world pan.
     {
         static const i32 kHr[10] = { 629, 630, 631, 633, 643, 645, 646, 647, 648, 649 };
         const i32 h = game.GetHour();
+        const f32 hx = -pan;
         if (h == 0 || h == 12) {
-            Draw(kHr[1], 884.0f, 62.0f, 21.0f, 50.0f, 0xFFFFFFFF);
-            Draw(kHr[2], 906.0f, 62.0f, 21.0f, 50.0f, 0xFFFFFFFF);
+            Draw(kHr[1], 904.0f + hx, 18.0f, 21.0f, 50.0f, 0xFFFFFFFF);
+            Draw(kHr[2], 926.0f + hx, 18.0f, 21.0f, 50.0f, 0xFFFFFFFF);
         } else if (h >= 1 && h <= 5) {
-            Draw(kHr[h], 906.0f, 62.0f, 21.0f, 50.0f, 0xFFFFFFFF);
+            Draw(kHr[h], 926.0f + hx, 18.0f, 21.0f, 50.0f, 0xFFFFFFFF);
         }
-        Draw(652, 930.0f, 74.0f, 49.0f, 26.0f, 0xFFFFFFFF);
+        DrawNat(652, 958.0f + hx, 32.0f, 0xFFFFFFFF);
     }
     // v2.66: the tutorial plate is the dump's OWN image (1183, 300x79 at
     // (20,15) — "Close doors- Hold SHIFT / Use Flashlight- Hold CTRL /

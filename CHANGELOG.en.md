@@ -6,6 +6,73 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.71 — the full FNAF3 night card + the harness loads real .paks
+
+- **F2 office: two invented layers of murk removed** (after "on console it looks like garbage; that's not the office but a camera picture"): (a) the hand-rolled 28% room tint is gone (the room's darkness is a property of the img_92 art itself — the frame replay draws clearly readable walls; lit states arrive as lit scene images in the dump, and the blackout ramps through its own event chain via mask 225); (b) the always-on static overlay "by the title recipe" is removed — the frame_3 events prove the office static's ink coefficient is (alt0+alt1)·alt2·alt3 with alt3=0 in the plain office view (groups 363/364) → the idle office has NO overlay; the glitch bursts (alt4/alt5, groups 365–369) depend on game states not wired yet — labeled deviation. Before/after: tools/offline/out/f2_office_3way.png (replay | before | after).
+
+- **The F3 "what day" card assembled completely per frame_2**: the blip bands objInfo 53 (imgs 869/863/871/865/866/867/868, ~30 fps — Clickteam speed 50 × 0.6) as the fullscreen background; two fade-line bars 1126 @ (0,319)/(0,391); the per-night plate (objInfo 55 dirs 0/12..17 -> imgs 1098/837/838/842/843/844/430, 201x104 @ (412,322) — hotspot center (512,374)) ON TOP of the bars. Labeled deviation: the dump layout puts the plate UNDER the bars (the text gets slivered — visible in the dump's own replay); we draw it over them for readability. Signature `RenderNightStart(night, t)`, AppModules passes the card timer. The audit harness renders all 7 nights (f3_02_nightcard_1..7).
+- **F3 swept with the same "no inventions" pass** (the "go over the three" pass; the dump is the demo build — demo-only art stays out of scope): (a) office — the invented fullscreen static bursts are gone (was: a 1.4 s period firing opaque static over the whole scene 10%/30% of slots) — the frame_3 events carry static only on the monitor ("smallstatic"); the office frame has no glitch object in the dump; (b) the title completed to the dump's composition: nine fade rules img 1043 (1024x30) at the layout's y rows + two 1061 @y=690/725, the footer rows 1021@(376,734) / 849@(833,731) / version art 160@(916,706), and the four progress stars (img 840, 56x53) gated per the title init group 27 (beat5→(155,58), beat6→(232,58), goodend→(193,108), 4thstar→(270,108)); the "nightmare" 625 and "extras" 826 rows now hide until night 5 is beaten (groups 44/45, ini "beatgame" — they used to draw unconditionally). The demo ribbon 630 stays undrawn. New signature `RenderTitle(const FNaF3Game&, f32)` — the renderer reads the game flags itself. Control: out/f3_title_3way.png (replay | before | after) and out/f3_office_after.png. (c) **The HUD pin** (the user's capture catch — "they're in the MIDDLE"): the layer-4 "night N / 12 AM" cluster is SCREEN-FIXED — its dump points @(914,14)..@(1002,65) already live in the 1024x768 window's coordinates, not in the 2000-wide world; v2.69 had it ride the office pan, parking the cluster mid-screen. `DrawHud(const FNaF3Game&)` takes no pan anymore; the cluster is pinned to the top-right corner over both the office and the monitor. Control: out/f3_hud_fixed_check.png.
+- **vc100 (XDK Release) build fixed**: MSVC 2010 rejects a braced-init-list as a function argument — `SetPerspectiveGeometry({...})` replaced by an explicit `SpriteBatch::PerspGeom` local in src/FNaF2Render.cpp and src/FNaF3Render.cpp. The second trap — LNK2019 for Fnaf4CsLineText/Color and Fnaf4EndLineText/Color with byte-identical files: a block-scope `extern` inside a function body with NO visible namespace-scope declaration is bound to the GLOBAL namespace by MSVC 2010 (non-conforming), while g++ binds it to the enclosing `fnaf`; the definitions in src/FNaF4Game.cpp live in `fnaf::` → mangled-name mismatch. The declarations moved to `namespace fnaf` scope in src/FNaF4Render.cpp. Proven on the real XDK cl.exe (16.00.11886.00 for PowerPC) from WSL2 via dumpbin: before the fix UNDEF global `?Fnaf4CsLineText@@YAPBDH@Z` (the exact mangle from the user's log), after `?Fnaf4CsLineText@fnaf@@YAPBDH@Z` — byte-identical to FNaF4Game.obj's export. The toolchain itself runs straight from bash: `/mnt/c/Program Files (x86)/Microsoft Xbox 360 SDK/bin/win32/{cl,link,dumpbin}.exe`.
+- **The harness now loads real .pak files** (`--pak <file>` flag): DXT is decoded through the same chain the console runs (verified by verify_pak.py: pak -> GPU layout -> 8in16 un-swap -> standard decode) — what the harness shows in this mode is byte-for-byte what the 360 shows. Control: the F2 title and office rendered from the pak are indistinguishable from the PNG mode. New tool tools/pak_ab_diff.py — numeric A/B of two paks against the dumped PNGs.
+- **ctfak-cpp packer: the DXT encoder moved to iterative cluster-fit** (per-channel minmax-diagonal endpoint init, 4 rounds of "nearest palette -> weighted LSQ endpoint re-solve", flat-block mean fallback; opaque pixels never take the cutout slot). The A/B result (tools/pak_ab_diff.py, old vs new F2 pak): average RGB error on the dark gradient photos ~1.8–4.2/255 with BOTH encoders — the upgrade is neutral, nothing is lost, no mass repack for quality is needed. Conclusion on the "console looks bad" report: the pak data is correct; the gap is the 1024x768->1280x720 stretch, the title's authentic noise layer, and the camera photo of the TV. CLI note: `-tool` without `-closeonfinish` re-runs the tool forever (the flag exits after the first pass). ctfak-tests 39/39.
+- Version -> v2.71. Files: include/FNaF3Render.h, src/FNaF3Render.cpp, src/FNaF2Render.cpp, src/AppModules.cpp, tools/offline/stubs/PakLoader.h, tools/offline/main_offline.cpp, tools/pak_ab_diff.py — all existing/tooling, nothing for the .vcxproj.
+
+---
+
+## v2.70 — FNAF4: the night-start card got its fullscreen bed backdrop
+
+- **The F4 "start of night" card drew a black screen instead of its own backdrop**: frame_2 "what night" has a Backdrop instance img 654 (1024x768 @(0,0), layer 0) — the bedroom with plush Fredbear on the bed — which the port never drew (only the wipe band 676, the "Night" word 670, the counter and the corner clock 656 over black). Now 654 draws as the first command of RenderNightStart with the rest on top — matching the dump's layer stack (654 → 676 → 670/counter → 656).
+- The picture is the same for every night (the frame_2 events never switch the backdrop per night number); version -> v2.70. File: src/FNaF4Render.cpp — existing, nothing to add to the .vcxproj.
+- Verification: the audit harness now renders ALL 8 night cards (the counter comes from ini "night", clamped ≤0→1, "shadow" counter 1/2 = nights 7/8) — out/f4/f4_03_nightstart_1..8.ppm + the f4cal_nightstart.png montage; every digit sits on one line with the word via the CNTR strip, the bottom-right anchor holding on all of them.
+- The same pass verified all 7 FNAF2 cards ("12:00 AM / Nst Night" — F2 bakes a SEPARATE plate per night, objInfo 45 -> imgs 429/430/431/436/437/426/425) — out/f2/f2_02_card_1..7.ppm + the f2cal_cards.png montage, all 7 reading 1:1.
+
+---
+
+## v2.69 — the FNAF3 HUD from the dump + the unified counter anchor in every game
+
+- **The CNTR counter anchor (the string's BOTTOM-RIGHT corner) extended to FNAF3/4** — the v2.68 F2 fix, now proven on each game's own layout: F3 frame_3 (the "night" plate img 245 @(914,14) + the night counter @(1002,32); the "AM" plate img 246 @(980,49) + the hour counter @(968,65)); F4 frame_2 (the "Night" word art 121x65 @(41,31) + the counter @(212,93)) and frame_3 (the clock counter @(947,68) + the AM plate @(958,32)).
+- **The FNAF3 office got its HUD**: the layer-4 cluster — "night 1" + the night number and "12 AM" + the hour — draws at the dump's world coords (it rides the pan like the original's layer stack, after the perspective warp — layer 4 never bends) and stays over the monitor (no event ever hides it). The v2.66 reading "the F3 office has no HUD" was wrong: the FrameReplay tool simply never emits Counter objects — the cluster is in the dump.
+- **The FNAF4 bedroom clock moved to the dump's coords** ((947,68) + the AM plate @(958,32) — replacing the v2.66f hand fit that was off by −20/+44 px); the F4 night card "Night N" assembles word and digit on one line.
+- Checked and off the queue: the F3 minigames show NO title text in the original — their Text objects are parked off-frame and no event ever moves them in (the dump is the only authority); the F3 monitor carries no text.
+- Remaining debug-font pixels across all games (flagged — runtime text in the original, no sprites in the dumps, non-dump asset baking rejected): the F2 customize preset caption (Times NR 48b); the F3 extras viewer names (Tahoma 37b, act #88 strings); the F4 talk box dialogue and the ending typewriter (Times NR 35b — the strings are verbatim from the events, v2.66h/2.67).
+- Version -> v2.69. Files: include/FNaF3Render.h, src/FNaF3Render.cpp, src/FNaF4Render.cpp — all existing, nothing to add to the .vcxproj.
+
+---
+
+## v2.68 — FNAF2 customize 1:1: the name plates, two stars, and the real counter anchor
+
+- **The ten NAME plates** (Backdrop strips 575/348/349/350/351 top row, 353/354/355/356/573 bottom) draw at the dump's plain x,y — the bottom row's left/top is junked by a stale hotX≈-519 (the dump's own FrameReplay parks them off-frame, 595..1335) and Backdrop objects don't need the hotspot. The selection tint doesn't reach them: Backdrops take no ink effects in the original.
+- **The beaten-challenge star is drawn TWICE**: the dump's groups 78/79 toggle "did challenge" and "did challenge 2" together, so a beaten preset wears a star on BOTH sides of the mode row (@(90,697) and @(741,697)).
+- **CNTR counters anchor at the string's BOTTOM-RIGHT corner now** (they were top-left — the AI zeros overlapped the second row's heads and the difficulty legend). The proof is the dump itself: the hour counter @(942,102) puts "12" 14 px left of the "AM" plate @(956,78) on a shared baseline, and the night counter @(996,58) continues the "Night" plate @(863,34). One fix cured both the customize grid and the office clock.
+- The frame's parked objects identified: imgs 579/591 are the unreleased "SET MAX" buttons, not presets. The only sprite-less text on the frame stays the "mode" caption (a runtime Times NR bold 48 set by act #88 in the original) — flagged, still debug-font; non-dump asset baking was rejected.
+- Version -> v2.68. Nothing to add to the .vcxproj (src/FNaF2Render.cpp only).
+
+---
+
+## v2.67 — FNAF2/3/4: dump text sprites and counters instead of the debug font
+
+The console has no system fonts — and the originals never used any: almost all visible text is baked into images, and numbers are drawn from CNTR glyph strips. The binding wave (all in the existing files):
+
+- Every renderer gained `DrawNat` (native size from the pak cell) and `DrawCounterNat` (a Clickteam counter from its CNTR strip with the 0-9-+.e alphabet, 1 px butt-join, per-glyph widths).
+- **FNAF2**: the title is all dump art (footer rows 294/631/253); the office HUD lives on layer 3 ("Night" plate 120, "AM" 327, the clock/night digits from the [101..173] strip); the per-cam labels are the dump's own plates 19..30 at the layout points (the monitor itself carries no text); the customize frame rebuilt 1:1 (header 524, legend 558, icon grid, arrows, the ten AI counters; "1987"/"all are 20" are parked counters — never drawn).
+- **FNAF3**: the extras rows and cheats on the dump's own plates ("cheats 2..5"), the maintenance panel and Game Over re-bound, the minigames without hint captions (the original draws none).
+- **FNAF4**: the title footer cells, the tutorial plate (1183, 300x79), the minigame counter (46x78, strip 829..838), the forced-closet art, and the typewriter ending on the real frame-13 event strings (no invented text).
+- Flagged in this wave, lifted in v2.68: the counters temporarily anchored top-left.
+- Version -> v2.67. Nothing to add to the .vcxproj.
+
+---
+
+## v2.66 — the OFFLINE harness tools/offline + dump-exact perspective/static
+
+- **tools/offline** renders the port's frames on PC straight from the dump (`offline <game> <Images> <out>`; an interactive "play" mode): the bmp cache is lazy and PER-GAME (image handle numbers collide across games), audit shots for F1/F2/F3/F4/SL land in out/*.ppm, built with a single g++ line from src.
+- **The disclaimers are the dump's native banners**; the F2 monitor static is fixed opaque (alpha per the dump); the debug console shows on every game (XDK).
+- **FNAF2/FNAF3 run on the dump's own perspective** (geometry from the frames; per-game geo in SpriteBatch — FNAF1 keeps the 1324x754 default); the F2 office got the flip-arrow strips (119/122/127/128) and ceiling-crawling Mangle (the dump's 218 anims).
+- **SL**: the breaker task — holding A on three panels, per the dump.
+- **v2.66g (same release)**: FNAF4's cutscene dialogue RECOVERED — the strings live in the frame-12 events (act #88 sets the paragraph text, act #83 the speaker color) and are written verbatim: the first-launch bedroom (g49-53), hide-and-seek (g81-93), the party (g95-115), the closet (g117-133), the finale (g143-154).
+- Version -> v2.66. Nothing to add to the .vcxproj (the harness lives in tools/offline).
+
+---
+
 ## v2.65 — Sister Location wave 1: the flow plays on the streaming pak
 
 The "monster" (the 1.5 GB game) is playable through its core loop (files

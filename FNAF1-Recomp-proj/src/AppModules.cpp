@@ -399,8 +399,8 @@ void FNaF3Module::Render() {
             // paragraphs were invented — the child String never shows)
             m_render.RenderDisclaimer();
             break;
-        case FNaF3Game::SCR_TITLE:      m_render.RenderTitle(m_time, m_game.GetOptionSelected()); break;
-        case FNaF3Game::SCR_NIGHTSTART: m_render.RenderNightStart(m_game.GetNight()); break;
+        case FNaF3Game::SCR_TITLE:      m_render.RenderTitle(m_game, m_time); break;
+        case FNaF3Game::SCR_NIGHTSTART: m_render.RenderNightStart(m_game.GetNight(), m_game.GetCardTimer()); break;
         case FNaF3Game::SCR_OFFICE:
             if (m_game.GetViewing() != 0) m_render.RenderMonitor(m_game, m_time);
             else                          m_render.RenderOffice(m_game, m_time);

@@ -45,19 +45,29 @@ void FNaF3Render::DrawNat(int handle, float fx, float fy, u32 color) {
 }
 
 // v2.67: Clickteam counter from its CNTR glyph list (alphabet 0-9-+.e);
-// digits only, left-aligned at the instance point.
+// v2.69 anchor fix: the instance point is the string's BOTTOM-RIGHT corner,
+// digit rows butt-join +1px leftwards — proven on frame_3's HUD cluster
+// (the "AM text" plate @(980,49) pairs with the hour counter @(968,65),
+// the "Night" plate @(914,14) with the night counter @(1002,32)).
 void FNaF3Render::DrawCounterNat(int value, const int* strip, float fx, float fy,
                                  u32 color) {
     char digits[12];
     Snprintf(digits, sizeof(digits), "%d", value < 0 ? 0 : value);
-    f32 x = fx;
+    f32 total = -1.0f;
+    for (const char* c = digits; *c; ++c) {
+        char name[32];
+        Snprintf(name, sizeof(name), "img_%d", strip[*c - '0']);
+        PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
+        if (!t || !t->texture || !m_batch) return;
+        total += (f32)t->origWidth + 1.0f;
+    }
+    f32 x = fx - total;
     for (const char* c = digits; *c; ++c) {
         const int h = strip[*c - '0'];
         char name[32];
         Snprintf(name, sizeof(name), "img_%d", h);
         PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
-        if (!t || !t->texture || !m_batch) return;
-        m_batch->Draw(t->texture, x * kScaleX, fy * kScaleY,
+        m_batch->Draw(t->texture, x * kScaleX, (fy - (f32)t->origHeight) * kScaleY,
                       (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
         x += (f32)t->origWidth + 1.0f;
     }
@@ -89,8 +99,9 @@ void FNaF3Render::RenderDisclaimer() {
     Draw(329, 292.0f, 308.0f, 477.0f, 90.0f, 0xFFFFFFFF);
 }
 
-void FNaF3Render::RenderTitle(f32 time, i32 optionSelected) {
+void FNaF3Render::RenderTitle(const FNaF3Game& game, f32 time) {
     if (!m_batch || !m_pak) return;
+    const i32 optionSelected = game.GetOptionSelected();
 
     // The scene is ALWAYS visible (bg img_862 + menu); the static appears
     // only as short glitch bursts (the dump has a burst timer on the
@@ -99,13 +110,40 @@ void FNaF3Render::RenderTitle(f32 time, i32 optionSelected) {
     Draw(862, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     Draw(592,  97.0f, 428.0f, 215.0f,  49.0f, 0xFFFFFFFF);  // "new game"
     Draw(301,  97.0f, 500.0f, 243.0f,  49.0f, 0xFFFFFFFF);  // "load game"
-    Draw(625,  97.0f, 572.0f, 257.0f,  49.0f, 0xFFFFFFFF);  // "nightmare"
-    Draw(826,  96.0f, 641.0f, 145.0f,  49.0f, 0xFFFFFFFF);  // "extra"
+    // dump names objInfo 20 "6th night" (625) and objInfo 27 "custom night"
+    // (826): BOTH hide while ini beatgame==0 (groups 44/45) — the nightmare
+    // row and the extras row unlock together after night 5, like the
+    // shipped game. (v2.71: was drawn unconditionally.)
+    if (game.IsBeat5()) {
+        Draw(625,  97.0f, 572.0f, 257.0f,  49.0f, 0xFFFFFFFF);  // nightmare
+        Draw(826,  96.0f, 641.0f, 145.0f,  49.0f, 0xFFFFFFFF);  // extras
+    }
     // the selector (img 833) rides the selected row (row pitch 72)
     {
         static const f32 kRowY[4] = { 429.0f, 501.0f, 573.0f, 642.0f };
         Draw(833,  38.0f, kRowY[optionSelected & 3],  34.0f,  49.0f, 0xFFFFFFFF);
     }
+
+    // v2.71 sweep: the title art the dump shows but the port never drew —
+    // the fade-line rules (img 1043/1061, 1024x30 at the dump's own y
+    // rows), the footer rows (1021@(376,734), 849@(833,731), version art
+    // 160@(916,706)) and the four progress stars (objInfo 21/22/36/51 =
+    // img 840, 56x53; title init grp 27 reads the ini: beatgame/beat6/
+    // goodend/4thstar). The demo ribbon (630) and the parked off-frame
+    // pieces stay out — demo-only art is out of scope per the project.
+    {
+        static const f32 kRuleY[9] = { 64, 112, 158, 202, 246, 436, 508, 577, 646 };
+        for (int i = 0; i < 9; ++i) DrawNat(1043, 0.0f, kRuleY[i], 0xFFFFFFFF);
+    }
+    DrawNat(1061, -1.0f, 690.0f, 0xFFFFFFFF);
+    DrawNat(1061, -1.0f, 725.0f, 0xFFFFFFFF);
+    DrawNat(1021, 376.0f, 734.0f, 0xFFFFFFFF);
+    DrawNat(849, 833.0f, 731.0f, 0xFFFFFFFF);
+    DrawNat(160, 916.0f, 706.0f, 0xFFFFFFFF);
+    if (game.IsBeat5())      DrawNat(840, 155.0f,  58.0f, 0xFFFFFFFF);
+    if (game.IsBeat6())      DrawNat(840, 232.0f,  58.0f, 0xFFFFFFFF);
+    if (game.IsGoodEnd())    DrawNat(840, 193.0f, 108.0f, 0xFFFFFFFF);
+    if (game.IsFourthStar()) DrawNat(840, 270.0f, 108.0f, 0xFFFFFFFF);
 
     {
         const f32 kPeriod = 1.6f;
@@ -119,12 +157,24 @@ void FNaF3Render::RenderTitle(f32 time, i32 optionSelected) {
 
 // ---- the between-night cards ------------------------------------------
 
-void FNaF3Render::RenderNightStart(i32 night) {
-    // frame 2 "what day": the card's OWN plates (Active a0 = 1098 "12:00 AM
-    // 1ST NIGHT", a12..a17 = 837/838/842/843/844/430 = 2nd..7th), 201x104 —
-    // the instance point is hotspot-centered (hot 100,52), so the draw box
-    // starts at (412,322); the night value picks the cell like act #17.
+void FNaF3Render::RenderNightStart(i32 night, f32 t) {
+    // frame 2 "what day" — the FULL composition per the layout (v2.71, the
+    // port used to draw only the plate and the card read "not centered"):
+    // the fullscreen "blip flash" bands (objInfo 53, frames [869,863,871,
+    // 865,866,867,868] ~30 fps), then the two "fade line" bars (img 1126,
+    // 1024x30 at (0,319) and (0,391)), then the per-night plate ON TOP
+    // (Active 55: dirs 0,12..17 -> imgs 1098,837,838,842,843,844,430 = night
+    // 1..7 like the act #17 block, 201x104 hotspot-centered at (512,374) ->
+    // (412,322)). The plate draws LAST: its alpha rows sit at local 0-29 and
+    // 74-103 (= frame 322-351 and 396-425) — exactly where the two 30-px
+    // bars land, so in the shipped game the text rides OVER the bars (the
+    // layout table is objInfo-sorted, not the runtime z-order — the dump's
+    // own replay draws it slivered; we follow the shipped visual and say so).
+    static const i32 kBlip[7] = { 869, 863, 871, 865, 866, 867, 868 };
     static const i32 kPlate[7] = { 1098, 837, 838, 842, 843, 844, 430 };
+    Draw(kBlip[((int)(t * 30.0f)) % 7], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    DrawNat(1126, 0.0f, 319.0f, 0xFFFFFFFF);
+    DrawNat(1126, 0.0f, 391.0f, 0xFFFFFFFF);
     const i32 img = kPlate[night < 1 ? 0 : (night > 7 ? 6 : night - 1)];
     Draw(img, 412.0f, 322.0f, 201.0f, 104.0f, 0xFFFFFFFF);
 }
@@ -214,16 +264,11 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
         DrawWorld(653, 1500.0f - 800.0f * k, 200.0f, 310.0f, 413.0f, pan, 0xFFFFFFFF);
     }
 
-    // office static: short glitch bursts, more while hallucinating
-    {
-        const f32 kPeriod = 1.4f;
-        const int slot = (int)(time / kPeriod);
-        u32 h = (u32)slot * 2654435761u + 5u;
-        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
-        const int duty = game.IsHallucinating() ? 30 : 10;
-        if ((h % 100u) < (u32)duty)
-            Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-    }
+    // v2.71: NO invented office static. The office frame's events carry no
+    // fullscreen noise object at all — the only "static" is "smallstatic",
+    // the MONITOR's feed noise, gated by its own alterable chain. The old
+    // 10%/30% duty-cycle glitch bursts over the office were made up.
+    (void)time;
 
     // the vent-error blackout (img 676) fades over everything
     if (game.GetBlackoutAlpha() > 0.5f) {
@@ -237,17 +282,41 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
         Draw(362, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0xFFFFFFFFu);
     }
 
-    // v2.66: the FNAF3 office has NO HUD in the original (no clock, no
-    // night label — the time lives only on the between-night cards), so
-    // the debug text is gone entirely.
-
     // the layer-0 warp: end the capture and run the dump's own bend
-    // (zoom 150 / curve 4 over the 1048x790 object at (-8,-8)). The HUD
-    // drew into the layer before the warp — like the original's office
-    // object composition (the HUD counters are frame objects there too).
+    // (zoom 150 / curve 4 over the 1048x790 object at (-8,-8)).
     m_batch->EndSceneCapture();
-    m_batch->SetPerspectiveGeometry({ 1048.0f, 790.0f, -8.0f, -8.0f, 1280.0f, 720.0f });
+    {   // vc100 (XDK) has no braced-init args: explicit local
+        SpriteBatch::PerspGeom g;
+        g.objW = 1048.0f; g.objH = 790.0f; g.orgX = -8.0f; g.orgY = -8.0f;
+        g.winW = 1280.0f; g.winH = 720.0f;
+        m_batch->SetPerspectiveGeometry(g);
+    }
     m_batch->DrawPerspective(150.0f, 355.0f, 4.0f);
+
+    DrawHud(game);
+}
+
+// v2.69: the layer-4 HUD cluster is REAL frame art (the v2.66 "no HUD in
+// the original" reading was wrong — the FrameReplay tool just never emits
+// Counter objects): the "Night" word plate img 245 @(914,14) pairs with the
+// night-number counter @(1002,32), the "AM text" plate img 246 @(980,49)
+// with the hour counter "time of night" @(968,65) — the counters' dump
+// points are their BOTTOM-RIGHT corner, and the plates land flush against
+// the digit rows. v2.71 correction: layer 4 is SCREEN-FIXED — it never
+// scrolls with the frame (the dump points 914..1002 sit inside the 1024
+// window, not the 2000 world; riding the pan parked the cluster mid-screen
+// — caught on the user's capture). The Perspective warp touches only the
+// office layer, so the HUD draws after it, unwarped.
+// Glyph strip [318,195,247..316] = 15x22 (alphabet 0-9-+.e).
+void FNaF3Render::DrawHud(const FNaF3Game& game) {
+    if (!m_batch || !m_pak) return;
+    static const int kHud[14] = { 318, 195, 247, 248, 249, 250, 306,
+                                  310, 311, 312, 313, 314, 315, 316 };
+    const i32 hour = game.GetTimeOfNight();                // 0 = 12 AM
+    DrawNat(245, 914.0f, 14.0f, 0xFFFFFFFF);
+    DrawCounterNat(game.GetNight(), kHud, 1002.0f, 32.0f, 0xFFFFFFFF);
+    DrawNat(246, 980.0f, 49.0f, 0xFFFFFFFF);
+    DrawCounterNat(hour == 0 ? 12 : hour, kHud, 968.0f, 65.0f, 0xFFFFFFFF);
 }
 
 // ---- monitor (feed + map + maintenance panel) ---------------------------
@@ -340,7 +409,10 @@ void FNaF3Render::RenderMonitor(const FNaF3Game& game, f32 time) {
     }
 
     // v2.66: the FNAF3 monitor shows no text in the original (the errors
-    // surface as the maintenance-panel icons and the 204 office state).
+    // surface as the maintenance-panel icons and the 204 office state) —
+    // but the layer-4 night/hour HUD cluster stays above the feed (the
+    // original never hides it); draw it here too.
+    DrawHud(game);
 }
 
 void FNaF3Render::RenderMap(const FNaF3Game& game) {

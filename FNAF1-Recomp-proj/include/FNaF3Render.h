@@ -20,9 +20,9 @@ class FNaF3Render {
 public:
     void Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text);
 
-    void RenderTitle(f32 time, i32 optionSelected);
+    void RenderTitle(const FNaF3Game& game, f32 time);
     void RenderDisclaimer();                     // frame 0: the banner (img 329)
-    void RenderNightStart(i32 night);
+    void RenderNightStart(i32 night, f32 t);
     void RenderStatic6();
     void RenderNextDay(i32 night);
     void RenderOffice(const FNaF3Game& game, f32 time);
@@ -55,6 +55,8 @@ private:
                    float pan, u32 color);
     int  StaticFrame(f32 time) const;
     void RenderMap(const FNaF3Game& game);       // map overlay (screen space)
+    // v2.69: the layer-4 night/hour HUD cluster (screen-fixed, per dump)
+    void DrawHud(const FNaF3Game& game);
 
     PakLoader*    m_pak;
     SpriteBatch*  m_batch;

@@ -47,23 +47,32 @@ void FNaF2Render::DrawNat(int handle, float fx, float fy, u32 color) {
 
 // v2.67: a Clickteam counter rendered from its CNTR glyph list — the dump's
 // dt=0 strips are the alphabet [0-9 - + . e] (14 cells, per-glyph native
-// widths); only the digits matter for these games. Left-aligned at the
-// instance point (verified against frame_1/12 layouts + HUD counters).
+// widths); only the digits matter for these games. The instance point is the
+// string's BOTTOM-RIGHT corner — verified against frame_3 (the "12" right edge
+// sits 14 px left of the AM plate @(956,78) and shares its baseline, "Night 1"
+// pairs with its plate @(863,34)..34+22) and frame_12 (a one-digit AI level
+// lands between the < > arrows, snug to the right one).
 void FNaF2Render::DrawCounterNat(int value, const int* strip, float fx, float fy,
                                  u32 color) {
     if (value < 0) value = -value;                 // the '-' cell rides strip[10]
     char digits[12];
     Snprintf(digits, sizeof(digits), "%d", value);
-    f32 x = fx;
+    f32 total = -1.0f;                             // CTF digits butt-join + 1px
     for (const char* c = digits; *c; ++c) {
-        const int h = strip[*c - '0'];
         char name[32];
-        Snprintf(name, sizeof(name), "img_%d", h);
+        Snprintf(name, sizeof(name), "img_%d", strip[*c - '0']);
         PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
         if (!t || !t->texture || !m_batch) return;
-        m_batch->Draw(t->texture, x * kScaleX, fy * kScaleY,
+        total += (f32)t->origWidth + 1.0f;
+    }
+    f32 x = fx - total;
+    for (const char* c = digits; *c; ++c) {
+        char name[32];
+        Snprintf(name, sizeof(name), "img_%d", strip[*c - '0']);
+        PakLoadedTexture* t = m_pak->FindTexture(name);
+        m_batch->Draw(t->texture, x * kScaleX, (fy - (f32)t->origHeight) * kScaleY,
                       (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
-        x += (f32)t->origWidth + 1.0f;             // CTF digits butt-join + 1px
+        x += (f32)t->origWidth + 1.0f;
     }
 }
 
@@ -237,9 +246,13 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         }
     }
 
-    // dark unless the flashlight is held (approx of the light groups):
-    // world tinted to ~28%, strips 507 + LIGHT buttons always lit.
-    const u32 worldCol = game.IsLit() ? 0xFFFFFFFF : 0xFF484848;
+    // v2.71: NO hand tint on the room. The dark-office look lives in the
+    // dump's own art (the replay draws the frame with its stored
+    // coefficients and the walls read clearly); lit states arrive as lit
+    // scene images through the hall-view branch above, and darkness ramps
+    // via the blackout mask below. The old 28% multiply double-darkened
+    // the already-dark art into mud (the "not the office" complaint).
+    const u32 worldCol = 0xFFFFFFFF;
     if (!hallView) {
 
     // layer 0 — the room
@@ -292,17 +305,15 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         }
     }
 
-    // layer 3 — viewport-space static over everything. v2.66: the alpha is
-    // the dump's coefficient treatment (the title's recipe: re-roll per
-    // 1.8 s); drawing it OPAQUE drowned the feed and the HUD text (the
-    // sweep caught it in the offline frames).
-    {
-        u32 h = (u32)(int)(time / 1.8f) * 2654435761u + 11u;
-        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
-        const u32 sAlpha = 90u + h % 60u;      // 0.35..0.59
-        Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f,
-             (sAlpha << 24) | 0x00FFFFFFu);
-    }
+    // layer 3 — v2.71: NO idle static over the office. The office "static"
+    // object's ink coefficient is event-driven in the dump (grp 29/30 re-roll
+    // alt[0]=125+Random(50)/alt[1], act #65 sets coeff=(alt0+alt1)*alt2*alt3,
+    // and alt[3] stays 0 in the plain office view (grp 363/364) -> the idle
+    // office has NO noise overlay. The old title-recipe alpha (90..150
+    // always on) drowned the room. The glitch windows (alt[4]/alt[5] rolls,
+    // grp 365-369) are not wired into the game state yet — labeled
+    // deviation until the cam-glitch wave.
+    (void)time;
 
     // v2.59: the mask overlay (dump "mask come down"/"mask"/"mask up")
     {
@@ -537,7 +548,12 @@ void FNaF2Render::RenderDream(const FNaF2Game& game) {
             DrawWorld(626, 2170.0f, 330.0f, 260.0f, 420.0f, pan, 0xFFFFFFFF);
     }
     m_batch->EndSceneCapture();
-    m_batch->SetPerspectiveGeometry({ 1024.0f, 768.0f, 0.0f, 0.0f, 1280.0f, 720.0f });
+    {   // vc100 (XDK) has no braced-init args: explicit local
+        SpriteBatch::PerspGeom g;
+        g.objW = 1024.0f; g.objH = 768.0f; g.orgX = 0.0f; g.orgY = 0.0f;
+        g.winW = 1280.0f; g.winH = 720.0f;
+        m_batch->SetPerspectiveGeometry(g);
+    }
     m_batch->DrawPerspective(200.0f, 384.0f, 4.0f);
     // the static flicker (alpha tiers per the re-roll)
     {
@@ -597,6 +613,20 @@ void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
         DrawNat(556, kArrowR[i][0], kArrowR[i][1], 0xFFFFFFFF);
         DrawCounterNat(game.GetCustomAI(i), kAIStrip, kNumX[i], kNumY[i], tint);
     }
+    // v2.68: the ten NAME plates (backdrop strips 575/348/349/350/351 +
+    // 353/354/355/356/573). They are Backdrop-type objects — the dump's
+    // left/top for the bottom row is junk (hotX ~ -519 parks them past the
+    // frame edge; the frame replay visibly misplaces them); Backdrop cells
+    // sit at plain x,y and those match the icon columns. Backdrops take no
+    // ink effects in the runtime — always full white, no selection tint.
+    static const struct { int img; f32 x, y; } kNames[10] = {
+        { 575,  76, 225 }, { 348, 262, 227 }, { 349, 450, 227 },
+        { 350, 648, 228 }, { 351, 864, 231 },
+        { 353,  76, 479 }, { 354, 260, 485 }, { 355, 452, 487 },
+        { 356, 630, 489 }, { 573, 818, 483 },
+    };
+    for (i32 i = 0; i < 10; ++i)
+        DrawNat(kNames[i].img, kNames[i].x, kNames[i].y, 0xFFFFFFFF);
     // the challenge mode row: arrows (dump 595/602) + the Text object
     // "mode" at (69,676) — the preset strings are the dump's act-#88 text.
     DrawNat(602, 159.0f, 700.0f, 0xFFFFFFFF);
@@ -611,8 +641,12 @@ void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
         if (mode >= 1 && mode <= 10 && m_text)
             m_text->DrawText((int)(69.0f * kScaleX), (int)(676.0f * kScaleY),
                              kModes[mode - 1], 0xFFB0B0B0);
-        if (mode >= 1 && mode <= 10 && game.GetChallengeBeat(mode - 1))
-            DrawNat(593, 90.0f, 697.0f, 0xFFFFFFFF);       // the beaten star
+        if (mode >= 1 && mode <= 10 && game.GetChallengeBeat(mode - 1)) {
+            // dump: "did challenge" + "did challenge 2" toggle TOGETHER —
+            // a beaten preset wears a star on BOTH sides of the mode row
+            DrawNat(593, 90.0f, 697.0f, 0xFFFFFFFF);
+            DrawNat(593, 741.0f, 697.0f, 0xFFFFFFFF);
+        }
     }
     Draw(546, 823.0f, 696.0f, 186.0f, 58.0f, 0xFFFFFFFF);  // READY
 }
