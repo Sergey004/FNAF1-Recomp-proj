@@ -21,6 +21,18 @@
 
 namespace fnaf {
 
+// v2.71: declared at NAMESPACE scope, not inside the function bodies — a
+// block-scope extern inside a member function is bound to the GLOBAL
+// namespace by MSVC 2010 (g++ follows the standard and binds it to the
+// enclosing namespace), so the block form linked under g++ but produced
+// LNK2019 under vc100 (it wanted ::Fnaf4CsLineText(int) while
+// src/FNaF4Game.cpp defines fnaf::Fnaf4CsLineText). Definitions live in
+// src/FNaF4Game.cpp.
+const char* Fnaf4CsLineText(i32 row);
+u32         Fnaf4CsLineColor(i32 row);
+const char* Fnaf4EndLineText(i32 row);
+u32         Fnaf4EndLineColor(i32 row);
+
 static const f32 kScaleX = 1280.0f / 1024.0f;   // full-stretch 16:9
 static const f32 kScaleY = 720.0f / 768.0f;
 
@@ -434,8 +446,6 @@ void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
     // on the console is the game's serif; the stub shows its own).
     Draw(1083, 106.0f, 66.0f, 812.0f, 158.0f, 0xFFFFFFFF);
     if (m_text && cs.lineCount > 0) {
-        extern const char* Fnaf4CsLineText(i32 row);
-        extern u32 Fnaf4CsLineColor(i32 row);
         const char* line = Fnaf4CsLineText(cs.curLine);
         if (line)
             m_text->DrawText(150, 110, line, Fnaf4CsLineColor(cs.curLine));
@@ -457,8 +467,6 @@ void FNaF4Render::RenderEnding(const FNaF4Game& game) {
     DrawNat(1169, 780.0f, 540.0f, 0xFFFFFFFF);
     Draw(1083, 140.0f, 100.0f, 812.0f, 158.0f, 0xFFFFFFFF);
     if (m_text) {
-        extern const char* Fnaf4EndLineText(i32 row);
-        extern u32         Fnaf4EndLineColor(i32 row);
         const i32 row = game.GetEndLine();
         const char* line = Fnaf4EndLineText(row);
         if (line) {
