@@ -25,7 +25,12 @@ static void D(PakLoader* pak, SpriteBatch* batch, int handle,
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = pak ? pak->FindTexture(name) : 0;
     if (!t || !t->texture || !batch) return;
-    batch->Draw(t->texture, x, y, w, h, color);
+    // v2.72: clamp UVs to the ORIGINAL size — pak textures are GPU-padded to
+    // 32px-aligned dims and the padding rows decode to junk; plain 0..1
+    // sampling pulled that junk into the quad.
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+    batch->Draw(t->texture, x, y, w, h, 0.0f, 0.0f, u1, v1, color);
 }
 
 // native-size draw (the layout tables' left/top = origin minus the hot spot)
@@ -35,7 +40,10 @@ static void DN(PakLoader* pak, SpriteBatch* batch, int handle,
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = pak ? pak->FindTexture(name) : 0;
     if (!t || !t->texture || !batch) return;
-    batch->Draw(t->texture, x, y, (f32)t->origWidth, (f32)t->origHeight, color);
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+    batch->Draw(t->texture, x, y, (f32)t->origWidth, (f32)t->origHeight,
+                0.0f, 0.0f, u1, v1, color);
 }
 
 void SLRender::RenderWarning() {

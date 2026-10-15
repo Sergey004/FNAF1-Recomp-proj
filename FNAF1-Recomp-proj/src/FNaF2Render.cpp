@@ -31,8 +31,13 @@ void FNaF2Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
+    // v2.72: clamp UVs to the ORIGINAL size — textures are GPU-padded out to
+    // 32px-aligned dims and the padding rows hold junk (white stripes on the
+    // title glyphs); plain 0..1 sampling stretched that junk into the quad.
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
     m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
-                  fw * kScaleX, fh * kScaleY, color);
+                  fw * kScaleX, fh * kScaleY, 0.0f, 0.0f, u1, v1, color);
 }
 
 // native-size draw (counters/glyphs and plates whose dims live in the pak)
@@ -41,8 +46,11 @@ void FNaF2Render::DrawNat(int handle, float fx, float fy, u32 color) {
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
     m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
-                  (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
+                  (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY,
+                  0.0f, 0.0f, u1, v1, color);
 }
 
 // v2.67: a Clickteam counter rendered from its CNTR glyph list — the dump's
@@ -70,8 +78,11 @@ void FNaF2Render::DrawCounterNat(int value, const int* strip, float fx, float fy
         char name[32];
         Snprintf(name, sizeof(name), "img_%d", strip[*c - '0']);
         PakLoadedTexture* t = m_pak->FindTexture(name);
+        const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+        const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
         m_batch->Draw(t->texture, x * kScaleX, (fy - (f32)t->origHeight) * kScaleY,
-                      (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY, color);
+                      (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY,
+                      0.0f, 0.0f, u1, v1, color);
         x += (f32)t->origWidth + 1.0f;
     }
 }
@@ -84,7 +95,10 @@ void FNaF2Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
-    m_batch->Draw(t->texture, sx, wy * kScaleY, fw * kScaleX, fh * kScaleY, color);
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+    m_batch->Draw(t->texture, sx, wy * kScaleY, fw * kScaleX, fh * kScaleY,
+                  0.0f, 0.0f, u1, v1, color);
 }
 
 int FNaF2Render::StaticFrame(f32 time) const {
