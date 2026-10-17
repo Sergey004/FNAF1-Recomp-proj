@@ -63,9 +63,6 @@
     <ClInclude Include="include\assets\asset_mapping_sisterlocation.hpp">
       <Filter>Header Files\assets</Filter>
     </ClInclude>
-    <ClInclude Include="include\FNAF1-Recomp-proj.spa.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="include\Achievements.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -106,6 +103,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\fnaf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNAF1-Recomp-proj.spa.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\FNaF2Game.h">
@@ -160,6 +160,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\Room.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SLGame.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SLRender.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\SpriteBatch.h">
@@ -254,6 +260,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Room.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SLGame.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\SLRender.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\SpriteBatch.cpp">

@@ -267,6 +267,7 @@ ipch/
 .vs/
 Debug/
 Release/
+Release_LTCG/
 x64/
 x86/
 FNAF1-Recomp-proj/achievements_pics/game_icon.png

@@ -349,6 +349,8 @@
     <ClInclude Include="include\PowerSystem.h" />
     <ClInclude Include="include\Progress.h" />
     <ClInclude Include="include\Room.h" />
+    <ClInclude Include="include\SLGame.h" />
+    <ClInclude Include="include\SLRender.h" />
     <ClInclude Include="include\SpriteBatch.h" />
     <ClInclude Include="include\TextRenderer.h" />
     <ClInclude Include="include\Types.h" />
@@ -380,6 +382,8 @@
     <ClCompile Include="src\PowerSystem.cpp" />
     <ClCompile Include="src\Progress.cpp" />
     <ClCompile Include="src\Room.cpp" />
+    <ClCompile Include="src\SLGame.cpp" />
+    <ClCompile Include="src\SLRender.cpp" />
     <ClCompile Include="src\SpriteBatch.cpp" />
     <ClCompile Include="src\TextRenderer.cpp" />
   </ItemGroup>
