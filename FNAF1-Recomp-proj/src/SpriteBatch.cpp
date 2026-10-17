@@ -114,8 +114,12 @@ static const char* kPanoramaPS_HLSL =
     "    float a  = i.uv.x - 0.5;\n"
     "    float fC = max(0.02, 1.0 + (fB - 1.0) * kc * a * a);\n"
     "    float2 src = float2(i.uv.x, (i.uv.y - vc) * fC + vc);\n"
-    "    float2 win = float2((src.x * gGeom.x - gGeom.z) / gWin.x,\n"
-    "                        (src.y *  gGeom.y - gGeom.w) /  gWin.y);\n"
+    // v2.72: win = (obj + origin) / window — the v2.66 parameterization had
+    // MINUS origin here, flipping the offset for negative origins (FNAF1's
+    // -22 became +22: the whole warp shifted 44px and the clamped right/bottom
+    // edge smeared the office at the right-door pan; v2.48 was correct).
+    "    float2 win = float2((src.x * gGeom.x + gGeom.z) / gWin.x,\n"
+    "                        (src.y *  gGeom.y + gGeom.w) /  gWin.y);\n"
     "    return tex2D(tex0, win) * i.color;\n"
     "}\n";
 

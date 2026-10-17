@@ -149,6 +149,13 @@ static f32 g_perspZoom    = PERSP_ZOOM;      // 300.0
 static f32 g_perspCenterY = PERSP_CENTER_Y;  // 355.0
 static f32 g_perspCurve   = PERSP_CURVE;     // 4.0
 
+// v2.72: FNAF1's serialized perspective object (1324x754 @ -22,-22 over the
+// 1280x720 window) — re-asserted before every warp. The geometry lives in the
+// SHARED SpriteBatch and FNaF3's office overwrites it (1048x790 @ -8,-8);
+// without this reset the F1 office inherits F3's geometry after a visit.
+static const SpriteBatch::PerspGeom kOfficePersp =
+    { 1324.0f, 754.0f, -22.0f, -22.0f, 1280.0f, 720.0f };
+
 // ------------------------------------------------------------
 //  Real animation frame tables (image handles from the game data)
 // ------------------------------------------------------------
@@ -762,55 +769,53 @@ void GameRender::RenderDisclaimer(bool blinkOn) {
 void GameRender::RenderTitle(const MenuSystem& menu, bool hasSave, i32 stars) {
     if (!m_batch) return;
 
-    // "Active 2" background — the LAMP flicker on the Freddy backdrop
-    // (groups 4, 8-11): every 1.6 s the roll re-picks the brightness variant.
-    // The dump itself rolls Random(100) with only 97/98/99 lit (so ~once a
-    // minute — too subtle to see); user call: make Freddy visibly breathe
-    // instead (~15% of windows lit, the brightest rarest):
+    // "Active 2" background — the LAMP on the Freddy backdrop. Dump (title
+    // groups 4/8-11, v2.72 timer verdict — raw ms): every 80 ms alterable[0]
+    // := Random(100); == 97/98/99 (1% each) -> imgs 440/441/442, else base.
+    // (The old 1.6 s window came from ctfak's /50 annotation, 20x too slow;
+    // the widened 85/93/98 "breathing" gates are retired — 1:1 per dump.)
     int bg = IMG_MENU_BG;
-    const unsigned bw = static_cast<unsigned>(m_time / 1.6f);
+    const unsigned bw = static_cast<unsigned>(m_time / 0.08f);
     const unsigned bgRoll = TitleWinHash(bw) % 100u;
-    if      (bgRoll >= 98) bg = IMG_MENU_FLICK3;   // 442 — brightest pop (rare)
-    else if (bgRoll >= 93) bg = IMG_MENU_FLICK2;   // 441
-    else if (bgRoll >= 85) bg = IMG_MENU_FLICK1;   // 440 — soft glow
-    // v2.57 (dump group 5, title frame): the background coefficient re-rolls
-    // to Random(250) every ~6 s — this is the real "lamp" effect (the Freddy
-    // backdrop breathes, dim-to-bright, sometimes near-black). The same
-    // coefficient→alpha mapping as the title's static (alpha = (255-c)/255).
-    const unsigned lw = static_cast<unsigned>(m_time / 6.0f);
+    if      (bgRoll == 99) bg = IMG_MENU_FLICK3;   // 442
+    else if (bgRoll == 98) bg = IMG_MENU_FLICK2;   // 441
+    else if (bgRoll == 97) bg = IMG_MENU_FLICK1;   // 440
+    // v2.57 group 5: the background coefficient re-rolls to Random(250)
+    // every 300 ms (was 6 s — same /50 annotation bug; docs/TIMERS_CFT.md).
+    // The same coefficient→alpha mapping as the title's static.
+    const unsigned lw = static_cast<unsigned>(m_time / 0.3f);
     const int lampCoeff = (int)(TitleWinHash(lw) % 250u);              // 0..249
     const u32  lampAlpha = static_cast<u32>(255 - lampCoeff);          // coeff → alpha
     DrawFrame(bg, 0, 0, SCREEN_W, SCREEN_H, (lampAlpha << 24) | 0x00FFFFFFu);
 
     // Animated static overlay ("static" obj): group 1 re-rolls the alpha
-    // coefficient to 50 + Random(100) every 1.8 s. v2.61: narrowed further
-    // to 130 + Random(60) (alpha ≈ 0.25..0.50) — user call: the menu noise
-    // is noticeably MORE TRANSPARENT than the dump's (the lamp carries the
-    // mood, the noise stays a light veil).
-    const unsigned sw = static_cast<unsigned>(m_time / 1.8f);
-    const int sCoeff = 130 + (int)(TitleWinHash(sw) % 60u);
+    // coefficient to 50 + Random(100) every 90 ms — an ~11 Hz shimmer
+    // (was 1.8 s, the /50 annotation bug; the v2.61 130+R(60) narrowing is
+    // retired with it — 1:1 per dump).
+    const unsigned sw = static_cast<unsigned>(m_time / 0.09f);
+    const int sCoeff = 50 + (int)(TitleWinHash(sw) % 100u);
     DrawStaticOverlay((255 - sCoeff) / 255.0f);
 
     // v2.46: the subtle band that rolls down the title screen — the
     // "blip flash 2" object (img_430 is a black frame with one white
     // horizontal band; frames 434-439 carry it at other heights). The
     // anim is [430,435,436,434,438,439,437,22] at speed 10 (0.167 s per
-    // frame — the last frame 22 is a dense static flash). Title events:
-    //   group 5 (every 6 s): alterable[0] := Random(3); groups 6/7:
-    //   visible only while alterable[0] == 1 (a 1-in-3 six-second window);
-    //   group 4 (every 1.6 s): alpha coefficient := Random(100)+100 ->
-    //   alpha 0.22..0.61, re-rolled per window.
-    // The old code drew a random band frame at 0.35 alpha every ~10 s.
+    // frame — the last frame 22 is a dense static flash). Title events
+    // (v2.72 ms verdict, docs/TIMERS_CFT.md):
+    //   group 5 (every 300 ms): alterable[0] := Random(3); groups 6/7:
+    //   visible only while alterable[0] == 1 (a 1-in-3 300 ms slot);
+    //   group 4 (every 80 ms): alpha coefficient := Random(100)+100,
+    //   re-rolled continuously.
     {
         // v2.46b: Knuth-hash the window index — the first hash
         // (win*73+win*win*37) % 3 collapsed to win(win+1) % 3, which is
         // never 1, so the band never showed at all.
-        const unsigned win = static_cast<unsigned>(m_time / 6.0f);
+        const unsigned win = static_cast<unsigned>(m_time / 0.3f);
         if (TitleWinHash(win) % 3u == 1) {
             // anim frame: speed 10 -> (100/10)/60 = 0.167 s per frame
             static const int BAND_SEQ[8] = { 430, 435, 436, 434, 438, 439, 437, 22 };
             const int fi = static_cast<int>(m_time * 6.0f) % 8;
-            const unsigned aw = static_cast<unsigned>(m_time / 1.6f); // 1.6 s alpha window
+            const unsigned aw = static_cast<unsigned>(m_time / 0.08f); // 80 ms alpha window
             const int coeff = 100 + static_cast<int>(TitleWinHash(aw) % 100u); // 100..199
             const u32 a = static_cast<u32>((255 - coeff)) << 24;
             DrawFrame(BAND_SEQ[fi], 0.0f, 0.0f, SCREEN_W, SCREEN_H, a | 0xFFFFFF);
@@ -1083,6 +1088,7 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     m_batch->EndSceneCapture();
 
     // ...then warp the whole composed scene through the parabola shader.
+    m_batch->SetPerspectiveGeometry(kOfficePersp);   // v2.72: F1's own geometry
     m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
 
     // ---- v2.7.5 verdict kept: NO animated static in the office. Obj 42
@@ -1290,6 +1296,7 @@ void GameRender::RenderCamera(const Game& game, bool phonePlaying) {
         m_batch->BeginSceneCapture(0xFF000000u);
         DrawFrame(feed, -camPan, 0.0f, 1600.0f, 720.0f, 0xFFFFFFFF);
         m_batch->EndSceneCapture();
+        m_batch->SetPerspectiveGeometry(kOfficePersp);   // v2.72: F1's own geometry
         m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
     } else if (cam == CAM_6) {
         DrawInstance(IMG_AUDIO_ONLY, 384.0f, 69.0f, 0xFFFFFFFF, false);
@@ -1406,6 +1413,7 @@ void GameRender::RenderPowerOut(const Game& game) {
     DrawInstance(POWEROUT_OFFICE, 0.0f, 0.0f, 0xFFFFFFFF, true);
     DrawInstance(flicker, 0.0f, 0.0f, 0xFFFFFFFF, true);
     m_batch->EndSceneCapture();
+    m_batch->SetPerspectiveGeometry(kOfficePersp);   // v2.72: F1's own geometry
     m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
 
     // the HUD stays, power reads 0 — same right-aligned layout as the
@@ -1469,6 +1477,7 @@ void GameRender::RenderJumpscare(AnimatronicId anim, f32 elapsed) {
     m_batch->BeginSceneCapture(0xFF000000u);
     DrawFrame(frame, -160.0f, 0.0f, 1600.0f, 720.0f, 0xFFFFFFFF);
     m_batch->EndSceneCapture();
+    m_batch->SetPerspectiveGeometry(kOfficePersp);   // v2.72: F1's own geometry
     m_batch->DrawPerspective(g_perspZoom, g_perspCenterY, g_perspCurve);
 }
 

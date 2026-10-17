@@ -975,9 +975,11 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
         }
 
         case SCR_AD:
-            // dump frame 8: any key/90 s -> the night card (no sound objects)
+            // dump frame 8 group 4: one-shot timer 9000 ms = 9 s, any key
+            // (groups 1-3) skips -> the night card (no sound objects).
+            // (Was 90 s — the ctfak /50 annotation bug, docs/TIMERS_CFT.md.)
             m_cardT += dt;
-            if (m_cardT >= 90.0f || in.aPressed || in.upPressed || in.downPressed) {
+            if (m_cardT >= 9.0f || in.aPressed || in.upPressed || in.downPressed) {
                 StartNight(m_night < 1 ? 1 : m_night);
             }
             break;

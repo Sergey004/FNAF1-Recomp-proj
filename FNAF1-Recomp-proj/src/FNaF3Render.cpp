@@ -159,13 +159,27 @@ void FNaF3Render::RenderTitle(const FNaF3Game& game, f32 time) {
     if (game.IsGoodEnd())    DrawNat(840, 193.0f, 108.0f, 0xFFFFFFFF);
     if (game.IsFourthStar()) DrawNat(840, 270.0f, 108.0f, 0xFFFFFFFF);
 
+    // The scene is ALWAYS visible (bg img_862 + menu). The "static" obj is
+    // dump-exact (v2.72 ms verdict, docs/TIMERS_CFT.md): group 72 re-fires
+    // every 2000 ms setting alterable[1] := 25 + Random(3); group 73 decrements
+    // it by 2 EVERY FRAME while > 0 and the object shows while > 0 — a
+    // ~0.22 s burst every 2 s. Group 1 re-rolls the alpha coefficient :=
+    // 200 + Random(100) every 40 ms (a faint 25 Hz shimmer during the burst;
+    // coeff > 255 clamps to invisible). (The old ~8%-of-1.6 s OPAQUE flash
+    // was a /50-annotation-era approximation.)
     {
-        const f32 kPeriod = 1.6f;
-        const int slot = (int)(time / kPeriod);
+        const int slot = (int)(time / 2.0f);
         u32 h = (u32)slot * 2654435761u + 3u;
         h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
-        if ((h % 100u) < 8u)                       // ~8% of slots flash
-            Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        const int burstFrames = (25 + (int)(h % 3u) + 1) / 2;   // 25+R(3), step 2/frame
+        const f32 elapsed = time - (f32)slot * 2.0f;
+        if (elapsed < (f32)burstFrames / 60.0f) {
+            u32 ha = (u32)(int)(time / 0.040f) * 2654435761u + 5u;
+            ha ^= ha >> 13;  ha *= 3266489917u;  ha ^= ha >> 16;
+            const int coeff = 200 + (int)(ha % 100u);           // 200..299
+            const u32 a = (coeff < 255) ? (u32)(255 - coeff) : 0u;
+            Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
+        }
     }
 }
 

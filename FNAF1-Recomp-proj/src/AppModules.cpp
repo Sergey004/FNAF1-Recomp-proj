@@ -362,11 +362,13 @@ void FNaF3Module::Tick(f32 dt) {
     const int scr = (int)m_game.GetScreen();
     if (scr != m_prevAudioScreen && m_services.audio && m_services.pak) {
         if (scr == (int)FNaF3Game::SCR_TITLE) {
+            // dump title group 3 plays ONLY "titlemusic" (sample #13, channel 2,
+            // ch volumes 100) — the F3 title dump has no static sample. The old
+            // snd_static_sound loop here was the invented 8 kHz white-noise bed
+            // the user reported as "noise at full volume".
             m_services.audio->Play(m_services.pak, "snd_titlemusic", true, 0.45f);
-            m_services.audio->Play(m_services.pak, "snd_static_sound", true, 0.35f);
         } else {
             m_services.audio->Stop("snd_titlemusic");
-            m_services.audio->Stop("snd_static_sound");
         }
         if ((scr == (int)FNaF3Game::SCR_OFFICE) &&
             (m_prevAudioScreen == (int)FNaF3Game::SCR_NIGHTSTART ||

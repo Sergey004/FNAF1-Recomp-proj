@@ -125,12 +125,12 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
 
     // ---- the background "video FROM Freddy's eyes" (dump groups 4+8-11):
     // at boot alterable[0] == 0 -> anim 12 = img_362 (the eye view IS the
-    // first scene); every 2 s a Random(50) re-roll maps 0/1/2 to the eye
-    // views 362/470/215 and anything else to the normal bg 321. We use a
-    // stateless hash per 2 s slot (same 3/51 duty as Random(50)).
+    // first scene); every 100 ms (v2.72 ms verdict — was 2 s, the /50
+    // annotation bug) a Random(50) re-roll maps 0/1/2 to the eye views
+    // 362/470/215 and anything else to the normal bg 321.
     int bgImg = 321;
     {
-        const f32 kRollPeriod = 2.0f;
+        const f32 kRollPeriod = 0.1f;
         const int slot = (int)(time / kRollPeriod);
         if (slot == 0) {
             bgImg = 362;                                // boot state: eye view
@@ -141,27 +141,28 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
             bgImg = (roll == 0) ? 362 : (roll == 1) ? 470 : (roll == 2) ? 215 : 321;
         }
     }
-    // group 5: the bg's alpha coefficient := Random(250) every 6 s — the
+    // group 5: the bg's alpha coefficient := Random(250) every 300 ms — the
     // FNAF2 "lamp" (the backdrop breathes dim-to-bright; coeff -> alpha =
-    // (255-c)/255, the same convention as FNAF1's v2.57 title lamp).
+    // (255-c)/255, the same convention as FNAF1's title lamp). Was 6 s —
+    // the /50 annotation bug (docs/TIMERS_CFT.md).
     {
-        u32 h = (u32)(int)(time / 6.0f) * 2654435761u + 5u;
+        u32 h = (u32)(int)(time / 0.3f) * 2654435761u + 5u;
         h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
         const u32 lampAlpha = 255u - (u32)(h % 250u);
         Draw(bgImg, 0.0f, 0.0f, 1024.0f, 768.0f, (lampAlpha << 24) | 0x00FFFFFFu);
     }
 
     // ---- the "static" obj (dump group 1): alpha coefficient := 50+Random(100)
-    // every 1.8 s -> alpha 0.42..0.80 (the old draw was OPAQUE — the bg
-    // drowned); position (0,0), fullscreen 1024x768, no X jitter (the dump
-    // sets only the alpha). Point-sampled so the grain survives the
-    // 1024->1280 stretch (FNAF1's v2.57 overlay). REMOVED DEVIATION: the
-    // invented "glitch" (imgs 65/73/210 every ~7 s) — those images are the
-    // PUPPET (full body / head) and the title dump never fires the static
-    // object's anims 12-15 (they are office cam events); that was the
-    // "Puppet appearing out of nowhere" on the title.
+    // every 90 ms — an ~11 Hz shimmer (was 1.8 s, the /50 annotation bug);
+    // position (0,0), fullscreen 1024x768, no X jitter (the dump sets only
+    // the alpha). Point-sampled so the grain survives the 1024->1280 stretch
+    // (FNAF1's v2.57 overlay). REMOVED DEVIATION: the invented "glitch"
+    // (imgs 65/73/210 every ~7 s) — those images are the PUPPET (full body /
+    // head) and the title dump never fires the static object's anims 12-15
+    // (they are office cam events); that was the "Puppet appearing out of
+    // nowhere" on the title.
     {
-        u32 h = (u32)(int)(time / 1.8f) * 2654435761u + 7u;
+        u32 h = (u32)(int)(time / 0.09f) * 2654435761u + 7u;
         h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
         const u32 sAlpha = 255u - (50u + h % 100u);
         char name[32];
@@ -176,14 +177,14 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
     }
 
     // ---- "blip flash 2" (img_68, fullscreen band flash): group 5 rolls
-    // alterable[0] := Random(3) every 6 s and groups 6/7 show it only on 1;
-    // group 4 re-rolls its alpha := 200+Random(50) every 2 s (very faint,
-    // 0.02..0.22). Was missing entirely.
+    // alterable[0] := Random(3) every 300 ms and groups 6/7 show it only on
+    // 1; group 4 re-rolls its alpha := 200+Random(50) every 100 ms (very
+    // faint, 0.02..0.22). Was 6 s / 2 s — the /50 annotation bug.
     {
-        u32 hw = (u32)(int)(time / 6.0f) * 2654435761u + 11u;
+        u32 hw = (u32)(int)(time / 0.3f) * 2654435761u + 11u;
         hw ^= hw >> 13;  hw *= 3266489917u;  hw ^= hw >> 16;
         if (hw % 3u == 1u) {
-            u32 h = (u32)(int)(time / 2.0f) * 2654435761u + 13u;
+            u32 h = (u32)(int)(time / 0.1f) * 2654435761u + 13u;
             h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
             const u32 bAlpha = 255u - (200u + h % 50u);
             Draw(68, 0.0f, 0.0f, 1024.0f, 768.0f, (bAlpha << 24) | 0x00FFFFFFu);

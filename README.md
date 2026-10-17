@@ -136,7 +136,7 @@ cycle for any game in the series:
 Type "1" for dump assets 
 # 2) GPU-ready pak + asset table (DXT textures + PCM, big-endian 'FNAF'):
 ./build/ctfak-cpp  <game>.exe 
-Type "10" for pack assets 
+Enter what appears next to “Recomp Pack”
 ```
 
 Results land in `build/Dumps/<Game>/`:

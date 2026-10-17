@@ -1831,8 +1831,9 @@ int main(int argc, char* argv[]){
         }
 
         // ---------------- INTRO AD ("HELP WANTED", v2.7.13) ----------------
-        // New Game only: the newspaper (frame "ad", img_574) holds ~8 s,
-        // any button skips, then the night-1 card. Uses its own counter:
+        // New Game only: the newspaper (frame "ad", img_574) holds 5 s
+        // (dump group 4 one-shot 5000 ms — was ~8 s), any button skips,
+        // then the night-1 card. Uses its own counter:
         // menuFrameCounter is reset every frame by the menu block above.
         if(state==GAME_STATE_INTRO_AD){
             ++adCounter;
@@ -1842,7 +1843,7 @@ int main(int argc, char* argv[]){
                 DrawFadeOverlay();
                 FrameEnd();
             }
-            const bool adTimeout = adCounter > 480;   // ~8 s
+            const bool adTimeout = adCounter > 300;   // dump group 4: one-shot 5000 ms = 5 s
             const bool adSkip = !adLock &&
                 (gi.cameraToggle||gi.pause||gi.back||gi.cameraUp||gi.cameraDown);
             if(g_fade.phase == 0 && (adTimeout || adSkip)){
