@@ -142,11 +142,15 @@ void SLRender::RenderHub(const SLGame& game) {
 }
 
 void SLRender::RenderBaby(const SLGame& game) {
+    // v2.73: the room art from the dump's frame_6 layout — img 829
+    // (1700x1000 @ (-1,-1), Baby's gallery), the rooms' height-squash
+    // convention (1000 -> 720). The "go back" plate 182 is parked
+    // off-screen in the layout (event-gated) — not drawn.
     (void)game;
-    if (m_text) {
-        m_text->DrawText(40, 40, "BABY'S GALLERY", 0xFFE0E0E0);
+    if (m_batch)
+        D(m_pak, m_batch, 829, 0.0f, 0.0f, 1700.0f, 720.0f, 0xFFFFFFFF);
+    if (m_text)
         m_text->DrawText(40, 660, "B: end the night", 0xFF909090);
-    }
 }
 
 void SLRender::RenderBallora(const SLGame& game, f32 time) {
@@ -197,19 +201,47 @@ void SLRender::RenderFuntime(const SLGame& game, f32 time) {
 }
 
 void SLRender::RenderBreaker(const SLGame& game) {
+    // v2.73: the room art from the dump's frame_9 layout — img 594
+    // (1900x1000 @ (0,0), the dark breaker hall with the Funtime silhouettes),
+    // drawn with the rooms' height-squash convention (1000 -> 720). The task
+    // label 579 "jack in" (606x55 @ (310,930), layer 4) is the REST-state
+    // strip the frame replay proves visible — with 1889 "flip it up"
+    // stacked on it (the replay shows the magenta plate + the chevrons);
+    // 360/580 are the task-beat prompts (event-gated, not yet drawn).
     (void)game;
-    if (m_text) {
-        m_text->DrawText(40, 40, "BREAKER ROOM", 0xFFE0E0E0);
-        m_text->DrawText(40, 660, "hold on while the task sits (wave 1)", 0xFF909090);
+    if (m_batch) {
+        D(m_pak, m_batch, 594, 0.0f, 0.0f, 1900.0f, 720.0f, 0xFFFFFFFF);
+        const f32 stripY = 930.0f * (720.0f / 1000.0f);
+        DN(m_pak, m_batch, 579, 310.0f, stripY, 0xFFFFFFFF);
+        DN(m_pak, m_batch, 1889, 340.0f, stripY, 0xFFFFFFFF);
     }
 }
 
+// v2.73: the win screen composed from the dump's frame_12 layout — the
+// 45-cell firework grid (img 873, 32x32, layer 0) behind the "night
+// complete" plate 1223 (400x120 @ (441,228), layer 1) and the "Enjoy"
+// strip 1189 (283x25 @ (501,328)). Labeled: the dump shows these
+// event-gated (the rest replay is black); the port draws the composed
+// screen when the night ends.
 void SLRender::RenderWinNight(const SLGame& game) {
-    if (m_text) {
-        char b[48];
-        Snprintf(b, sizeof(b), "NIGHT %d complete", game.GetNight());
-        m_text->DrawText(480, 320, b, 0xFFFFFFFF);
-    }
+    (void)game;
+    if (!m_batch) return;
+    static const f32 kFx[45][2] = {
+        {179,113},{291,113},{403,113},{515,113},{627,113},{739,113},{851,113},{963,113},
+        {1105,181},
+        {205,255},{317,255},{429,255},{541,255},{653,255},{765,255},{877,255},{989,255},
+        {1101,255},
+        {179,337},{291,337},{403,337},{515,337},{627,337},{739,337},{851,337},{963,337},
+        {1075,337},
+        {133,191},{233,173},{345,173},{457,173},{569,173},{681,173},{793,173},{905,173},
+        {1017,173},
+        {219,397},{331,397},{443,397},{555,397},{667,397},{779,397},{891,397},{1003,397},
+        {1115,397},
+    };
+    for (int i = 0; i < 45; ++i)
+        DN(m_pak, m_batch, 873, kFx[i][0], kFx[i][1], 0xFFFFFFFF);
+    DN(m_pak, m_batch, 1223, 441.0f, 228.0f, 0xFFFFFFFF);
+    DN(m_pak, m_batch, 1189, 501.0f, 328.0f, 0xFFFFFFFF);
 }
 
 void SLRender::RenderTvShow() {
@@ -223,15 +255,15 @@ void SLRender::RenderGirlVoice() {
 }
 
 void SLRender::RenderDeath() {
-    if (m_text) {
-        m_text->DrawText(480, 320, "G A M E   O V E R", 0xFFC0C0C0);
-        m_text->DrawText(440, 420, "Press A to retry the night", 0xFF909090);
-    }
+    // v2.73: the dump's frame_15 rest state is a BLACK screen (the frame
+    // replay proves it — the GAME OVER art is event-gated). The invented
+    // big caption is gone; the retry hint stays as labeled pad-only UI.
+    if (m_text)
+        m_text->DrawText(440, 420, "Press A to retry the night", 0xFF606060);
 }
 
 void SLRender::RenderGameOver() {
-    if (m_text)
-        m_text->DrawText(480, 320, ". . .", 0xFFC0C0C0);
+    // v2.73: black, per the frame_15 rest state (was an invented ". . .").
 }
 
 void SLRender::RenderHold(const char* caption) {
