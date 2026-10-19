@@ -16,7 +16,7 @@ Game window: 1280x720; room frames are LARGER and pan.
 
 | # | Name | Size | Role | Gameplay? |
 |---|------|------|------|-----------|
-| 0 | Warning | 1280x720 | legal warning; inter-passage splash (Enter/click/60 s); INI load; Delete = wipe save | no |
+| 0 | Warning | 1280x720 | legal warning; inter-passage splash (Enter/click/3 s — the dump's one-shot 3000 ms; the old "60 s" was the ctfak /50 annotation); INI load; Delete = wipe save | no |
 | 1 | title screen | 1280x720 | menu (new game / continue / extras / custom) | no |
 | 2 | Elevator | 1900x1000 | cabin ride + HandUnit scripts (nights 2/3/5) | ride/hub |
 | 3 | Vent crawl | 1700x1000 | vent travel (hold W) | travel |

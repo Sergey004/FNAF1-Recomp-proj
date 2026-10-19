@@ -272,19 +272,38 @@ void SLRender::RenderHold(const char* caption) {
 }
 
 void SLRender::RenderPS(const SLGame& game) {
-    // the face-button task (frames 11/19): the nine picks with the current
-    // highlight, the Script Event beat, the exit hint. The dump's button
-    // art rows are not frame-dumped whole — labeled block labels stand in.
-    static const char* const kBtn[9] = {
-        "R.CHEEK", "L.CHEEK", "R.EYE", "NOSE", "CHIN", "MODULE", "UNIT 1", "UNIT 2", "-"
+    // v2.73: the room art from the dump's frame_11 layout — img 455
+    // (1700x1500 @ (0,32), the P&S hall with Bonnie's face), drawn 1:1
+    // (the window shows the face area; the module at y=896 is below it).
+    // The five face buttons: 447 (10x10 dot) at the four cheeks/eye/nose
+    // spots + 463 (60x60) chin — layout coords, current pick highlighted.
+    // The dump's button anims are single-cell; the lit-state tint is ours
+    // (DEVIATION). Picks 5-8 (module/units) stay text — their plate sits
+    // off-window.
+    static const struct { int img; f32 x, y; } kPlates[5] = {
+        { 447,  816.0f, 530.0f },   // right cheek
+        { 447, 1128.0f, 538.0f },   // left cheek
+        { 447,  969.0f, 381.0f },   // right eye
+        { 447,  989.0f, 451.0f },   // nose
+        { 463,  900.0f, 632.0f },   // chin
     };
+    if (m_batch) {
+        D(m_pak, m_batch, 455, 0.0f, 0.0f, 1700.0f, 1500.0f, 0xFFFFFFFF);
+        for (int i = 0; i < 5; ++i) {
+            const u32 col = (game.GetPick() == i) ? 0xFFFFFFFF : 0xFF909090;
+            DN(m_pak, m_batch, kPlates[i].img, kPlates[i].x, kPlates[i].y, col);
+        }
+        if (game.GetPick() == 5)   // the module plate, pinned to the window's bottom edge
+            DN(m_pak, m_batch, 619, 990.0f, 660.0f, 0xFFFFFFFF);
+    }
     if (m_text) {
         char b[80];
         Snprintf(b, sizeof(b), "PARTS AND SERVICE   event %d", game.GetScriptEvent());
         m_text->DrawText(40, 40, b, 0xFFE0E0E0);
-        for (int i = 0; i < 9; ++i) {
-            const u32 col = (i == game.GetPick()) ? 0xFFFFFFFF : 0xFF808080;
-            m_text->DrawText(120 + (i % 3) * 340, 420 + (i / 3) * 60, kBtn[i], col);
+        static const char* const kSub[4] = { "MODULE", "UNIT 1", "UNIT 2", "-" };
+        for (int i = 0; i < 4; ++i) {
+            const u32 col = (game.GetPick() == i + 5) ? 0xFFFFFFFF : 0xFF808080;
+            m_text->DrawText(120 + (i32)i * 340, 610, kSub[i], col);
         }
         m_text->DrawText(40, 660, "L/R: pick   A: click   B: exit (event 168)", 0xFF909090);
     }

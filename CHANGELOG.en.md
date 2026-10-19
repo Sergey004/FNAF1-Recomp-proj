@@ -6,6 +6,17 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.73 — the SL rebind wave: native art on four screens + dump timers
+
+- **win night (frame 12) composed from the layout**: the 45-cell firework grid (img 873, 32x32, layer 0) + the 1223 plate (400x120 @ (441,228)) + the "Enjoy some time at home!" strip 1189 (@ (501,328)) — replacing the "NIGHT N complete" text line. The dump gates this art by events (the rest replay is black); the port draws the composed screen when the night ends (labeled). The fireworks render one static animation cell so far (the color cycle comes later).
+- **Breaker Room (frame 9)**: the dark hall img 594 (1900x1000, the rooms' height-squash convention) + the rest-state task strip: 579 "jack in" (magenta) with 1889 "flip it up" (chevrons) stacked — exactly what the frame replay proves visible; the 360/580 prompts are task-beat beats (event-gated, not drawn; labeled).
+- **Baby's Room (frame 6)**: the gallery art img 829 (1700x1000) — colored lamps, posters and the monkey console — instead of a black screen; the 182 "go back" plate is parked off-screen in the layout (labeled).
+- **Death/GameOver (frames 14/15)**: the rest state per the replay is a BLACK screen — the invented "G A M E   O V E R" / ". . ." captions are gone; only a small retry hint stays (labeled pad-only UI). The Extras rest state is black with the system "EXIT GAME? Y/N" box (the menu rows are parked behind a layer) — the port's text menu remains a labeled stand-in.
+- **Timers from the t2 table**: the warning auto-advance 2 s -> **3 s** (frame_0 one-shot 3000 ms); the win-night hold 4 s -> **10 s** (frame_12 group 20 R/10000 + group 22 gate). The "60 s" note in SL_MECHANICS was the same /50 annotation — corrected.
+- **Parts and Service (frame 11)**: the hall img 455 (1700x1500, Bonnie + the endoskeleton) drawn 1:1 + the five face-button dots per the layout (447 x4: cheeks/eye/nose, 463 60x60 chin) with the current pick highlighted; picks 5-8 (module/units — the module plate sits below the frame window at y=896) stay text. Labeled: the lit-state tint is ours (the dump's button anims are single-cell).
+- **The win-night firework "color cycle"**: closed by the data itself — objInfo 334 has one cell [873], no animations, so the static cells ARE the original.
+- **Harness**: the SL driver captures sl_08_baby / sl_09_winnight / sl_10_death / sl_11_ps; every screen verified frame by frame. Version -> v2.73. Files: src/SLRender.cpp, src/SLGame.cpp, tools/offline/main_offline.cpp, docs/SL_MECHANICS.md — all existing, nothing for the .vcxproj.
+
 ## v2.72 — the console "garbling": UV padding + the office panorama sign (a v2.66 regression)
 
 - **The root cause of the F2 title garbling (white blocks under the "Continue" letters, garbled footers, squished glyphs) found**: pak textures are GPU-created at 32px-ALIGNED dims with junk padding rows (img_303 "Continue" 222x34 -> 224x64, the padding is 53% of the height and decodes to white stripes), while the F2/3/4/SL draw wrappers sampled the quad with UV 0..1 — stretching the padding into the picture. The per-texture corruption prevalence matched the padding fraction 1:1 ("New Game" 3% and the logo were clean). F1 was immune: the `u1=origW/alignedW` clamp has lived in GameRender::DrawTex/DrawInstance/DrawStaticOverlay since v2.7. Ported to EVERY wrapper: FNaF2Render (Draw/DrawNat/DrawCounterNat/DrawWorld), FNaF3Render, FNaF4Render (the same set), SLRender (the D/DN helpers). Final audit: no `Draw` without explicit UVs is left in the tree.

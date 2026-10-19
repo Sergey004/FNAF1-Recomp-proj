@@ -199,7 +199,9 @@ void SLGame::Tick(f32 dt, const SLInputs& in) {
 
 void SLGame::TickWarning(f32 dt, const SLInputs& in) {
     m_cardT += dt;
-    if (m_cardT >= 2.0f || in.aPressed || in.bPressed) {
+    // v2.73: the dump's frame_0 advance timer is a one-shot 3000 ms = 3 s
+    // (was 2 s; the old "60 s" note in SL_MECHANICS was the /50 annotation).
+    if (m_cardT >= 3.0f || in.aPressed || in.bPressed) {
         m_cardT = 0.0f;
         m_screen = SCR_TITLE;
         // the title theme (the dump: "Gradual Liquidation" loop)
@@ -915,7 +917,10 @@ void SLGame::TickBaby(f32 dt, const SLInputs& in) {
 
 void SLGame::TickWinNight(f32 dt) {
     m_winT += dt;
-    if (m_winT >= 4.0f) {
+    // v2.73: the dump holds the win screen 10 s — frame_12 group 20 sets the
+    // stage flag on a one-shot 10000 ms, group 22 jumps once it and the
+    // checkmark countdown are met (was 4 s).
+    if (m_winT >= 10.0f) {
         m_winT = 0.0f;
         m_current = m_night + 1;
         if (m_current > 5) m_current = 5;
