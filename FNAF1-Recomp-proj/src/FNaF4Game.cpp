@@ -187,8 +187,13 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
     switch (m_screen) {
         case SCR_DISCLAIMER:
             m_cardT += dt;
-            if (m_cardT >= 3.5f || in.aHeld || in.bPressed) {
-                m_screen = SCR_TITLE; m_cardT = 0.0f;
+            // v2.74: the dump's frame 0 holds 2000 ms and branches on the
+            // saved "test" flag: test == 1 -> the test room (frame 14),
+            // otherwise the title. The old build held 3.5 s and always
+            // went to the title.
+            if (m_cardT >= 2.0f || in.aHeld || in.bPressed) {
+                m_cardT = 0.0f;
+                m_screen = m_testFlag ? SCR_TEST : SCR_TITLE;
             }
             break;
 
@@ -393,21 +398,30 @@ void FNaF4Game::TickNightWin(f32 dt, const FNaF4Inputs& in) {
     }
     if (m_winT >= 10.0f) {
         m_winT = 0.0f;
+        // v2.74: the routing must use the BEATEN night — WriteNightResult()
+        // already advanced m_night, so the old comparisons fired one night
+        // early (and never reached the plushtrap / game-over branches).
+        const i32 beaten = m_night - 1;
         WriteNightResult();
-        if (m_night <= 5) {
+        if (beaten <= 5) {
             // g12: -> Cutscenes (scene = the beaten night)
             m_cut.Clear();
-            m_cut.scene = m_night <= 4 ? m_night : 4;
+            m_cut.scene = beaten <= 4 ? beaten : 4;
             m_screen = SCR_CUTSCENE;
             Sfx("snd_Deep_Ambience_With_Sc", true, 1, 15);
-        } else if (m_night == 6) {
+        } else if (beaten == 6) {
             m_screen = SCR_ENDING;                    // g20: the ending
             m_endT = 0.0f; m_endLine = 0; m_endLetterT = 0.0f; m_endLetters = 0;
-        } else if (m_night == 7) {
-            m_screen = SCR_LOCKBOX;                   // g21 (V7 = the lockbox)
-            m_lockT = 0.0f;
+        } else if (beaten == 7) {
+            // g21: night 7 -> the Plushtrap game (the dump's challenge==1
+            // variant goes to the game-over frame; the port has no separate
+            // challenge flag). The old code jumped to the lockbox — that
+            // frame is reached from fr7, not from fr5.
+            m_screen = SCR_PLUSH;
+            m_cardT = 0.0f;
         } else {
-            m_screen = SCR_TITLE;                     // g22/23: V4 = title
+            m_screen = SCR_GAMEOVER;                  // g22/23: -> the game over
+            m_cardT = 0.0f;
         }
     }
 }
@@ -433,8 +447,10 @@ void FNaF4Game::TickGameOver2(f32 dt) {
         if (!m_minigamePlay) {
             GoWhatNight(m_night);                     // V2: retry the night
         } else {
-            m_screen = SCR_LOCKBOX;                   // V10 -> V9 lockbox
-            m_lockT = 0.0f;
+            // v2.74: the dump's fr8 group 4 jumps to value 10 = "extras"
+            // (the lockbox is reached from fr7, not from here).
+            m_screen = SCR_EXTRAS;
+            m_cardT = 0.0f;
         }
     }
 }
@@ -523,7 +539,11 @@ void FNaF4Game::TickMinigame(f32 dt, const FNaF4Inputs& in) {
         static const char* const kStep[8] = {
             "snd_quickwalk1", 0, 0, 0, "snd_quickwalk2", 0, 0, "snd_quickwalk3"
         };
-        if (pt.hallPos == 8) pt.hallPos = 8;           // got you — waits
+        // v2.74: the counter must be CAPPED — the old "if (hallPos == 8)"
+        // only caught the exact value, so hallPos kept growing and
+        // kStep[hallPos - 1] read past the array (the catch at 8 also
+        // became unreachable).
+        if (pt.hallPos > 8) pt.hallPos = 8;            // got you — waits
         if (kStep[pt.hallPos - 1]) Sfx(kStep[pt.hallPos - 1], false, 3, 100);
         else Sfx((pt.fork == 1) ? "snd_right to left fastb"
                                 : "snd_left to right fastb", false, 3, 100);
@@ -625,7 +645,10 @@ void FNaF4Game::TickLockbox(f32 dt, const FNaF4Inputs& in) {
     m_lockT += dt;
     if (in.bPressed) {                                 // Escape -> end
         SfxStop("snd_Deep_Ambience_With_Sc");
-        m_screen = SCR_TITLE;
+        // v2.74: the dump's lockbox ends at the GAME OVER frame (group 12),
+        // not the title.
+        m_screen = SCR_GAMEOVER;
+        m_cardT = 0.0f;
         return;
     }
     if (in.aPressed && m_lockLid < 1.0f) {
@@ -636,9 +659,12 @@ void FNaF4Game::TickLockbox(f32 dt, const FNaF4Inputs& in) {
         m_lockLid += dt;
         if (m_lockLid >= 2.0f) m_lockLid = 2.0f;       // the lid is off
     }
+    // v2.74: the dump's group 7 fades to black at 15000 ms and group 10
+    // (20000 ms) ends the scene -> the game-over frame.
     if (m_lockT >= 20.0f) {                            // g10: the auto-end
         SfxStop("snd_Deep_Ambience_With_Sc");
-        m_screen = SCR_TITLE;
+        m_screen = SCR_GAMEOVER;
+        m_cardT = 0.0f;
     }
 }
 
@@ -821,7 +847,9 @@ void FNaF4Game::TickCutscene(f32 dt, const FNaF4Inputs& in) {
             count += 1;
         }
         if (first >= 0) {
-            const f32 kLineBeat = 3.0f;
+            // v2.74: the dump's line beat is a 5000 ms periodic (frame 12
+            // group 48) — the old build advanced the line every 3 s.
+            const f32 kLineBeat = 5.0f;
             cs.lineT += dt;
             if (cs.lineT >= kLineBeat || in.aPressed) {
                 cs.lineT = 0.0f;
@@ -881,9 +909,17 @@ void FNaF4Game::TickEnding(f32 dt, const FNaF4Inputs& in) {
     if (m_endLine < 8) {
         const char* line = Fnaf4EndLineText(m_endLine);
         const i32 len = line ? (i32)strlen(line) : 0;
-        if (m_endLetterT >= 0.05f) {                     // the letter cadence
-            m_endLetterT = 0.0f;
-            if (m_endLetters < len) m_endLetters += 1;   // type one more
+        // v2.74: the dump's letter cadence is a 1000 ms periodic counter
+        // (frame 13 groups 8/12-19) and every THIRD tick is the next line.
+        if (m_endLetterT >= 1.0f) {
+            m_endLetterT -= 1.0f;
+            m_endTick = (m_endTick + 1) % 3;
+            if (m_endTick == 0) {
+                if (m_endLetters < len) m_endLetters += 1;   // type one more
+            } else {
+                m_endLine += 1;                             // every third tick
+                m_endLetters = 0;
+            }
         }
     }
     if (in.aPressed && m_endLine < 8) {                  // advance:
@@ -892,9 +928,12 @@ void FNaF4Game::TickEnding(f32 dt, const FNaF4Inputs& in) {
         if (m_endLetters < len) m_endLetters = len;      // A = finish the line
         else { m_endLine += 1; m_endLetters = 0; m_endLetterT = 0.0f; }
     }
-    if (m_endT >= 90.0f || in.bPressed || m_endLine >= 8) {
+    // v2.74: the dump's ending ends at "text counter == 30" -> the GAME OVER
+    // frame (group 20), not the title.
+    if (m_endT >= 30.0f || in.bPressed || m_endLine >= 8) {
         SfxStop("snd_Deep_Ambience_With_Sc");
-        m_screen = SCR_TITLE;
+        m_screen = SCR_GAMEOVER;
+        m_cardT = 0.0f;
     }
 }
 
@@ -1158,10 +1197,10 @@ void FNaF4Game::TickFreddy(f32 dt, bool viewingBed) {
         m_freddyT = 0.0f;
         if (!viewingBed) m_freddyCounter += m_freddyAI;
     }
-    if (viewingBed) {                 // g231: drains 1/s while you look
+    if (viewingBed) {                 // g231: drains 1 per 50 ms while you look
         m_bedTickT += dt;
-        if (m_bedTickT >= 1.0f) {
-            m_bedTickT = 0.0f;
+        if (m_bedTickT >= 0.05f) {    // v2.74: the dump's tick is 50 ms
+            m_bedTickT -= 0.05f;
             if (m_freddyCounter > 0) m_freddyCounter -= 1;
         }
     }
@@ -1188,7 +1227,7 @@ void FNaF4Game::TickFreddy(f32 dt, bool viewingBed) {
 
 void FNaF4Game::TickParanoia(f32 dt) {
     m_dangerT += dt;
-    if (m_dangerT >= 4.0f) {          // g275: every 4 s
+    if (m_dangerT >= 0.2f) {          // g275: every 200 ms (was 4 s)
         m_dangerT = 0.0f;
         i32 total = 0;
         total += (m_bonniePos == 1) ? 2 : (m_bonniePos == 0 ? 1 : 0);

@@ -272,7 +272,13 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
 
     // layer 0 — the room
     DrawWorld( 92,   0.0f,   0.0f, 1600.0f, 768.0f, pan, worldCol);  // bg
-    DrawWorld(507,   0.0f,   0.0f, 1600.0f, 255.0f, pan, 0xFFFFFFFF);// "lights" strips
+    // v2.74: the dump's frame 3 groups 749-751 — the "lights" (img 507) and
+    // the desk pumpkin (img 503, layer 1) show ONLY on Oct 31 with the
+    // camera down; every other date hides them. The port drew the lights
+    // unconditionally and never the pumpkin.
+    const bool halloween = game.IsHalloween() && (game.GetViewing() == 0);
+    if (halloween)
+        DrawWorld(507,   0.0f,   0.0f, 1600.0f, 255.0f, pan, 0xFFFFFFFF);// "lights" strips
     DrawWorld(218, 637.0f,   0.0f,  899.0f, 389.0f, pan, worldCol);  // "Active 20" wall piece
     DrawWorld( 90, 105.0f, 361.0f,   92.0f, 141.0f, pan, 0xFFFFFFFF);// LEFT light button
     DrawWorld( 98, 1395.0f, 359.0f,  92.0f, 141.0f, pan, 0xFFFFFFFF);// RIGHT light button
@@ -288,6 +294,10 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
     DrawWorld(608, 1038.0f, 476.0f, 117.0f, 172.0f, pan, worldCol);  // toy bonnie
     DrawWorld(555, 1122.0f, 509.0f,  84.0f, 147.0f, pan, worldCol);  // cupcake
     DrawWorld(611, 1218.0f, 522.0f, 129.0f, 156.0f, pan, worldCol);  // golden fred
+    // v2.74: the desk pumpkin (dump obj 219 = img 503 @ (810,605), layer 1,
+    // 161x149)
+    if (halloween)
+        DrawWorld(503, 810.0f, 605.0f, 161.0f, 149.0f, pan, 0xFFFFFFFF);
     // v2.66: the monitor-flip arrow strips (dump: 119 white @ (251,725),
     // 95 pink @ (737,724) — the bottom-center raise zone)
     DrawWorld(119, 251.0f, 725.0f, 500.0f, 40.0f, pan, worldCol);
@@ -620,7 +630,7 @@ void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
                                       580, 581, 582, 583, 584, 585, 586 };
     Draw(524, 68.0f, 18.0f, 384.0f, 44.0f, 0xFFFFFFFF);    // "Customize Night"
     Draw(558, 97.0f, 631.0f, 822.0f, 29.0f, 0xFFFFFFFF);   // difficulty legend
-    const i32 sel = game.GetOptionSelected();
+    const i32 sel = game.GetCustomRow();   // v2.74: the customize cursor is its own
     for (i32 i = 0; i < 10; ++i) {
         const u32 tint = (sel == i) ? 0xFF50A0FF : 0xFFFFFFFF;
         DrawNat(kIcons[i], kIconX[i], kIconY[i], tint);

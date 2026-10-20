@@ -319,6 +319,7 @@ private:
     i32    m_endLine;
     f32    m_endLetterT;
     i32    m_endLetters;    // letters typed so far on the current line (v2.67)
+    i32    m_endTick;       // v2.74: the ending's 1 s text counter (every 3rd = a line)
     bool   m_saveDirty;      // the module writes fn4 when this flips
     bool   m_ptFlashPrev;    // the minigame flash edge
     f32    m_lockLid;        // the lockbox lid animation 0..2

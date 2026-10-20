@@ -9,6 +9,7 @@
 
 #include "FNaF3Game.h"
 #include "XdkCompat.h"   // Snprintf — XDK CRT predates C99 snprintf
+#include "SystemDate.h"   // v2.74: the dashboard's date (the "term" secret)
 #include <stdlib.h>
 
 namespace fnaf {
@@ -41,6 +42,31 @@ void FNaF3Game::ResetToTitle() {
     m_bb = false; m_cake = false;
     m_k1 = false; m_k2 = false; m_k3 = false; m_k4 = false;
     m_fastNights = false; m_ventProof = false; m_hyper = false; m_noCams = false;
+    // v2.74: the dashboard's date. The dump's frame 3 group 770 reads the
+    // system date into the global counters "day"/"month" and group 771 shows
+    // the Halloween dressing (the "lights" img 55 and the desk jack-o-lantern
+    // 54/157/45/47/48/50/51) on October 31.
+    {
+        i32 year = 0, month = 0, day = 0;
+        if (SystemDate(year, month, day))
+            m_halloween = (month == 10 && day == 31);
+        else
+            m_halloween = false;
+    }
+    // v2.74 NOTE — the dump's frame 0 "term" secret (groups 9/10 compare
+    // month/day and write the INI flag; group 11 ends the app when the flag
+    // is set) is DEAD CODE and is deliberately NOT ported:
+    //   * frame 0 ("Frame 17") instances the "month" counter but never
+    //     assigns it — it is only assigned in frame 3 (the office) from the
+    //     Date & Time extension — so "month > 0" is false there;
+    //   * frame 0 does not instance the "day" counter at all;
+    //   * the only frame that returns to frame 0 is the unreachable frame 7
+    //     "wait" (nothing jumps to it);
+    //   * so the flag is never written, group 11 never fires, and the
+    //     ORIGINAL never terminates by date.
+    // Porting it literally would end the game on every date except
+    // November 8th — a behaviour the shipped game does not have.
+    m_term = false;   // the flag to ACT on comes from the save (ApplyProgressF3)
     m_rareId = 1;
     m_gameOverRare = 0;
     m_waitT = 0.0f;
@@ -180,12 +206,19 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
 
     switch (m_screen) {
         case SCR_DISCLAIMER:
-            // frame 0: 2 s / Enter / click; 1/1000 -> rare1 (slot 16), else title
+            // frame 0: 2 s / Enter / click; the boot roll is 1-in-1000.
+            // v2.74: the dump's frame 0 sends that rare to frame 16
+            // ("cutscenes") — the port aimed it at frame 12 ("rare1").
+            // v2.74: the dump's group 11 — a saved "term" flag ends the
+            // application right here.
             m_cardT += dt;
+            if (m_term) {
+                m_exitRequested = true;
+                break;
+            }
             if (m_cardT >= 2.0f || in.aPressed || in.bPressed) {
                 if ((rand() % 1000) + 1 == 1) {
-                    m_rareId = 1;
-                    m_screen = SCR_RARE1;
+                    m_screen = SCR_CUTSCENE;   // the dump's frame 16
                 } else {
                     m_screen = SCR_TITLE;
                 }
@@ -489,9 +522,12 @@ void FNaF3Game::TickOffice(f32 dt, const FNaF3Inputs& in) {
 // ------------------------------------------------------------
 
 void FNaF3Game::TickClock(f32 dt) {
-    // the "fast nights" cheat (extras): shorter hours — the factor is a
-    // labeled approximation (the office's use of the flag isn't dumped)
-    const f32 kHour = m_fastNights ? 20.0f : ((m_night < 2) ? 40.0f : 60.0f);
+    // the "fast nights" cheat (extras): shorter hours. v2.74: the dump's
+    // office HAS the flag — frame 3 group 497 = 20000 ms for night 1 and
+    // group 499 = 30000 ms for nights 2+ (the old code used 20 s for all
+    // and called the flag "not dumped").
+    const f32 kHour = m_fastNights ? ((m_night < 2) ? 20.0f : 30.0f)
+                                   : ((m_night < 2) ? 40.0f : 60.0f);
     m_hourClock += dt;
     if (m_hourClock >= kHour) {
         m_hourClock -= kHour;
@@ -1001,6 +1037,8 @@ bool FNaF3Game::SpringtrapOnCam(i32 cam) const {
 void FNaF3Game::ApplyProgressF3(const Progress::GameProgressF3& p) {
     m_lastNight = p.level < 1 ? 1 : (p.level > 6 ? 6 : p.level);
     m_cine = p.cine;
+    m_term = p.term;   // v2.74: the INI "term" flag (see the note in
+                       // ResetToTitle: nothing ever writes it)
     // beatgame is the nightmare unlock: the dump stores no separate flag —
     // level 6+ implies night 5 was beaten (the title's nightmare row no-ops
     // while !m_beat5; FNAF3's title rows are always drawn)
@@ -1017,8 +1055,13 @@ void FNaF3Game::ApplyProgressF3(const Progress::GameProgressF3& p) {
 }
 
 void FNaF3Game::FillProgressF3(Progress::GameProgressF3& p) const {
-    p.level = m_night;      // the next-day screen already incremented it
+    // v2.74: the dump writes Ini["level"] = the NEW night number (6 after
+    // beating night 5) and only THEN parks the counter at 5. The port parked
+    // the counter first, so the save stored 5 and the 6th night (and its
+    // title row) died on the next boot.
+    p.level = m_beat5 ? 6 : m_night;
     p.cine = m_cine;
+    p.term = 0;   // v2.74: the dump never writes the "term" flag (dead groups)
     p.beat6 = m_beat6;
     p.goodend = m_goodend;
     p.fourthStar = m_fourthStar;
@@ -1295,8 +1338,9 @@ static const Mg3Rect kMgBalloons[8] = {
 
 // the pickup/exit tables (world rects). BB and Marion are dump-exact; the
 // other games place their items on the kit platforms (~ labeled).
-struct Mg3Item { f32 x, y, w, h; i32 kind; };
 // kind: 0 collect, 1 exit, 2 kid/crying, 3 cake pickup, 4 big cake
+// (the struct itself lives in FNaF3Game.h since v2.74 — the renderer draws
+// from this same table)
 static const Mg3Item kMgItemsBB[] = {
     { 612.0f,  425.0f, 68.0f, 114.0f, 0 }, { 708.0f, 427.0f, 68.0f, 114.0f, 0 },
     { 354.0f,  359.0f, 68.0f, 114.0f, 0 }, { 154.0f, 275.0f, 68.0f, 114.0f, 0 },
@@ -1322,6 +1366,11 @@ static const Mg3Item kMgItemsToyChica[] = {
     { 720.0f, 1203.0f, 65.0f, 57.0f, 0 }, { 547.0f, 1127.0f, 65.0f, 57.0f, 0 },
     { 1827.0f, 1232.0f, 103.0f, 124.0f, 1 },  // exit
     { 81.0f, 2149.0f, 103.0f, 124.0f, 1 },    // exit 2
+    // v2.74: the four GUESTS to feed — the renderer's own table had them
+    // but the logic table did not, so "fed" could never reach 4 and the
+    // Toy Chica exit stayed locked.
+    { 500.0f, 560.0f, 92.0f, 92.0f, 5 }, { 1400.0f, 300.0f, 92.0f, 92.0f, 5 },
+    { 1900.0f, 180.0f, 92.0f, 92.0f, 5 }, { 2450.0f, 500.0f, 92.0f, 92.0f, 5 },
     { 500.0f, 480.0f, 159.0f, 168.0f, 4 }     // big cake (feeds the kid, k2)
 };
 static const Mg3Item kMgItemsGF[] = {
@@ -1342,7 +1391,10 @@ static const Mg3Item kMgItemsMarion[] = {
     {  151.0f,  544.0f, 103.0f, 124.0f, 1 },  // exit
     { 2609.0f,  396.0f, 159.0f, 168.0f, 4 }   // big cake + trigger (goodend)
 };
-static const Mg3Item* MgItemTable(i32 game, i32& count) {
+// v2.74: the table accessor is PUBLIC (the renderer draws from the same
+// table) — the file-local one lives in the anonymous namespace, this is the
+// public wrapper.
+static const Mg3Item* MgItemTableLocal(i32 game, i32& count) {
     switch (game) {
         case FNaF3Game::MG_BB:        count = (i32)(sizeof(kMgItemsBB)/sizeof(kMgItemsBB[0]));        return kMgItemsBB;
         case FNaF3Game::MG_MANGLE:    count = (i32)(sizeof(kMgItemsMangle)/sizeof(kMgItemsMangle[0]));return kMgItemsMangle;
@@ -1459,15 +1511,31 @@ void FNaF3Game::MgCheckPickups() {
                 m_mg.won = true;
                 SfxStop(MgCfg(m_mg.game).music);
                 break;
-            case 3:   // the balloon pickup ("get this") -> bb = 1 + win
+            case 3:   // the pickup ("get this")
+                // v2.74: the kind-3 item means DIFFERENT things per game
+                // (the BB balloon, the Mangle/GF cake). The old code always
+                // set m_bb and won, and NEVER set m_cake — so the whole
+                // k1..k4 -> goodend chain was dead.
                 m_mg.taken[i] = 1;
-                m_bb = true;
                 m_saveDirty = true;
-                m_mg.won = true;
-                SfxStop(MgCfg(m_mg.game).music);
+                if (m_mg.game == MG_BB) {
+                    m_bb = true;
+                    m_mg.won = true;                 // the balloon wins
+                    SfxStop(MgCfg(m_mg.game).music);
+                } else {
+                    m_cake = true;                   // the Mangle / GF cake
+                }
                 break;
-            case 4:   // the big cake: feed the kid (needs the Mangle cake)
-                if (!m_cake || m_mg.feeding) break;
+            case 4:   // the big cake: feed the kid
+            {
+                // v2.74: the gate is per game — the old single "!m_cake"
+                // blocked Toy Chica (guests), RWQ and Marion entirely.
+                bool ready = true;
+                if (m_mg.game == MG_BB)          ready = m_bb;
+                else if (m_mg.game == MG_MANGLE)  ready = m_cake;
+                else if (m_mg.game == MG_TOYCHICA) ready = (m_mg.fed >= 4);
+                else if (m_mg.game == MG_GFREDDY) ready = m_cake;
+                if (!ready || m_mg.feeding) break;
                 if (m_mg.game == MG_MARION) {
                     // Marion: needs all four kids (k1..k4) — dump g26
                     if (!(m_k1 && m_k2 && m_k3 && m_k4)) break;
@@ -1489,7 +1557,13 @@ void FNaF3Game::MgCheckPickups() {
         }
     }
 }
+}
 
+// v2.74: the public table accessor (the renderer draws from the SAME table,
+// so the visible sprite is the collectible).
+const Mg3Item* MgItemTable(i32 game, i32& count) {
+    return MgItemTableLocal(game, count);
+}
 void FNaF3Game::MgStep(f32 dt, const FNaF3Inputs& in) {
     const Mg3Cfg& cfg = MgCfg(m_mg.game);
     const bool frozen = m_mg.feeding || m_mg.party > 0 || m_mg.won;
@@ -1669,6 +1743,16 @@ void FNaF3Game::TickCutscene(f32 dt, const FNaF3Inputs& in) {
     // ---- the 250 ms step gate (g5-8): 30 px, blocked by the room walls ----
     cs.moveT += dt;
     const bool killing = cs.manStage == 2 || cs.finaleOn;
+    // v2.74: the two-minute gate (frame 16 g139/140) counts down here; the
+    // Purple Guy only starts hunting when it expires.
+    if (cs.manDelay > 0.0f) {
+        cs.manDelay -= dt;
+        if (cs.manDelay <= 0.0f) {
+            cs.manDelay = 0.0f;
+            cs.manStage = 1;               // the Purple Guy is coming
+            cs.manX = 100.0f; cs.manY = 600.0f;
+        }
+    }
     if (!killing && cs.moveT >= 0.25f) {
         cs.moveT -= 0.25f;
         i32 nv = cs.v, nh = cs.h;
@@ -1703,8 +1787,11 @@ void FNaF3Game::TickCutscene(f32 dt, const FNaF3Inputs& in) {
                     if (cs.v == 2 && cs.h == 5 && cs.scene < 5 && !cs.errShown) {
                         cs.errShown = true;    // g76: the ERR + the trigger arms
                         cs.errT = 3.3f;
-                        cs.manStage = 1;       // the Purple Guy is coming
-                        cs.manX = 100.0f; cs.manY = 600.0f;
+                        // v2.74: the dump holds the Purple Guy back for TWO
+                        // MINUTES (frame 16 groups 139/140: a one-shot
+                        // 120000 ms before "man 1" appears). The old build
+                        // spawned him on the spot.
+                        cs.manDelay = 120.0f;
                         Sfx("snd_crazy garble", true, 4, 100);
                     }
                 }

@@ -51,6 +51,14 @@ struct FNaF3AudioHooks {
     FNaF3AudioHooks() : play(0), stop(0), channelVolume(0) {}
 };
 
+// v2.74: the minigame item table (world rect + kind). The renderer draws
+// from THIS table so the visible sprite IS the collectible — the two files
+// used to carry separate coordinate lists and the player could not pick up
+// what was drawn.
+// kind: 0 collect, 1 exit, 2 kid/crying, 3 cake pickup, 4 big cake, 5 guest
+struct Mg3Item { f32 x, y, w, h; i32 kind; };
+const Mg3Item* MgItemTable(i32 game, i32& count);
+
 class FNaF3Game {
 public:
     enum Screen {
@@ -157,6 +165,9 @@ public:
         f32  moveT;         // the 250 ms step gate
         f32  t;             // scene clock
         bool errShown;      // the (2,5) blocked-up ERR fired (arms the kill)
+        f32  manDelay;      // v2.74: the dump's 2-minute gate before the
+                             // Purple Guy appears (frame 16 groups 139/140:
+                             // a one-shot 120000 ms)
         i32  manStage;      // 0 none, 1 hunting, 2 kill anim
         f32  manX, manY;    // purple guy pos
         f32  manT;          // his 100 ms homing tick
@@ -183,6 +194,7 @@ public:
         void Clear() {
             scene = 1; v = 2; h = 3; px = 500.0f; py = 300.0f; facing = 0;
             moveT = 0.0f; t = 0.0f; errShown = false;
+            manDelay = 0.0f;
             manStage = 0; manX = 0.0f; manY = 0.0f; manT = 0.0f;
             killT = 0.0f; errT = 0.0f;
             for (i32 i = 0; i < 3; ++i) { shadowX[i] = 0.0f; shadowOn[i] = false; }
@@ -279,6 +291,8 @@ public:
 
     // v2.63: new screens
     i32    GetRareId()        const { return m_rareId; }        // 1/2/3 poster
+    bool   ExitRequested()    const { return m_exitRequested; } // v2.74
+    bool   IsHalloween()      const { return m_halloween; }      // v2.74
     i32    GetGameOverRare()  const { return m_gameOverRare; }  // 1 = the rare roll hit
     const Mg3State&   Mg()    const { return m_mg; }
     const CutsceneState& Cs() const { return m_cs; }
@@ -436,6 +450,13 @@ private:
 
     // v2.63: the new-flow state
     i32    m_rareId;          // which rare screen (1 boot / 2 gameover / 3 card)
+    bool   m_term;            // v2.74: the INI "term" flag as LOADED — if
+                              // set, THIS launch terminates on the
+                              // disclaimer (the dump's group 11; nothing ever
+                              // writes the flag — see FNaF3Game.cpp)
+    bool   m_halloween;        // v2.74: Oct 31 (the dump's frame 3 group
+                              // 771 shows the lights + the jack-o-lantern)
+    bool   m_exitRequested;   // v2.74: the dump's "End application"
     i32    m_gameOverRare;    // the gameover 1/1000 roll result
     f32    m_waitT;           // the 100 ms wait screen
     bool   m_died;            // the office death routed to the static+gameover

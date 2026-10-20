@@ -4,6 +4,7 @@
  */
 
 #include "Game.h"
+#include "SystemDate.h"
 #include <cstring>
 
 namespace fnaf {
@@ -13,6 +14,7 @@ Game::Game()
     , m_currentNight(1)
     , m_nightConfig(0)
     , m_lastAIHour(-1)
+    , m_halloween(false)
     , m_powerOutTimer(0.0f)
     , m_powerOutPhase(0)
     , m_powerOutPhaseTimer(0.0)
@@ -45,6 +47,17 @@ void Game::Init(i32 night) {
     m_currentNight = night;
     m_nightConfig = GetNightConfig(night);
     m_lastAIHour = -1;
+
+    // v2.74: the dump's date events (frame 3 group 434 reads the system
+    // date; groups 431-433 compare it) — the office is dressed for
+    // Halloween on October 31.
+    {
+        i32 year = 0, month = 0, day = 0;
+        if (SystemDate(year, month, day))
+            m_halloween = (month == 10 && day == 31);
+        else
+            m_halloween = false;
+    }
 
     // Reset all subsystems
     m_timer.Reset();

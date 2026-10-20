@@ -4,12 +4,15 @@
  */
 
 #include "FNaF2Game.h"
+#include "SystemDate.h"   // v2.74: the dashboard's date (the date events)
 #include <cstdlib>
 
 namespace fnaf {
 
 static const f32 kSecondsPerHour = 70.0f;   // g483/484/485: AM +1/s, >=70 -> hour
-static const f32 kCardSeconds    = 2.6f;    // frame 2: alt0 > 130 ticks
+static const f32 kCardSeconds    = 2.17f;   // frame 2: alt0 > 130 FRAMES at 60 Hz
+                                       // (v2.74: 130/60; the old 2.6 s read
+                                       //  the same counter at 50 Hz)
 static const f32 kSixAmSeconds   = 5.0f;    // frame 4 "static" hold
 static const f32 kMaskT          = 0.30f;   // mask anims ~9 frames @ spd75
 static const i32 kMusicMax       = 2000;    // music button.alt0 cap (g556)
@@ -42,8 +45,34 @@ void FNaF2Game::ResetToTitle() {
     m_beat5 = false;
     m_beat6 = false;
     m_phoneMuted = false;
+    // v2.74: the dashboard's date. The dump's frame 3 groups 748-751 read
+    // the system date into the global counters "day"/"month" and show the
+    // Halloween dressing (the "lights" img 507 and the desk "pumpkin"
+    // img 503) on October 31.
+    {
+        i32 year = 0, month = 0, day = 0;
+        if (SystemDate(year, month, day))
+            m_halloween = (month == 10 && day == 31);
+        else
+            m_halloween = false;
+    }
+    // v2.74 NOTE — the dump's frame 0 "term" secret (groups 12/13 compare
+    // month/day and write the INI flag; group 14 ends the app when the flag
+    // is set) is DEAD CODE and is deliberately NOT ported:
+    //   * frame 0 ("Frame 17") does not instance the "month" counter at all
+    //     (only "day" and "term"), so "month > 0" is false there;
+    //   * "day" is 0 in frame 0 — it is only assigned in frame 3 (the office)
+    //     from the Date & Time extension, and the only frame that returns to
+    //     frame 0 is the unreachable frame 7 "wait" (nothing jumps to it);
+    //   * so the flag is never written, group 14 never fires, and the
+    //     ORIGINAL never terminates by date.
+    // Porting it literally would end the game on every date except
+    // November 8th — a behaviour the shipped game does not have.
+    m_term = false;   // the flag to ACT on comes from the save (ApplyProgressF2)
     // v2.62: the dump flow state (the module overrides from freddy2 at boot)
     m_nightNext = 1;
+    m_levelSave = 1;
+    m_bootRare = 0;
     m_cine = 0;
     m_turn = 0;
     m_doingCustom = 0;
@@ -67,6 +96,12 @@ void FNaF2Game::ApplyProgressF2(const Progress::GameProgressF2& p) {
     // the 6th-night row, beat6 -> star 2 / custom, c1 -> star 3, plus the
     // dream/rotation counters
     m_lastNight = p.level < 1 ? 1 : (p.level > 5 ? 5 : p.level);   // title g58 cap
+    m_levelSave = p.level < 1 ? 1 : p.level;   // v2.74: the INI level as saved
+    m_term = p.term;                          // v2.74: the INI "term" flag
+    // v2.74: the dump's frame 0 group 7 rolls "rare random" := Random(1000)
+    // ONCE at boot (1 in 1000) — the boot rare screen (frame 16). The port
+    // rolled its rare at the 6 AM instead (a different, 1-in-10 roll).
+    m_bootRare = ((rand() % 1000) == 0) ? 1 : 0;
     m_cine = p.cine;
     m_turn = p.turn;
     m_beat5 = p.beatgame;
@@ -78,12 +113,17 @@ void FNaF2Game::ApplyProgressF2(const Progress::GameProgressF2& p) {
 }
 
 void FNaF2Game::FillProgressF2(Progress::GameProgressF2& p) const {
-    p.level = m_nightNext;      // the 6 AM screen already incremented it
+    // v2.74: the INI level is the NEW night (6 after beating night 5) — the
+    // dump writes it in frame 5 and only THEN parks the counter at 5, so the
+    // save must not carry the parked value.
+    p.level = m_levelSave > 0 ? m_levelSave : m_nightNext;
     p.cine = m_cine;
     p.turn = m_turn;
     p.beatgame = m_beat5;
     p.beat6 = m_beat6;
     p.beat7 = m_beat7;
+    p.term = 0;                               // v2.74: the dump never writes
+                                             // the "term" flag (dead groups)
     for (i32 i = 0; i < 10; ++i) p.c[i] = m_cFlags[i];
 }
 
@@ -937,7 +977,33 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
     switch (m_screen) {
         case SCR_DISCLAIMER:
             m_cardT += dt;
-            if (m_cardT >= 3.5f || in.aPressed) { m_screen = SCR_TITLE; m_cardT = 0.0f; }
+            // v2.74: the dump's frame 0 advance is a one-shot 2000 ms (the
+            // old 3.5 s was a guess).
+            //
+            // v2.74: the BOOT ROUTING of that frame (the user's "what runs
+            // at startup" question): a FRESH save (cine == 0) goes to the
+            // DREAM (frame 13 — the 33 s first-launch intro pan, which then
+            // falls into "error" -> the night card); a continuing save goes
+            // to the title, or to the 1-in-1000 rare screen (frame 16) when
+            // the boot roll hit. The old build always went to the title.
+            //
+            // v2.74: the dump's group 14 — a "term" flag in the INI ends the
+            // application right here. The flag is never WRITTEN (the date
+            // groups that would write it are unreachable — see the note in
+            // ResetToTitle), so in practice this never fires, exactly like
+            // in the original.
+            if (m_term) {
+                m_exitRequested = true;
+                break;
+            }
+            if (m_cardT >= 2.0f || in.aPressed) {
+                m_cardT = 0.0f;
+                if (m_cine == 0)              m_screen = SCR_DREAM;   // fresh save
+                else if (m_bootRare == 1)     m_screen = SCR_RARE1;   // the 1/1000
+                else                          m_screen = SCR_TITLE;
+            }
+            // the dump's group 8: Escape at the splash ends the application
+            if (in.bPressed) m_exitRequested = true;
             break;
 
         case SCR_TITLE: {
@@ -1021,6 +1087,11 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
                 else {
                     // frame 5 group 1: night number += 1 THEN save
                     m_nightNext = m_night + 1;
+                    // v2.74: the INI level is the NEW night (the dump writes
+                    // it before the counter is parked at 5) and "Continue"
+                    // must resume the CURRENT night, not the boot one.
+                    m_levelSave = m_nightNext;
+                    m_lastNight = m_nightNext;
                     m_screen = SCR_NEXTDAY;
                     m_cardT = 0.0f;
                     m_scratchT = 0.0f;
@@ -1057,7 +1128,9 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
                 m_scratchT = 1.0f;   // one-shot cheer marker (the roll's end)
                 Sfx("snd_CROWD_SMALL_CHIL_EC049202", false, 2, 100);
             }
-            if (m_cardT >= 6.0f) {
+            // v2.74: the route is the Active 3 alt[1] > 300 FRAMES at 60 Hz
+            // = 5 s (the old 6 s read the counter at 50 Hz).
+            if (m_cardT >= 5.0f) {
                 SfxStop("snd_Clocks_Chimes_Cl_02480702");
                 if (m_nightNext == 2) StartNight(2);
                 else if (m_nightNext >= 3 && m_nightNext <= 5) {
@@ -1079,30 +1152,32 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
 
         case SCR_ERROR:
             // dump frame 14: cine counter += 1 on entry, INI cine at 10 s,
-            // 30 s -> the night card (the next night already loaded)
+            // 3 s -> the night card (v2.74: the dump's one-shot is 3000 ms —
+            // the old 30 s came from the /50 annotation)
             if (m_cardT == 0.0f) { m_cine += 1; m_saveDirty = true; }
             m_cardT += dt;
-            if (m_cardT >= 30.0f) StartNight(m_nightNext < 1 ? 1 : m_nightNext);
+            if (m_cardT >= 3.0f) StartNight(m_nightNext < 1 ? 1 : m_nightNext);
             break;
 
         case SCR_ERROR2:
-            // dump frame 15: 30 s -> the title
+            // dump frame 15: 3 s -> the title (one-shot 3000 ms)
             m_cardT += dt;
-            if (m_cardT >= 30.0f) { m_screen = SCR_TITLE; m_cardT = 0.0f; }
+            if (m_cardT >= 3.0f) { m_screen = SCR_TITLE; m_cardT = 0.0f; }
             break;
 
         case SCR_END5:
         case SCR_END6:
         case SCR_END7: {
             // dump frames 9/10/11: musicbox2 loop, beatgame = 1 on entry,
-            // 150 s / Escape(/click on the third) -> title
+            // 15 s / Escape(/click on the third) -> title (v2.74: the dump's
+            // one-shot is 15000 ms; the old 150 s was the /50 annotation)
             if (m_cardT == 0.0f) {
                 SfxStop("snd_static2"); SfxStop("snd_The_Sand_Temple_Loop_G");
                 Sfx("snd_musicbox2", true, 1, 100);
             }
             m_cardT += dt;
             const bool click = (m_screen == SCR_END7) && in.aPressed;
-            if (m_cardT >= 150.0f || in.bPressed || click) {
+            if (m_cardT >= 15.0f || in.bPressed || click) {
                 SfxStop("snd_musicbox2");
                 m_screen = SCR_TITLE;
                 m_cardT = 0.0f;
@@ -1118,10 +1193,11 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
 
         case SCR_RARE1:
         case SCR_RARE2:
-            // dump frames 16/17: popstatic loop, 100 s -> title
+            // dump frames 16/17: popstatic loop, 10 s -> title (v2.74: the
+            // dump's one-shot is 10000 ms; the old 100 s was /50)
             if (m_cardT == 0.0f) Sfx("snd_popstatic", true, 1, 100);
             m_cardT += dt;
-            if (m_cardT >= 100.0f || in.aPressed || in.bPressed) {
+            if (m_cardT >= 10.0f || in.aPressed || in.bPressed) {
                 SfxStop("snd_popstatic");
                 m_screen = SCR_TITLE; m_cardT = 0.0f;
             }
@@ -1129,9 +1205,10 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
 
         case SCR_RARE3:
             // dump frame 18: the night card's rare branch -> back to the card
+            // (one-shot 10000 ms)
             if (m_cardT == 0.0f) Sfx("snd_popstatic", true, 1, 100);
             m_cardT += dt;
-            if (m_cardT >= 100.0f || in.aPressed || in.bPressed) {
+            if (m_cardT >= 10.0f || in.aPressed || in.bPressed) {
                 SfxStop("snd_popstatic");
                 m_cardT = 0.0f;              // re-enter the card (fresh roll)
                 m_screen = SCR_NIGHTSTART;
@@ -1194,12 +1271,13 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             break;
 
         case SCR_RAREEXIT:
-            // dump frame 22: staticend2 + bars, 10 s -> End application.
+            // dump frame 22: staticend2 + bars, 1 s -> End application
+            // (v2.74: the dump's one-shot is 1000 ms; the old 10 s was /50).
             // The console mirror of End application = back to the boot
             // selector (the established safe exit).
             if (m_cardT == 0.0f) Sfx("snd_staticend2", true, 1, 50);
             m_cardT += dt;
-            if (m_cardT >= 10.0f) m_exitRequested = true;
+            if (m_cardT >= 1.0f) m_exitRequested = true;
             break;
     }
 }
@@ -1275,20 +1353,21 @@ void FNaF2Game::TickDream(f32 dt, const FNaF2Inputs& in) {
 void FNaF2Game::TickCustomize(f32 dt, const FNaF2Inputs& in) {
     (void)dt;
     if (m_cardT == 0.0f) {
-        m_optionSelected = 0;          // the AI-row cursor
-        if (m_customMode == 0) m_doingCustom = 0;
-    }
+        m_customRow = 0;              // v2.74: the AI-row cursor is its OWN
+        m_optionSelected = 0;         // member (it used to share the title's
+        if (m_customMode == 0) m_doingCustom = 0;   // selection and left the
+    }                                            // title's A button dead)
     m_cardT += dt;
 
     // row select (up/down edges)
-    if (in.upPressed)   m_optionSelected = (m_optionSelected + 9) % 10;
-    if (in.downPressed) m_optionSelected = (m_optionSelected + 1) % 10;
+    if (in.upPressed)   m_customRow = (m_customRow + 9) % 10;
+    if (in.downPressed) m_customRow = (m_customRow + 1) % 10;
 
     // +/- on the selected row (the dump's arrows: 0..20, coin on each press;
     // every arrow click also clears doing custom — the sliders are manual)
     bool changed = false;
-    if (in.rightPressed && m_customAI[m_optionSelected] < 20) { m_customAI[m_optionSelected] += 1; changed = true; }
-    if (in.leftPressed  && m_customAI[m_optionSelected] > 0)  { m_customAI[m_optionSelected] -= 1; changed = true; }
+    if (in.rightPressed && m_customAI[m_customRow] < 20) { m_customAI[m_customRow] += 1; changed = true; }
+    if (in.leftPressed  && m_customAI[m_customRow] > 0)  { m_customAI[m_customRow] -= 1; changed = true; }
     if (changed) { m_doingCustom = 0; Sfx("snd_coin", false, 3, 80); }
 
     // the mode cycle (LB/RB; dump groups 41-45 + the preset tables 46-55)
@@ -1529,12 +1608,19 @@ void FNaF2Game::TickEightBit(f32 dt, const FNaF2Inputs& in) {
             if (!HubObstacleAt(sx, sy)) {
                 m_mg.px += dx; m_mg.py += dy;
             }
-            // the edge wraps (groups 32-35): the room grid + reposition
-            if (m_mg.px > 1000) { m_mg.px = 60;  m_mg.h = (m_mg.h % 5) + 1; m_mg.newFrame = true;
+            // the edge wraps (groups 32-35): the room grid + reposition.
+            // v2.74: the old thresholds (px>1000 / px<20 / py>740 / py<80)
+            // were UNREACHABLE — the border obstacle test (x<30 || x>994)
+            // and the 30 px sensor probe confine the player to
+            // px 60..964 / py 120..670, so the wraps never fired and the
+            // 5x5 room grid, the "you can't" NPC and the Purple Guy were
+            // all unreachable. The thresholds now sit on the reachable
+            // edges.
+            if (m_mg.px > 950) { m_mg.px = 60;  m_mg.h = (m_mg.h % 5) + 1; m_mg.newFrame = true;
                                   if ((rand() % 101) == 1) { m_mg.manOn = true; m_mg.manX = 283.0f; m_mg.manY = 375.0f; m_mg.manT = 0.0f; } }
-            if (m_mg.px < 20)   { m_mg.px = 960; m_mg.h = (m_mg.h == 1) ? 5 : m_mg.h - 1; m_mg.newFrame = true; }
-            if (m_mg.py > 740)  { m_mg.py = 110; m_mg.v = (m_mg.v % 5) + 1; m_mg.newFrame = true; }
-            if (m_mg.py < 80)   { m_mg.py = 690; m_mg.v = (m_mg.v == 1) ? 5 : m_mg.v - 1; m_mg.newFrame = true; }
+            if (m_mg.px < 70)   { m_mg.px = 960; m_mg.h = (m_mg.h == 1) ? 5 : m_mg.h - 1; m_mg.newFrame = true; }
+            if (m_mg.py > 660)  { m_mg.py = 110; m_mg.v = (m_mg.v % 5) + 1; m_mg.newFrame = true; }
+            if (m_mg.py < 130)  { m_mg.py = 690; m_mg.v = (m_mg.v == 1) ? 5 : m_mg.v - 1; m_mg.newFrame = true; }
         }
     }
 
@@ -1609,7 +1695,9 @@ void FNaF2Game::TickMg1(f32 dt, const FNaF2Inputs& in) {
 
     // the letter voice: "SAVE HIM" (groups 30-40)
     m_mg.letterT += dt;
-    if (m_mg.letterT >= 2.0f) {
+    // v2.74: the dump's voice counter is 100 FRAMES at 60 Hz = 1.67 s
+    // (the old 2.0 s read the counter at 50 Hz)
+    if (m_mg.letterT >= 1.67f) {
         m_mg.letterT = 0.0f;
         static const char* const kLetters[7] = {
             "snd_S2", "snd_A2", "snd_V2", "snd_E2", "snd_H2", "snd_I2", "snd_M2"
@@ -1692,7 +1780,8 @@ void FNaF2Game::TickMg2(f32 dt, const FNaF2Inputs& in) {
     // the letter voice: "HELP THEM" (H,E,L,P,T,H,E,M — L/P reuse E2/I2 slots
     // in the pak; the dump's #59/#61 are the two extra letter samples)
     m_mg.letterT += dt;
-    if (m_mg.letterT >= 2.0f) {
+    // v2.74: 100 frames at 60 Hz = 1.67 s (was 2.0 s at the 50 Hz reading)
+    if (m_mg.letterT >= 1.67f) {
         m_mg.letterT = 0.0f;
         static const char* const kLetters[8] = {
             "snd_H2", "snd_E2", "snd_I2", "snd_M2", "snd_T2", "snd_H2", "snd_E2", "snd_M2"

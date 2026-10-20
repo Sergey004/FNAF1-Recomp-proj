@@ -1085,6 +1085,18 @@ void GameRender::RenderOffice(const Game& game, bool phonePlaying) {
     // object at instance (660,478), layer 0.
     if (m_goldFredInOffice)
         DrawInstance(IMG_GOLDEN_FREDDY, 660.0f, 478.0f, 0xFFFFFFFF, true);
+    // v2.74: the dump's HALLOWEEN dressing (frame 3 groups 431-433): with
+    // month == 10 and day == 31 (and the camera DOWN, "viewing" == 0) the
+    // string-lights (obj 147 = img 608 @ (0,-78) 1600x253) and the desk
+    // pumpkin (obj 148, anim 628/630-635 @ (734,485) 143x150, speed 25 ->
+    // 15 fps) are shown; on any other date they are hidden. The port never
+    // drew them.
+    if (game.IsHalloween() && !monUp) {
+        DrawInstance(608, 0.0f, -78.0f, 0xFFFFFFFF, true);
+        static const int kPumpkin[7] = { 628, 630, 631, 632, 633, 634, 635 };
+        DrawInstance(kPumpkin[(int)(m_time * 15.0f) % 7], 734.0f, 485.0f,
+                     0xFFFFFFFF, true);
+    }
     m_batch->EndSceneCapture();
 
     // ...then warp the whole composed scene through the parabola shader.

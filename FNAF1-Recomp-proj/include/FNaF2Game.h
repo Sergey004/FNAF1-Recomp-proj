@@ -214,6 +214,7 @@ public:
     f32    GetMusicBox()        const { return m_musicGauge; }   // 0..2000
     i32    GetViewing()         const { return m_viewing; }
     i32    GetOptionSelected()  const { return m_optionSelected; }
+    i32    GetCustomRow()       const { return m_customRow; }   // v2.74
     i32    GetOptionCount()     const { return m_optionCount; }
     i32    GetLastNight()       const { return m_lastNight; }
     bool   IsBeat5()            const { return m_beat5; }
@@ -259,6 +260,10 @@ public:
     bool   GetChallengeBeat(i32 i) const { return (i >= 0 && i < 10) ? m_cFlags[i] : false; }
     const FNaF2MgState& Mg()  const { return m_mg; }
     bool   ExitRequested()    const { return m_exitRequested; }  // dump End application
+    // v2.74: the dashboard's date — the dump's frame 3 groups 749-751 dress
+    // the office for Halloween (month 10, day 31): the "lights" (img 507)
+    // and the desk pumpkin (img 503) show while the camera is down.
+    bool   IsHalloween()      const { return m_halloween; }
 
     // the save bridge: the module loads at boot and writes when dirty
     void   ApplyProgressF2(const Progress::GameProgressF2& p);
@@ -358,6 +363,12 @@ private:
 
     // v2.62: the dump flow state
     i32    m_nightNext;        // the 6 AM screen's incremented night number
+    i32    m_levelSave;        // v2.74: the INI "level" (the dump writes the
+                               // NEW night and only then parks the counter)
+    i32    m_customRow;        // v2.74: the customize AI cursor (its own —
+                               // it used to share the title's selection)
+    i32    m_bootRare;         // v2.74: the boot roll "rare random" :=
+                               // Random(1000) == 1 (dump frame 0 group 7)
     i32    m_cine;             // the dream counter (persisted)
     i32    m_turn;             // the minigame rotation (persisted)
     i32    m_doingCustom;      // 0 normal, 1..10 challenge mode
@@ -373,6 +384,12 @@ private:
     f32    m_blackout;         // the dream blackout fade 0..255
     bool   m_saveDirty;        // the module writes freddy2 when this flips
     bool   m_exitRequested;    // SCR_RAREEXIT: the dump's End application
+    bool   m_halloween;         // v2.74: Oct 31 (the dump's date events)
+    bool   m_term;              // v2.74: the INI "term" flag as LOADED —
+                                 // if set, THIS launch terminates on the
+                                 // disclaimer (the dump's group 14; nothing
+                                 // ever writes the flag — see the note in
+                                 // FNaF2Game.cpp)
     FNaF2MgState m_mg;
 };
 

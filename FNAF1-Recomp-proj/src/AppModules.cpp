@@ -104,9 +104,12 @@ bool FNaF2Module::Load(AppServices& services) {
     m_game.audio.unlockAch      = FNaF2AchUnlock;
     m_game.ResetToTitle();
     // v2.62: load the dump's own save ("freddy2") into the session
+    // v2.74: the apply runs even WITHOUT a save — the date-based "term"
+    // flag must be written into the INI on the very first launch too.
     Progress::PrimeStorage();
     Progress::GameProgressF2 p2;
-    if (Progress::LoadF2(p2)) m_game.ApplyProgressF2(p2);
+    if (!Progress::LoadF2(p2)) Progress::ResetF2(p2);
+    m_game.ApplyProgressF2(p2);
     return true;
 }
 
@@ -319,8 +322,11 @@ bool FNaF3Module::Load(AppServices& services) {
     m_game.audio.channelVolume  = FNaF3ChVol;
     m_game.ResetToTitle();
     // v2.62: load the dump's own save ("freddy3")
+    // v2.74: the apply runs even WITHOUT a save — the date-based "term"
+    // flag must be written into the INI on the very first launch too.
     Progress::GameProgressF3 p3;
-    if (Progress::LoadF3(p3)) m_game.ApplyProgressF3(p3);
+    if (!Progress::LoadF3(p3)) Progress::ResetF3(p3);
+    m_game.ApplyProgressF3(p3);
     return true;
 }
 
@@ -349,6 +355,9 @@ void FNaF3Module::Tick(f32 dt) {
     m_prevX = xNow;
 
     m_game.Tick(dt, in);
+
+    // v2.74: the dump's "End application" (the date-based "term" secret)
+    if (m_game.ExitRequested()) m_wantsExit = true;
 
     // v2.62: the freddy3 save bridge (the next-day screen flips the bit)
     if (m_game.ConsumeSaveDirty()) {
@@ -562,8 +571,8 @@ void FNaF4Module::Render() {
         case FNaF4Game::SCR_EXTRAS:     m_render.RenderExtras(m_game); break;
         case FNaF4Game::SCR_CUTSCENE:   m_render.RenderCutscene(m_game); break;
         case FNaF4Game::SCR_ENDING:     m_render.RenderEnding(m_game); break;
-        case FNaF4Game::SCR_TEST:       break;
-        case FNaF4Game::SCR_NJSCARE:    break;
+        case FNaF4Game::SCR_TEST:       m_render.RenderTest(); break;
+        case FNaF4Game::SCR_NJSCARE:    m_render.RenderNJScare(); break;
     }
 }
 
@@ -679,7 +688,7 @@ void SLModule::Tick(f32 dt) {
 
 void SLModule::Render() {
     switch (m_game.GetScreen()) {
-        case SLGame::SCR_WARNING:   m_render.RenderWarning(); break;
+        case SLGame::SCR_WARNING:   m_render.RenderWarning(m_game); break;
         case SLGame::SCR_TITLE:     m_render.RenderTitle(m_game, m_time); break;
         case SLGame::SCR_ELEVATOR:  m_render.RenderElevator(m_game, m_time); break;
         case SLGame::SCR_VENT:      m_render.RenderVent(m_game); break;
@@ -697,11 +706,12 @@ void SLModule::Render() {
         case SLGame::SCR_CREDITS:   m_render.RenderChain(m_game); break;
         case SLGame::SCR_EXTRAS:    m_render.RenderExtrasMenu(m_game); break;
         case SLGame::SCR_WINNIGHT:  m_render.RenderWinNight(m_game); break;
-        case SLGame::SCR_TVSHOW:    m_render.RenderTvShow(); break;
+        case SLGame::SCR_TVSHOW:    m_render.RenderTvShow(m_game); break;
         case SLGame::SCR_GIRLVOICE: m_render.RenderGirlVoice(); break;
-        case SLGame::SCR_DEATH:     m_render.RenderDeath(); break;
+        case SLGame::SCR_DEATH:     m_render.RenderDeath(m_game, m_time); break;
         case SLGame::SCR_GAMEOVER:  m_render.RenderGameOver(); break;
-        default:                    m_render.RenderHold("the wave-2 room"); break;
+        // v2.74: the wave-2 screens draw their own art (frame 16/17/26-35)
+        default:                    m_render.RenderWave2(m_game); break;
     }
 }
 

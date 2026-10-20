@@ -108,6 +108,7 @@ public:
 
     // ---- state for the module renderer ----
     Screen GetScreen()    const { return m_screen; }
+    f32    GetTime()     const { return m_time; }
     i32    GetNight()     const { return m_night; }
     i32    GetOptionSelected() const { return m_optionSelected; }
     f32    GetPan()       const { return m_pan; }
@@ -197,7 +198,9 @@ private:
     i32    m_leftPan;        // -100..100 (her side)
     bool   m_dancer;         // created at progress >= 400
     f32    m_panT;
-    f32    m_moveT;          // her own movements (the cue rolls)
+    f32    m_moveT;          // the 30 ms hearing-decay tick
+    f32    m_sideT;          // v2.74: her 3 s side-change roll (own timer)
+    f32    m_walkTickT;      // v2.74: the 100 ms walk tick (+1 distance)
     i32    m_dirSide;
 
     // Funtime (docs §4): the Space flash attracts Foxy
@@ -245,6 +248,8 @@ private:
     // the shared scare/death pieces
     f32    m_scareT;         // active jumpscare clock (0 = none)
     i32    m_scareImg;       // which scare art
+    f32    m_previewT;       // v2.74: the EXTRAS jumpscare preview (never
+                             // routes to the game over)
     f32    m_cardT;          // per-screen timer
     f32    m_time;
 

@@ -99,7 +99,11 @@ public:
         bool beatgame;
         bool beat6;
         bool beat7;
-        bool c[10];       // c1..c10
+        bool term;        // v2.74: the dump's INI "term" flag — READ only:
+                          // the original never writes it (the date groups
+                          // that would are unreachable), so the port does
+                          // not write it either
+        bool c[10];       // c1..c10 challenge flags
     };
     static void ResetF2(GameProgressF2& p);
     static bool LoadF2(GameProgressF2& p);      // false = no/fresh save
@@ -125,6 +129,8 @@ public:
         bool ventProof;   // cheat: vents can't be sealed against you
         bool hyper;       // cheat: hyper Springtrap
         bool noCams;      // cheat: monitor disabled
+        bool term;        // v2.74: the dump's INI "term" flag — READ only
+                          // (never written; see GameProgressF2::term)
     };
     static void ResetF3(GameProgressF3& p);
     static bool LoadF3(GameProgressF3& p);

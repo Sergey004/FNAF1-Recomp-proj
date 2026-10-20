@@ -19,6 +19,7 @@
 #include <cstring>
 #include <cstdlib>    // atoi
 #include <cstddef>   // offsetof
+#include <ctime>      // time/localtime (v2.74: the system date)
 #include <direct.h>   // _mkdir (v2.20 local "Live Safe" backend)
 #if !defined(FNAF_LIVE_SAFE)
 #include <xtl.h>
@@ -573,6 +574,7 @@ void Progress::ResetF2(GameProgressF2& p) {
     p.beatgame = false;
     p.beat6 = false;
     p.beat7 = false;
+    p.term = false;
     for (i32 i = 0; i < 10; ++i) p.c[i] = false;
 }
 
@@ -606,6 +608,7 @@ bool Progress::LoadF2(GameProgressF2& p) {
             else if (strcmp(key, "beatgame") == 0) p.beatgame = (val != 0);
             else if (strcmp(key, "beat6") == 0)    p.beat6 = (val != 0);
             else if (strcmp(key, "beat7") == 0)    p.beat7 = (val != 0);
+            else if (strcmp(key, "term") == 0)     p.term = (val != 0);   // v2.74
             else if (key[0] == 'c' && key[1] >= '1' && key[1] <= '9') {
                 const int idx = atoi(key + 1);
                 if (idx >= 1 && idx <= 10) p.c[idx - 1] = (val != 0);
@@ -664,6 +667,7 @@ void Progress::ResetF3(GameProgressF3& p) {
     p.ventProof = false;
     p.hyper = false;
     p.noCams = false;
+    p.term = false;
 }
 
 bool Progress::LoadF3(GameProgressF3& p) {
@@ -705,6 +709,7 @@ bool Progress::LoadF3(GameProgressF3& p) {
             else if (strcmp(key, "vents") == 0)      p.ventProof = val != 0;
             else if (strcmp(key, "hyper") == 0)      p.hyper = val != 0;
             else if (strcmp(key, "nocams") == 0)     p.noCams = val != 0;
+            else if (strcmp(key, "term") == 0)       p.term = val != 0;   // v2.74
         }
     }
     fclose(f);

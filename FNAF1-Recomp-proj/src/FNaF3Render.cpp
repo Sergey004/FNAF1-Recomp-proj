@@ -263,6 +263,17 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
         DrawWorld(203, 0.0f, 0.0f, 2000.0f, 768.0f, pan, 0xFFFFFFFF);
     }
 
+    // v2.74: the Halloween dressing (the dump's frame 3 group 771: the
+    // "lights" obj 259 = img 55 @ (0,0) 2000x216, layer 1, and the desk
+    // jack-o-lantern obj 258 = imgs 54/157/45/47/48/50/51 @ (1632,461)
+    // 147x155, layer 1, anim speed 25 -> 15 fps at 60 Hz).
+    if (game.IsHalloween()) {
+        DrawWorld(55, 0.0f, 0.0f, 2000.0f, 216.0f, pan, 0xFFFFFFFF);
+        static const int kJack[7] = { 54, 157, 45, 47, 48, 50, 51 };
+        DrawWorld(kJack[(int)(time * 15.0f) % 7], 1632.0f, 461.0f, 147.0f, 155.0f,
+                   pan, 0xFFFFFFFF);
+    }
+
     // Springtrap at the office window (img 206) — the stage-4 scare pose
     if (game.GetSpringtrapRoom() == FNaF3Game::R3_ST4)
         DrawWorld(206, 1180.0f, 25.0f, 299.0f, 715.0f, pan, 0xFFFFFFFF);
@@ -825,65 +836,24 @@ void FNaF3Render::RenderMinigame(const FNaF3Game& game, f32 time) {
             Draw(854, ox + kBal[i][0], oy + kBal[i][1], 130.0f, 114.0f, 0xFFFFFFFF);
     }
 
-    // the pickups/exits (kind-matched sprites; ~ positions from the kit)
+    // the pickups/exits (v2.74: the GAME's item table — the drawn sprite IS
+    // the collectible; the two files used to carry separate coordinate lists,
+    // so the player walked onto visible items and collected nothing, and the
+    // renderer's own counts could even overrun mg.taken[]).
     {
-        struct Item { f32 x, y, w, h; int kind; };
-        static const Item kIBB[] = {
-            { 612, 425, 68, 114, 0 }, { 708, 427, 68, 114, 0 },
-            { 354, 359, 68, 114, 0 }, { 154, 275, 68, 114, 0 },
-            { 440, 197, 68, 114, 0 }, { 514, 195, 68, 114, 0 },
-            { 752, 173, 68, 114, 0 },
-            { 151, 544, 103, 124, 1 }, { 2506, 1697, 68, 114, 3 },
-            { 2247, 992, 159, 168, 4 }
-        };
-        static const Item kIMangle[] = {
-            { 636, 435, 74, 69, 0 }, { 2115, 334, 76, 85, 0 },
-            { 1347, 420, 74, 51, 0 }, { 1734, 304, 71, 30, 0 },
-            { 2675, 543, 103, 124, 1 }, { 2860, 2100, 168, 168, 2 },
-            { 2960, 2160, 68, 114, 3 }
-        };
-        static const Item kITC[] = {
-            { 700, 560, 36, 33, 0 }, { 1240, 470, 36, 33, 0 },
-            { 1800, 220, 36, 33, 0 }, { 2300, 560, 36, 33, 0 },
-            { 500, 560, 92, 92, 5 }, { 1400, 300, 92, 92, 5 },
-            { 1900, 180, 92, 92, 5 }, { 2450, 500, 92, 92, 5 },
-            { 2900, 560, 103, 124, 1 }, { 2450, 2160, 159, 168, 4 }
-        };
-        static const Item kIGF[] = {
-            { 612, 425, 68, 114, 0 }, { 354, 359, 68, 114, 0 },
-            { 440, 197, 68, 114, 0 }, { 1546, 470, 68, 114, 0 },
-            { 2634, 210, 68, 114, 0 },
-            { 151, 544, 103, 124, 1 }, { 2560, 1560, 68, 114, 3 },
-            { 2247, 992, 159, 168, 4 }
-        };
-        static const Item kIRWQ[] = {
-            { 468, 190, 68, 114, 0 }, { 1300, 1060, 68, 114, 0 },
-            { 2740, 380, 68, 114, 0 },
-            { 151, 544, 103, 124, 1 }, { 2960, 2160, 68, 114, 3 },
-            { 2609, 396, 159, 168, 4 }
-        };
-        static const Item kIMarion[] = {
-            { 468, 425, 68, 114, 0 }, { 908, 427, 68, 114, 0 },
-            { 1258, 394, 159, 168, 0 }, { 1761, 394, 159, 168, 0 },
-            { 151, 544, 103, 124, 1 }, { 2609, 396, 159, 168, 4 }
-        };
-        struct ItemSet { const Item* p; int n; };
-        static const ItemSet kISets[7] = {
-            { 0, 0 }, { kIBB, 10 }, { kIMangle, 7 }, { kITC, 10 },
-            { kIGF, 8 }, { kIRWQ, 6 }, { kIMarion, 6 }
-        };
-        const ItemSet& is = kISets[mg.game];
-        for (int i = 0; i < is.n; ++i) {
-            if (mg.taken[i] && is.p[i].kind != 1) continue;
+        int n = 0;
+        const Mg3Item* items = MgItemTable(mg.game, n);
+        for (int i = 0; i < n; ++i) {
+            if (mg.taken[i] && items[i].kind != 1) continue;
             int img = 730;
-            if (is.p[i].kind == 1) img = 856;
-            else if (is.p[i].kind == 2) img = 892;
-            else if (is.p[i].kind == 3) img = (((int)(time * 5.0f) % 4) == 0) ? 776 :
+            if (items[i].kind == 1) img = 856;
+            else if (items[i].kind == 2) img = 892;
+            else if (items[i].kind == 3) img = (((int)(time * 5.0f) % 4) == 0) ? 776 :
                                              (((int)(time * 5.0f) % 4) == 1) ? 777 : 730;
-            else if (is.p[i].kind == 4) img = 872;
-            else if (is.p[i].kind == 5) img = 916;
-            else if (is.p[i].kind == 0 && mg.game == FNaF3Game::MG_TOYCHICA) img = 923;
-            Draw(img, ox + is.p[i].x, oy + is.p[i].y, is.p[i].w, is.p[i].h, 0xFFFFFFFF);
+            else if (items[i].kind == 4) img = 872;
+            else if (items[i].kind == 5) img = 916;
+            else if (items[i].kind == 0 && mg.game == FNaF3Game::MG_TOYCHICA) img = 923;
+            Draw(img, ox + items[i].x, oy + items[i].y, items[i].w, items[i].h, 0xFFFFFFFF);
         }
     }
 

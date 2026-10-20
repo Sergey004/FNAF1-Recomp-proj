@@ -40,6 +40,12 @@ public:
     // counters on night 7). Call after Init(7)-equivalent setup.
     void InitCustomNight(const i32 levels[4]);
 
+    // v2.74: the dashboard's date — the dump's frame 3 groups 431-433
+    // dress the office for Halloween (month 10, day 31): the "lights"
+    // (img 608) and the desk pumpkin (obj 148, anim 628-635) show while
+    // the camera is down; any other date hides them.
+    bool IsHalloween() const { return m_halloween; }
+
     // Called every logic tick (1/60 second)
     // Returns the current game state after processing.
     GameState Tick();
@@ -129,6 +135,9 @@ private:
     PowerSystem   m_power;
     DoorSystem    m_doors;
     CameraSystem  m_cameras;
+    bool m_halloween;        // v2.74: the dashboard is on Oct 31 (the dump's
+                              // date events: the office gets its Halloween
+                              // dressing — the lights + the desk pumpkin)
     AnimatronicAI  m_ai;
 
     // Game state

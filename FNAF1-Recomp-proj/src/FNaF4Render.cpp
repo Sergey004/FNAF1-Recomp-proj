@@ -117,9 +117,27 @@ void FNaF4Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
 
 void FNaF4Render::RenderDisclaimer() {
     // frame 0: the dump's legal splash = ONE centered banner (Active
-    // img 962, 551x92 at (248,284)); its String child sits off-screen in
-    // the export and is never moved (the old red paragraphs were invented).
-    Draw(962, 248.0f, 284.0f, 551.0f, 92.0f, 0xFFFFFFFF);
+    // img 962, 551x92); its String child sits off-screen in the export and
+    // is never moved (the old red paragraphs were invented).
+    // v2.74: the layout's hotspot-corrected left/top is (252,288) — the old
+    // draw used the raw instance origin (248,284), 4 px off.
+    Draw(962, 252.0f, 288.0f, 551.0f, 92.0f, 0xFFFFFFFF);
+}
+
+// v2.74: frame 14 "test" (the test-room skip) and frame 15 (the nightmare
+// jumpscare) were BLACK on screen — the dump has art for both.
+void FNaF4Render::RenderTest() {
+    if (!m_batch || !m_pak) return;
+    Draw(1174, 162.0f, 173.0f,  99.0f,  90.0f, 0xFFFFFFFF);
+    Draw(1174, 162.0f, 349.0f,  99.0f,  90.0f, 0xFFFFFFFF);
+    Draw(1178, 302.0f, 193.0f, 549.0f,  65.0f, 0xFFFFFFFF);
+    Draw(1180, 302.0f, 373.0f, 582.0f,  40.0f, 0xFFFFFFFF);
+    Draw(1184, 460.0f, 653.0f, 144.0f,  15.0f, 0xFFFFFFFF);
+}
+
+void FNaF4Render::RenderNJScare() {
+    if (!m_batch || !m_pak) return;
+    Draw(1186, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
 }
 
 void FNaF4Render::RenderTitle(f32 time, i32 optionSelected, bool beat5) {

@@ -20,7 +20,7 @@ class SLRender {
 public:
     void Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text);
 
-    void RenderWarning();
+    void RenderWarning(const SLGame& game);
     void RenderTitle(const SLGame& game, f32 time);
     void RenderElevator(const SLGame& game, f32 time);
     void RenderVent(const SLGame& game);
@@ -34,10 +34,11 @@ public:
     void RenderChain(const SLGame& game);
     void RenderExtrasMenu(const SLGame& game);
     void RenderHold(const char* caption);        // wave-2 hold screens
+    void RenderWave2(const SLGame& game);        // v2.74: the wave-2 screens' own art
     void RenderWinNight(const SLGame& game);
-    void RenderTvShow();
+    void RenderTvShow(const SLGame& game);
     void RenderGirlVoice();
-    void RenderDeath();
+    void RenderDeath(const SLGame& game, f32 time);
     void RenderGameOver();
 
 private:

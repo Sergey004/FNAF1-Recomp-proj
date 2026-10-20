@@ -23,6 +23,8 @@ public:
 
     void RenderTitle(f32 time, i32 optionSelected, bool beat5);
     void RenderDisclaimer();                     // frame 0: the red banner (img 962)
+    void RenderTest();                          // v2.74: frame 14 (the test room)
+    void RenderNJScare();                       // v2.74: frame 15 (the nightmare scare)
     void RenderNightStart(i32 night);
     void RenderNightWin();
     void RenderBedroom(const FNaF4Game& game, f32 time, f32 pan);

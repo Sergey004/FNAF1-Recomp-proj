@@ -116,7 +116,16 @@ void SLGame::TickLoad(f32 dt) {
         // have it released when the router opens)
         m_loadT = 0.0f;
         switch (m_goTo) {
-            case 1:  m_screen = SCR_ELEVATOR;  break;   // the ride
+            case 1:
+                // v2.74: the router must RE-ARM the ride — the old code kept
+                // the state 4 (doors open) from the previous visit, and with
+                // no state-4 arm in TickElevator the screen froze forever
+                // (softlock on nights 2+).
+                m_elevatorState = 0;
+                m_elevatorT = 0.0f;
+                m_elevButtonT = 0.0f;
+                m_screen = SCR_ELEVATOR;
+                break;                                    // the ride
             case 3:  m_screen = SCR_HUB;       break;   // Circus Control
             case 5:
             case 8:  m_screen = SCR_TOVENT;    break;   // the vent hop
@@ -146,10 +155,22 @@ void SLGame::Tick(f32 dt, const SLInputs& in) {
         m_scareT += dt;
         if (m_scareT >= 1.4f) {
             m_scareT = 0.0f;
+            // v2.74: the room loops must die with the room (they used to
+            // bleed into the game-over screen and the next night).
+            SfxStop("snd_control room power down vrs3");
+            SfxStop("snd_drips");
+            SfxStop("snd_hub hum");
+            SfxStop("snd_elevator ride loop");
+            SfxStop("snd_ballora box");
             m_screen = SCR_GAMEOVER;
             m_cardT = 0.0f;
         }
         return;
+    }
+    // v2.74: the extras jumpscare PREVIEW (a scare for a beat, no routing)
+    if (m_previewT > 0.0f) {
+        m_previewT += dt;
+        if (m_previewT >= 1.4f) m_previewT = 0.0f;
     }
 
     switch (m_screen) {
@@ -187,7 +208,15 @@ void SLGame::Tick(f32 dt, const SLInputs& in) {
             m_cardT += dt;
             if (in.bPressed || m_cardT >= 12.0f) {
                 m_cardT = 0.0f;
-                m_screen = SCR_TITLE;
+                // v2.74: the first-launch "Night 4" cutscene (frame 16) ends
+                // in Baby's Room (the dump's frame 6 "fade out" jump), not
+                // in the title.
+                if (m_screen == SCR_CUTN4) {
+                    m_screen = SCR_BABY;
+                    m_cardT = 0.0f;
+                } else {
+                    m_screen = SCR_TITLE;
+                }
             }
             break;
     }
@@ -201,10 +230,15 @@ void SLGame::TickWarning(f32 dt, const SLInputs& in) {
     m_cardT += dt;
     // v2.73: the dump's frame_0 advance timer is a one-shot 3000 ms = 3 s
     // (was 2 s; the old "60 s" note in SL_MECHANICS was the /50 annotation).
+    //
+    // v2.74: the dump's frame 0 routing (groups 7/8): the warning fades and
+    // then jumps to frame 16 "Night 4" (the first-launch Baby monologue) when
+    // "played intro yet" == 0, otherwise to the next frame (the title). The
+    // port always went to the title, so the SL intro never played.
     if (m_cardT >= 3.0f || in.aPressed || in.bPressed) {
         m_cardT = 0.0f;
-        m_screen = SCR_TITLE;
-        // the title theme (the dump: "Gradual Liquidation" loop)
+        m_screen = m_intro ? SCR_TITLE : SCR_CUTN4;
+        // the dump's title theme
         Sfx("snd_Gradual Liquidation", true, 2, 15);
     }
 }
@@ -291,15 +325,17 @@ void SLGame::NightStart() {
 
 void SLGame::TickElevator(f32 dt, const SLInputs& in) {
     m_elevatorT += dt;
-    // arrival after the ride (the dump: Active 3.alterable[18] 0..1500
-    // ~40 s; the doors open at state 4 after the clank)
-    if (m_elevatorState == 0 && (m_elevatorT >= 10.0f || in.aPressed)) {
+    // arrival after the ride: the dump counts Active 3.alterable[18] up to
+    // 1500 FRAMES (frame 2 group 25) and plays "Jingle 1 v2d" past it —
+    // 1500 frames at 60 Hz = 25 s (was 10 s). The doors open on a one-shot
+    // 10000 ms (group 31, was 2 s). Skipping with A stays (pad affordance).
+    if (m_elevatorState == 0 && (m_elevatorT >= 25.0f || in.aPressed)) {
         m_elevatorState = 1;
         Sfx("snd_elevator clank", false, 4, 100);
     }
     if (m_elevatorState == 1) {
         m_elevButtonT += dt;
-        if (m_elevButtonT >= 2.0f || in.aPressed) {
+        if (m_elevButtonT >= 10.0f || in.aPressed) {
             m_elevButtonT = 0.0f;
             m_elevatorState = 4;
             SfxStop("snd_elevator ride loop");
@@ -375,7 +411,6 @@ void SLGame::TickToVent(f32 dt) {
 void SLGame::TickVent(f32 dt, const SLInputs& in) {
     if (in.wHeld) {
         m_crawl = 15;                                   // the latch
-        m_notch += dt >= 1.0f ? 0 : 0;                  // (notch below)
     } else if (m_crawl > 0) {
         m_crawl -= 1;
     }
@@ -389,20 +424,25 @@ void SLGame::TickVent(f32 dt, const SLInputs& in) {
             Sfx(loud ? "snd_metal_duct_fast" : "snd_metal_duct_slow",
                 false, loud ? 2 : 3, loud ? 100 : 50);
         }
-        m_wArmT += dt;
-        if (m_wArmT >= 0.1f) {                          // 100 ms ticks
-            m_wArmT -= 0.1f;
-            m_notch += 1;                               // held tick count
-        }
+        // v2.74: the dump counts the crawl per FRAME (frame 3 groups 2/3)
+        // and 100 ticks = one notch (group 10) — at 60 Hz a notch is 1.67 s
+        // and the full duct ~17 s. The old 100 ms tick made it 6x slower.
+        m_notch += 1;                                   // per-frame crawl ticks
     }
-    if (m_notch >= 10 && m_ventGoing > 0) {
-        // 10 notches = traversed -> the armed route (2/3/4 hold/hub/hold)
+    if (m_notch >= 1000) {                             // 10 notches x 100 ticks
         m_notch = 0;
-        m_ventGoing = 0;
-        if (m_night == 2)      GoTo(7);                 // -> Ballora
-        else if (m_night == 4) GoTo(11);                // -> Breaker
-        else if (m_night >= 5) GoTo(13);                // -> scooping chain
-        else                   GoTo(3);
+        if (m_ventGoing > 0) {
+            // the armed route (2/3/4 hold/hub/hold)
+            m_ventGoing = 0;
+            if (m_night == 2)      GoTo(7);             // -> Ballora
+            else if (m_night == 4) GoTo(11);            // -> Breaker
+            else if (m_night >= 5) GoTo(13);            // -> scooping chain
+            else                   GoTo(3);
+        } else {
+            // v2.74: no armed route — the dump falls back (groups 15/25);
+            // the old code left the player trapped in the vent forever.
+            GoTo(3);                                   // -> hub
+        }
     }
 }
 
@@ -459,21 +499,30 @@ void SLGame::TickBallora(f32 dt, const SLInputs& in) {
             SfxPan(1, m_leftPan);
         }
         // her approach rolls: walking builds it, standing decays it; 5 s of
-        // continuous walking puts her into the active approach (moving)
+        // continuous walking puts her into the active approach (moving).
+        // v2.74: the dump adds +1 distance per 100 ms of walking (frame 8),
+        // the old code added it EVERY FRAME (6x too fast — a death in ~10 s).
         if (in.wHeld) {
             m_contWalkT += dt;
-            m_distance += 1;
+            m_walkTickT += dt;
+            if (m_walkTickT >= 0.1f) {
+                m_walkTickT -= 0.1f;
+                m_distance += 1;
+            }
             if (m_contWalkT >= 5.0f) {
                 m_moving = true;                        // moving toward 2
                 m_distance += 1;
             }
         } else {
             m_contWalkT = 0.0f;
+            m_walkTickT = 0.0f;
         }
-        // the side changes on her move rolls
-        m_moveT += dt;
-        if (m_moveT >= 3.0f) {
-            m_moveT = 0.0f;
+        // the side changes on her move rolls (own timer — v2.74: it shared
+        // m_moveT with the 30 ms decay, so the roll could never fire while
+        // standing)
+        m_sideT += dt;
+        if (m_sideT >= 3.0f) {
+            m_sideT = 0.0f;
             m_dirSide = rand() % 2;
         }
         if (m_distance > 600) {                         // the kill
@@ -585,9 +634,10 @@ void SLGame::TickBreaker(f32 dt, const SLInputs& in) {
     m_cardT += dt;
     if (m_scareT > 0.0f) return;   // the scare override (the switch ticks it)
 
-    // fill the current panel while A is held (the dump's 4-s fill gates)
+    // fill the current panel while A is held (the dump's 4-s fill gates —
+    // v2.74: the old rate filled in 8 s, contradicting its own comment)
     if (in.aHeld && m_brkPanel < 3) {
-        m_brkFill += dt / 0.04f * 0.5f;
+        m_brkFill += dt / 0.04f;
         if (m_brkFill >= 100.0f) {
             m_brkFill = 0.0f;
             m_brkPanel += 1;
@@ -806,7 +856,8 @@ void SLGame::TickDesk(f32 dt, const SLInputs& in) {
         }
     } else {
         m_deskHold -= dt * 0.5f;
-        if (m_deskHold < 0.0f) m_deskHold = 0.0f;
+        // v2.74: the hold stays SIGNED — the old clamp at 0 made the
+        // "lost her eyes" scare below unreachable (dead branch).
         m_deskPeek = false;
     }
     // she darts: every 2 s a 1-in-3 slip; falling too far behind = the scare
@@ -820,10 +871,13 @@ void SLGame::TickDesk(f32 dt, const SLInputs& in) {
         m_scareImg = 4;                                // the Bidybab scare
         Sfx("snd_scream op5-8", false, 24, 100);
     }
-    // the sequence ends: 25 s of holding -> the dump's fade -> Elevator
+    // the sequence ends: 25 s of holding -> the dump's fade -> the night-2
+    // chain closes in Baby's Room (the only writer of the night advance);
+    // the other nights ride the elevator back to the hub.
     if (m_deskHold >= 25.0f || m_deskTotal >= 60.0f) {
         SfxStop("snd_drips");
-        GoTo(1);                                       // -> Elevator
+        if (m_night == 2) GoTo(12);                       // -> Baby's Room (night end)
+        else            GoTo(1);                        // -> Elevator
     }
 }
 
@@ -835,8 +889,11 @@ void SLGame::TickDesk(f32 dt, const SLInputs& in) {
 
 void SLGame::TickExtras(f32 dt, const SLInputs& in) {
     (void)dt;
-    if (in.upPressed)   { m_optionSelected = (m_optionSelected + 3) % 4; Sfx("snd_select3", false, 3, 80); }
-    if (in.downPressed) { m_optionSelected = (m_optionSelected + 1) % 4; Sfx("snd_select3", false, 3, 80); }
+    // v2.74: the dump's extras menu has FIVE rows (ANIMATRONICS / MAKING
+    // BABY / MAKING FREDDY / MAKING FOXY / BLUEPRINT) and NO exit row — B
+    // leaves. The old build had four invented text rows.
+    if (in.upPressed)   { m_optionSelected = (m_optionSelected + 4) % 5; Sfx("snd_select3", false, 3, 80); }
+    if (in.downPressed) { m_optionSelected = (m_optionSelected + 1) % 5; Sfx("snd_select3", false, 3, 80); }
     if (in.leftPressed || in.rightPressed) {
         m_dirSide = (m_dirSide + 1) & 1;
         Sfx("snd_select3", false, 3, 80);
@@ -844,13 +901,10 @@ void SLGame::TickExtras(f32 dt, const SLInputs& in) {
     if (in.aPressed) {
         // the jumpscare viewer row plays a scare for a beat
         if (m_optionSelected == 1) {
-            m_scareT = 0.001f;
-            m_scareImg = 3;
+            // v2.74: a PREVIEW — the old code armed the global scare clock,
+            // so browsing the extras threw the player into the night.
+            m_previewT = 0.001f;
             Sfx("snd_scream op5-8", false, 3, 100);
-            return;
-        }
-        if (m_optionSelected == 3 || in.bPressed) {
-            m_screen = SCR_TITLE;
             return;
         }
     }
@@ -873,7 +927,15 @@ void SLGame::TickChain(f32 dt, const SLInputs& in) {
         }
     }
     m_cardT += dt;
-    if (in.bPressed || m_cardT >= 8.0f) {
+    // v2.74: per-screen holds from the dump — frame 20 (scooping) 3 s,
+    // frame 21 (red fade) ~10 s (the 20 ms fade steps), frame 22 (bathroom)
+    // 10 s + 1 s, frame 23 (credits) 3 s. The old flat 8 s applied to all.
+    f32 hold = 8.0f;
+    if (m_screen == SCR_SCOOPING)  hold = 3.0f;
+    else if (m_screen == SCR_REDFADE)  hold = 10.0f;
+    else if (m_screen == SCR_BATHROOM) hold = 11.0f;
+    else if (m_screen == SCR_CREDITS)  hold = 3.0f;
+    if (in.bPressed || m_cardT >= hold) {
         m_cardT = 0.0f;
         SfxStop("snd_ScoopingRoom-02");
         switch (m_screen) {
@@ -923,7 +985,10 @@ void SLGame::TickWinNight(f32 dt) {
     if (m_winT >= 10.0f) {
         m_winT = 0.0f;
         m_current = m_night + 1;
-        if (m_current > 5) m_current = 5;
+        // v2.74: the dump's night counter reaches 6 (the "final" night: red
+        // fade -> P&S 2 -> credits). The old clamp to 5 made the whole
+        // night-5 ending unreachable.
+        if (m_current > 6) m_current = 6;
         m_night = m_current;
         m_saveDirty = true;
         SfxStop("snd_Jingle_4b");
@@ -936,7 +1001,10 @@ void SLGame::TickWinNight(f32 dt) {
 
 void SLGame::TickTvShow(f32 dt) {
     m_tvT += dt;
-    if (m_tvT >= 8.0f || true) {
+    // v2.74: the `|| true` made the interlude skip on its first frame —
+    // the TV show never played. The dump's frame 24 runs the episode beats
+    // (3000/5000/1000 ms); 8 s is our hold (labeled).
+    if (m_tvT >= 8.0f) {
         m_tvT = 0.0f;
         SfxStop("snd_tv show");
         m_screen = SCR_GIRLVOICE;
@@ -951,7 +1019,9 @@ void SLGame::TickTvShow(f32 dt) {
 
 void SLGame::TickGirlVoice(f32 dt) {
     m_girlT += dt;
-    if (m_girlT >= 6.0f) {
+    // v2.74: the dump's frame 25 plays the six lines 900 ms apart
+    // (one-shot/periodic 900 ms), then jumps (was 6 s per line).
+    if (m_girlT >= 0.9f) {
         m_girlT = 0.0f;
         if (m_night >= 5) {
             // the final route: red fade -> the P&S 2 chain (wave 2 hold)
@@ -974,17 +1044,21 @@ void SLGame::TickDeath(f32 dt, const SLInputs& in) {
     if (in.aPressed || m_cardT >= 5.0f) {
         m_cardT = 0.0f;
         static const i32 kResume[5] = { 81, 111, 57, 512 };
-        m_scriptEvent = kResume[m_current < 2 ? 0 : (m_current > 5 ? 3 : m_current - 2)];
+        const i32 resume = kResume[m_current < 2 ? 0 : (m_current > 5 ? 3 : m_current - 2)];
         if (m_current >= 4) m_intro = true;             // the night-4 marker
         NightStart();
+        // v2.74: the resume preset must be applied AFTER NightStart() —
+        // NightStart overwrites m_scriptEvent with the night's normal start.
+        m_scriptEvent = resume;
     }
     m_cardT += dt;
 }
 
 void SLGame::TickGameOver(f32 dt, const SLInputs& in) {
-    // frame 15: caught -> hold; A -> back to the resume
+    // frame 15: caught -> hold; A -> back to the resume. v2.74: the dump's
+    // hold is a one-shot 20000 ms = 20 s (was 5 s).
     m_cardT += dt;
-    if (in.aPressed || in.bPressed || m_cardT >= 5.0f) {
+    if (in.aPressed || in.bPressed || m_cardT >= 20.0f) {
         m_cardT = 0.0f;
         m_screen = SCR_DEATH;
     }
@@ -996,7 +1070,8 @@ void SLGame::TickGameOver(f32 dt, const SLInputs& in) {
 // ------------------------------------------------------------
 
 void SLGame::ApplyProgressSL(const Progress::GameProgressSL& p) {
-    m_current = p.current < 1 ? 1 : (p.current > 5 ? 5 : p.current);
+    // v2.74: the night counter goes up to 6 (the finale), not 5.
+    m_current = p.current < 1 ? 1 : (p.current > 6 ? 6 : p.current);
     m_intro = p.intro;
     m_beat1 = p.beat1;
     m_beat3 = p.beat3;
