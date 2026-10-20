@@ -131,12 +131,9 @@ C++ reimplementation of a Clickteam Fusion runtime dumper/repacker. The full
 cycle for any game in the series:
 
 ```bash
-# 1) dump assets (images/sounds/packed data):
-./build/ctfak-cpp  <game>.exe 
-Type "1" for dump assets 
-# 2) GPU-ready pak + asset table (DXT textures + PCM, big-endian 'FNAF'):
-./build/ctfak-cpp  <game>.exe 
-Enter what appears next to “Recomp Pack”
+# 1) dump assets and make GPU-ready .pak (All happends in RAM, so need 2+ GB of RAM):
+./build/ctfak-cpp(.exe)  <game>.exe 
+Type "1" for Recomp Pack 
 ```
 
 Results land in `build/Dumps/<Game>/`:

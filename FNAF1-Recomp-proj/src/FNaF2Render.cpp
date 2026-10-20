@@ -473,10 +473,18 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
         }
     }
 
-    // v2.59: movement static burst — a character moved in the watched feed
+    // v2.75 BUG FIX: the movement static burst (dump groups 333-343: a
+    // character moved in the watched room -> "your view".alterable[1] :=
+    // 20+Random(100) -> the "static" object's coefficient changes) used to
+    // draw img 20 — a 31x25 NOISE TILE — stretched over the whole
+    // 1024x768 feed (a 33x blur). The dump's burst is the STATIC object
+    // itself (imgs 332/334/328-331 @ 59.4 fps, fullscreen).
     if (game.GetMoveStatic() > 0.0f)
-        Draw(20, 0.0f, 0.0f, 1024.0f, 768.0f,
+        Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f,
              (u32)((int)(game.GetMoveStatic() * 255.0f) << 24) | 0x00FFFFFFu);
+    // the dump's "Active 2" (img 20) is a SMALL noise patch at (710,545) in
+    // the camera view (frame 3: shown while "viewing" > 0) — not a wash.
+    Draw(20, 710.0f, 545.0f, 31.0f, 25.0f, 0xFFFFFFFF);
 
     // v2.66: the FNAF2 monitor shows no text in the original — no cam
     // label, no clock, no battery (the map's own buttons carry the state;
@@ -553,7 +561,7 @@ void FNaF2Render::RenderNextDay(const FNaF2Game& game) {
     Draw(kRoll[fi], 415.0f, 363.0f, 57.0f, 86.0f, 0xFFFFFFFF);
 }
 
-void FNaF2Render::RenderDream(const FNaF2Game& game) {
+void FNaF2Render::RenderDream(const FNaF2Game& game, f32 time) {
     // frame 13: the 2500x768 panning room (616), the slumped pair
     // (609 Bonnie @243 / 614 Chica @2348), the night props, the static
     // flicker and the slow blackout. v2.66: the dump's OWN perspective
@@ -580,11 +588,33 @@ void FNaF2Render::RenderDream(const FNaF2Game& game) {
         m_batch->SetPerspectiveGeometry(g);
     }
     m_batch->DrawPerspective(200.0f, 384.0f, 4.0f);
-    // the static flicker (alpha tiers per the re-roll)
+    // the static flicker — the dump's "Active 3" (obj 306, anim 0 = [361,
+    // 357, 363] @ speed 50 = 30 fps, position (0,0), fullscreen 1024x768).
+    //
+    // v2.75 BUG FIX: the port used the dump's COEFFICIENT as the alpha
+    // (250/225/100 -> nearly opaque), so the dream was a wall of noise and
+    // the room was invisible. CFT's coefficient is INVERTED: alpha =
+    // (255 - c) / 255 — the same mapping F1's title/band static use (and
+    // the user verified in F1). The dump's groups 8-13 set it:
+    //   alterable[0] <= 6 -> 250; == 7/8/9 -> 225+Random(50);
+    //   == 10 -> 100+Random(100)
+    // with alterable[0] re-rolled to Random(10)+1 every 100 ms (the game's
+    // m_rareRoll). A comma expression is a SUM (F1's verified reading).
     {
+        static const int kStaticFrames[3] = { 361, 357, 363 };
+        const f32 animPeriod = 100.0f / 50.0f / 60.0f;   // speed 50 -> 30 fps
+        const int fi = (int)(time / animPeriod) % 3;
         const i32 roll = game.GetRareRoll();
-        const u32 a = (u32)(roll <= 6 ? 250 : (roll <= 9 ? 225 : 100));
-        Draw(361, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
+        const u32 win = (u32)(int)(time / 0.1f);
+        u32 h = win * 2654435761u + 11u;
+        h ^= h >> 13;  h *= 3266489917u;  h ^= h >> 16;
+        u32 coeff;
+        if (roll <= 6)      coeff = 250u;                    // group 8
+        else if (roll <= 9) coeff = 225u + (h % 50u);        // groups 9-11
+        else                coeff = 100u + (h % 100u);       // group 12
+        const u32 a = (coeff >= 255u) ? 0u : (255u - coeff);
+        Draw(kStaticFrames[fi], 0.0f, 0.0f, 1024.0f, 768.0f,
+             (a << 24) | 0x00FFFFFFu);
     }
     // the blackout fade
     if (game.GetBlackout() > 0.5f) {
@@ -594,8 +624,13 @@ void FNaF2Render::RenderDream(const FNaF2Game& game) {
 }
 
 void FNaF2Render::RenderError(bool second) {
-    Draw(second ? 630 : 628, second ? 33.0f : 20.0f, second ? 19.0f : 16.0f,
-         512.0f, 384.0f, 0xFFFFFFFF);
+    // dump frame 14 "error" / frame 15 "error 2": the Active object carries a
+    // SMALL white-on-black TEXT strip (img 628 = 105x19, "IT'S ME"; img 630 =
+    // 43x13) at the frame's instance point (20,16) / (30,12).
+    // v2.75 BUG FIX: the port drew them at 512x384 — a ~5x / ~12x stretch
+    // (the user's "IT'S ME was stretched" report).
+    if (second) Draw(630, 30.0f, 12.0f, 43.0f, 13.0f, 0xFFFFFFFF);
+    else        Draw(628, 20.0f, 16.0f, 105.0f, 19.0f, 0xFFFFFFFF);
 }
 
 void FNaF2Render::RenderEnd(i32 which) {

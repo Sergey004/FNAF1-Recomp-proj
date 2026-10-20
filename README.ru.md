@@ -121,14 +121,9 @@ FNaF1Module (активна)   FNaF2Module   FNaF3Module   … (FNAF4/SL/UCN)
 цикл для любой игры серии:
 
 ```bash
-# 1) дамп (картинки/звуки/packed data):
-./build/ctfak-cpp -path <game>.exe -tool "Dump Everything"        -closeonfinish
-# 2) события (Groups/ON/DO по фреймам) — источник логики:
-./build/ctfak-cpp -path <game>.exe -tool "Events Listing"          -closeonfinish
-# 3) структура (application.json: объекты, фреймы, анимации):
-./build/ctfak-cpp -path <game>.exe -tool "Export Structure as JSON" -closeonfinish
-# 4) GPU-ready пак + таблица ассетов (DXT-текстуры + PCM, big-endian 'FNAF'):
-./build/ctfak-cpp -path <game>.exe -tool "Recomp Pack"             -closeonfinish
+# 1) Сделать дамп ресурсов и создать файл .pak, оптимизированный для GPU (всё происходит в оперативной памяти, поэтому требуется 2+ ГБ ОЗУ):
+./build/ctfak-cpp(.exe)  <game>.exe
+Введите «1» для перекомпиляции ассетов
 ```
 
 Результат в `build/Dumps/<Game>/`:

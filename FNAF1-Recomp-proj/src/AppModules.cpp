@@ -266,7 +266,7 @@ void FNaF2Module::Render() {
             break;
         case FNaF2Game::SCR_STATIC:     m_render.RenderStatic(); break;
         case FNaF2Game::SCR_NEXTDAY:    m_render.RenderNextDay(m_game); break;
-        case FNaF2Game::SCR_DREAM:      m_render.RenderDream(m_game); break;
+        case FNaF2Game::SCR_DREAM:      m_render.RenderDream(m_game, m_time); break;
         case FNaF2Game::SCR_ERROR:      m_render.RenderError(false); break;
         case FNaF2Game::SCR_ERROR2:     m_render.RenderError(true); break;
         case FNaF2Game::SCR_END5:       m_render.RenderEnd(5); break;

@@ -55,7 +55,7 @@ public:
     void RenderCard(const FNaF2Game& game);      // frame 2: the night card
     void RenderStatic();                         // frame 4
     void RenderNextDay(const FNaF2Game& game);   // frame 5: the 6 AM clock
-    void RenderDream(const FNaF2Game& game);     // frame 13
+    void RenderDream(const FNaF2Game& game, f32 time);   // frame 13
     void RenderError(bool second);               // frames 14/15
     void RenderEnd(i32 which);                   // frames 9/10/11
     void RenderCustomize(const FNaF2Game& game); // frame 12
