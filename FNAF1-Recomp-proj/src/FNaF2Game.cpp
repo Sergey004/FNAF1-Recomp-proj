@@ -39,6 +39,13 @@ void FNaF2Game::ResetToTitle() {
     m_cardT = 0.0f;
     m_night = 1;
     m_time = 0.0f;
+    // v2.75: the clock must never be uninitialised — the office HUD draws
+    // the hour counter, and a frame that renders the office outside a night
+    // (a cutscene, a capture, a debug path) would show STACK GARBAGE
+    // instead of "12 AM". The dump's frame start sets the hour to 12
+    // (group 486) and the same value is the correct idle state.
+    m_timeOfNight = 12;
+    m_amClock = 0.0f;
     m_optionSelected = 0;
     m_optionCount = 2;   // dump title rows: new game + continue ALWAYS visible
     m_lastNight = 1;

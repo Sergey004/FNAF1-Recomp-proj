@@ -570,8 +570,21 @@ void FNaF2Render::RenderDream(const FNaF2Game& game, f32 time) {
     m_batch->BeginSceneCapture(0xFF000000);
     const f32 pan = game.GetDreamPan();
     DrawWorld(616, 0.0f, 0.0f, 2500.0f, 768.0f, pan, 0xFFFFFFFF);
-    DrawWorld(609, 243.0f, 300.0f, 400.0f, 460.0f, pan, 0xFFFFFFFF);   // Bonnie
-    DrawWorld(614, 2348.0f, 300.0f, 400.0f, 460.0f, pan, 0xFFFFFFFF);  // Chica + balloons
+    // v2.75: the "mask" object (dump frame 13, layer 1, instance (-74,-50),
+    // 1200x900, single frame 619) — the huge dark Freddy mask with the two
+    // glowing eyes that IS the dream's signature image. The port never drew
+    // it (the user's "in the dream it's a Freddy mask, not static").
+    DrawWorld(619, -74.0f, -50.0f, 1200.0f, 900.0f, pan, 0xFFFFFFFF);
+    // the slumped pair — dump anims 0 = [609,615,592] / [614,613,617] @
+    // speed 50 (30 fps); the port drew one static cell of each.
+    {
+        static const int kBonnie[3] = { 609, 615, 592 };
+        static const int kChica[3]  = { 614, 613, 617 };
+        const f32 period = 100.0f / 50.0f / 60.0f;      // speed 50 -> 30 fps
+        const int fi = (int)(time / period) % 3;
+        DrawWorld(kBonnie[fi], 243.0f, 300.0f, 400.0f, 460.0f, pan, 0xFFFFFFFF);
+        DrawWorld(kChica[fi], 2348.0f, 300.0f, 400.0f, 460.0f, pan, 0xFFFFFFFF);
+    }
     if (game.GetNight() == 4)
         DrawWorld(624, 1514.0f, 340.0f, 220.0f, 300.0f, pan, 0xFFFFFFFF);  // golden Freddy
     if (game.GetNight() == 5) {

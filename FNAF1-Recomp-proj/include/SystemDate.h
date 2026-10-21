@@ -53,17 +53,25 @@ inline bool SystemDate(i32& year, i32& month, i32& day) {
     if (raw == (time_t)-1) return false;
     bool ok;
 #ifdef _XBOX
-    // the 360's clock starts at 2005-11-22 00:00:00 UTC
-    ok = SystemDateFrom(raw + kXbox360EpochOffset, year, month, day);
-    // a CRT that already applied the offset — take it as it is
-    if (!ok) ok = SystemDateFrom(raw, year, month, day);
+    // The 360's CRT clock counts from 2005-11-22 00:00:00 UTC, NOT from the
+    // Unix epoch, so the raw value only becomes a calendar date after the
+    // offset is added. But if the raw value ALREADY reads as a plausible
+    // date, this CRT counts from the Unix epoch and the offset must NOT be
+    // applied — it would shift the date by ~35 years (and the October-31
+    // events would never fire). The offset is therefore applied only when
+    // the raw value is NOT a plausible date on its own.
+    if (!SystemDateFrom(raw, year, month, day))
+        ok = SystemDateFrom(raw + kXbox360EpochOffset, year, month, day);
+    else
+        ok = true;
 #else
     ok = SystemDateFrom(raw, year, month, day);
 #endif
     static bool reported = false;
     if (!reported) {
         reported = true;
-        if (ok) printf("[sysdate] %04d-%02d-%02d\n", year, month, day);
+        if (ok) printf("[sysdate] %04d-%02d-%02d (raw clock %d)\n",
+                      year, month, day, (int)raw);
         else     printf("[sysdate] unavailable (raw clock value %d)\n", (int)raw);
     }
     return ok;

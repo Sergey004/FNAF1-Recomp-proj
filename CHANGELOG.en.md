@@ -3,6 +3,17 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+---
+
+## v2.75 — F2: the first screen (static + "IT'S ME") and the uninitialised hour
+
+- **F2 dream (frame 13): the static was inverted.** The port used the object's COEFFICIENT as the alpha (250/225/100 -> nearly opaque), so the whole cutscene was a wall of noise and the room was invisible. In CFT the coefficient is INVERTED: alpha = (255 - c)/255 — the same rule the F1 title, the F3 title and SL already use, and F1 is user-verified. The dump: "Active 3" (imgs 361/357/363 @ 30 fps), coefficient 250 when alterable <= 6, 225+Random(50) at 7/8/9, 100+Random(100) at 10; alterable[0] is re-rolled every 100 ms. A comma in an expression is a SUM (as in F1: "50, Random(100)" = 50+R(100)).
+- **F2 dream: the FREDDY MASK was missing.** Frame 13 has a "mask" object (layer 1, instance (-74,-50), 1200x900, img 619) — the huge dark Freddy silhouette with the two glowing eyes that IS the dream's signature image; the port never drew it. The figures now animate per the dump: anim 0 = [609,615,592] and [614,613,617] @ 30 fps (one static cell before). The "pan" objects (589/607/620/621) are solid-pink placeholders (invisible in the original) and are not drawn.
+- **F2 "error" (frames 14/15): "IT'S ME" was stretched ~5x.** In the dump it is a small white text strip: img 628 = 105x19 @ (20,16), img 630 = 43x13 @ (30,12). The port drew them at 512x384. Checked against the dump's own composite (FrameReplay frame_14_error.png) — it now matches.
+- **F2: img 20 is no longer stretched over the whole screen.** It is a 31x25 noise tile (the dump's "Active 2" @ (710,545) in the camera view); the port drew it over the whole 1024x768 frame (x33 — a grey haze across the feed). The tile now sits where the dump puts it, and the "a character moved in the watched room" burst is drawn with the dump's own static object (332/334/328-331).
+- **F2: the hour was uninitialised.** `m_timeOfNight` was only set in `InitNightState`, so any frame that renders the office outside a night showed stack garbage in the HUD (the harness log read "1876135664 AM"). `ResetToTitle` now sets 12 AM and a zeroed hour counter (the dump: group 486 sets the hour to 12 at frame start).
+- **The date: the 360 epoch is no longer applied blindly.** The 360 clock counts from 2005-11-22, but if the raw `time()` value already reads as a plausible date, this CRT counts from the Unix epoch and the offset (~35 years) would push the date forward and break every date event. The offset is now added only when the raw value does NOT look like a date; the log prints `[sysdate] YYYY-MM-DD (raw clock N)`.
+
 
 ---
 
