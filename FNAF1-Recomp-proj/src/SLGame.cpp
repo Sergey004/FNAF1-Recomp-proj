@@ -205,8 +205,11 @@ void SLGame::Tick(f32 dt, const SLInputs& in) {
         default:
             // the wave-2 screens (scooping chain, extras, custom night, the
             // 8-bit game, the keypad) hold with A -> title (labeled)
+            // v2.77: the skip is A (as the comment always said) — B was the
+            // dump's Escape and the core took it for the boot selector, so
+            // the cutscene could not be skipped at all.
             m_cardT += dt;
-            if (in.bPressed || m_cardT >= 12.0f) {
+            if (in.aPressed || m_cardT >= 12.0f) {
                 m_cardT = 0.0f;
                 // v2.74: the first-launch "Night 4" cutscene (frame 16) ends
                 // in Baby's Room (the dump's frame 6 "fade out" jump), not

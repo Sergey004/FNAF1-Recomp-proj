@@ -50,6 +50,12 @@ public:
     // the office/monitor, full-screen.
     void DrawAttack(const FNaF2Game& game);
 
+    // v2.76: the frame transition overlay (the dump's black STDT/FADE).
+    // The module calls it LAST, after the screen's own render, so the fade
+    // covers everything — and OUTSIDE the perspective capture, or the
+    // panorama parabola would bend it.
+    void DrawFade(f32 alpha);
+
     // ---- v2.62: the rest of the dump's frame flow + the minigames ----
     void RenderAd();                             // frame 8: the newspaper
     void RenderCard(const FNaF2Game& game);      // frame 2: the night card

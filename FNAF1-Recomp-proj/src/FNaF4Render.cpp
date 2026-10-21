@@ -485,6 +485,16 @@ void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
     if (cs.done) Draw(976, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
 }
 
+// v2.76: the frame transition overlay — a black fullscreen quad (the dump's
+// STDT/FADE). The module calls it LAST, after the screen's own render, so
+// the fade covers everything.
+void FNaF4Render::DrawFade(f32 alpha) {
+    if (!m_batch || alpha <= 0.0f) return;
+    u32 a = (u32)(alpha * 255.0f);
+    if (a > 255u) a = 255u;
+    m_batch->DrawSolid(0.0f, 0.0f, 1280.0f, 720.0f, (a << 24));
+}
+
 void FNaF4Render::RenderEnding(const FNaF4Game& game) {
     // frame 13 "ending": the dump's set — the scanline backdrop (img 977),
     // the children sprites (1172 at (280,580), 1169 (780,540), 1170

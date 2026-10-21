@@ -14,12 +14,81 @@
 
 namespace fnaf {
 
+// ---- v2.76: the frame transitions of the F4 dump ----
+// Every fade is a black STDT/FADE overlay; the duration sits in the frame's
+// Transition chunk (raw ms). The F4 frames that carry one: f0 "Frame 17"
+// (1010/1010), f1 "titlescreen" (1130/1010), f2 "what night" (1130/—),
+// f5 "night win" (900/2000), f6 "intro to plushtrap" (1010/1010),
+// f7 "plushtrap game" (1010/—), f9 "lockbox" (2000/2000),
+// f12 "Cutscenes" (—/2030), f13 "ending" (2000/2000), f14 "test" (1010/1010),
+// f16 "demo" (2000/2000), f17 "intro to plushtrap" (1010/1010) and
+// f18 "BB game" (1010/—). The rest are hard cuts.
+// NOTE: in f6/f7/f17/f18 the dump's fade-IN chunk carries the fade-out flag
+// bit (flags=1) — the chunk id still says "fade in", and the flag's meaning
+// is unknown in the dump, so the duration is applied as a fade-in.
+// The full table for all five games: docs/FRAME_FADES.md.
+static int FadeOutMs(i32 screen) {
+    switch (screen) {
+        case FNaF4Game::SCR_DISCLAIMER: return 1010;   // frame 0  "Frame 17"
+        case FNaF4Game::SCR_TITLE:      return 1010;   // frame 1  "titlescreen"
+        case FNaF4Game::SCR_NIGHTWIN:   return 2000;   // frame 5  "night win"
+        case FNaF4Game::SCR_INTRO:      return 1010;   // frame 6  "intro to plushtrap"
+        case FNaF4Game::SCR_LOCKBOX:    return 2000;   // frame 9  "lockbox"
+        case FNaF4Game::SCR_CUTSCENE:   return 2030;   // frame 12 "Cutscenes"
+        case FNaF4Game::SCR_ENDING:     return 2000;   // frame 13 "ending"
+        case FNaF4Game::SCR_TEST:       return 1010;   // frame 14 "test"
+        default: return 0;
+    }
+}
+static int FadeInMs(i32 screen) {
+    switch (screen) {
+        case FNaF4Game::SCR_DISCLAIMER: return 1010;   // frame 0  "Frame 17"
+        case FNaF4Game::SCR_TITLE:      return 1130;   // frame 1  "titlescreen"
+        case FNaF4Game::SCR_NIGHTSTART: return 1130;   // frame 2  "what night"
+        case FNaF4Game::SCR_NIGHTWIN:   return 900;    // frame 5  "night win"
+        case FNaF4Game::SCR_INTRO:      return 1010;   // frame 6  "intro to plushtrap"
+        case FNaF4Game::SCR_PLUSH:      return 1010;   // frame 7  "plushtrap game"
+        case FNaF4Game::SCR_LOCKBOX:    return 2000;   // frame 9  "lockbox"
+        case FNaF4Game::SCR_ENDING:     return 2000;   // frame 13 "ending"
+        case FNaF4Game::SCR_TEST:       return 1010;   // frame 14 "test"
+        case FNaF4Game::SCR_BB:         return 1010;   // frame 18 "BB game"
+        default: return 0;
+    }
+}
+
+// v2.76: a screen change fades the current screen out, then switches and
+// fades the new screen in (CFT's "Jump to frame" semantics). The switch is
+// deferred while the fade-out runs; `pendingNight` starts that night when
+// the switch lands.
+void FNaF4Game::RequestScreen(i32 target, i32 pendingNight) {
+    // v2.76: only a PENDING screen change blocks a new request — a running
+    // fade-IN must NOT swallow the input (the frame is already live).
+    if (m_fade.Switching()) return;
+    const int out = FadeOutMs((i32)m_screen);
+    if (out > 0) {
+        m_fade.StartOut(target, (float)out / 1000.0f);
+        m_pendingNight = pendingNight;
+        return;                          // the switch happens at the end
+    }
+    m_screen = (Screen)target;           // hard cut
+    if (pendingNight > 0) {
+        m_night = pendingNight;
+        InitNightState();
+        m_cardT = 0.0f;
+    }
+    const int in = FadeInMs(target);
+    if (in > 0) m_fade.StartIn((float)in / 1000.0f);
+}
+
 FNaF4Game::FNaF4Game() {
     ResetToTitle();
 }
 
 void FNaF4Game::ResetToTitle() {
     m_screen = SCR_DISCLAIMER;
+    // v2.76: a fresh boot starts with no running transition
+    m_fade.Init();
+    m_pendingNight = -1;
     m_night = 1;
     m_hour = 0;
     m_hourClock = 0.0f;
@@ -59,10 +128,10 @@ void FNaF4Game::ResetToTitle() {
 }
 
 void FNaF4Game::StartNight(i32 night) {
-    m_night = night;
-    InitNightState();
-    m_screen = SCR_NIGHTSTART;
-    m_cardT = 0.0f;
+    // v2.76: the switch to the night card is deferred while the current
+    // screen fades out — the night's state and the card's dwell start WITH
+    // the card, not during the fade.
+    RequestScreen(SCR_NIGHTSTART, night);
 }
 
 void FNaF4Game::InitNightState() {
@@ -184,6 +253,26 @@ void FNaF4Game::TriggerJumpscare(i32 overlayImg) {
 void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
     m_time += dt;
 
+    // v2.76: the frame transition — the pending screen change lands when
+    // the current screen has finished fading out; the new screen then
+    // plays its own fade-in.
+    if (m_fade.Active()) {
+        const int done = m_fade.Tick(dt);
+        if (done >= 0) {
+            const i32 night = m_pendingNight;
+            m_pendingNight = -1;
+            m_screen = (Screen)done;
+            if (night > 0) {
+                m_night = night;
+                InitNightState();
+                m_cardT = 0.0f;
+            }
+            const int in = FadeInMs((i32)m_screen);
+            if (in > 0) m_fade.StartIn((float)in / 1000.0f);
+            else         m_fade.Clear();
+        }
+    }
+
     switch (m_screen) {
         case SCR_DISCLAIMER:
             m_cardT += dt;
@@ -210,14 +299,14 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
                         m_night = 1;
                         m_cut.Clear();
                         m_cut.scene = 0;
-                        m_screen = SCR_CUTSCENE;
+                        RequestScreen(SCR_CUTSCENE);
                         m_cardT = 0.0f;
                         Sfx("snd_Deep_Ambience_With_Sc", true, 1, 15);
                         break;
                     case 1:                                 // continue
                         m_cut.Clear();
                         m_cut.scene = m_scene;
-                        m_screen = SCR_CUTSCENE;
+                        RequestScreen(SCR_CUTSCENE);
                         m_cardT = 0.0f;
                         Sfx("snd_Deep_Ambience_With_Sc", true, 1, 15);
                         break;
@@ -226,7 +315,7 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
                         break;
                     case 3:
                         m_ex.Clear();
-                        m_screen = SCR_EXTRAS;
+                        RequestScreen(SCR_EXTRAS);
                         m_cardT = 0.0f;
                         Sfx("snd_Deep_Ambience_With_Sc", true, 1, 15);
                         break;
@@ -283,7 +372,7 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
         case SCR_TEST:
             m_cardT += dt;
             if (m_cardT >= 1.0f || in.aPressed || in.bPressed) {
-                m_screen = SCR_TITLE;
+                RequestScreen(SCR_TITLE);
                 m_cardT = 0.0f;
             }
             break;
@@ -291,7 +380,7 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
         case SCR_NJSCARE:
             m_goT += dt;
             if (m_goT >= 5.0f) {
-                m_screen = SCR_TITLE;      // V11 = slot 11 = the disclaimer slot
+                RequestScreen(SCR_TITLE);      // V11 = slot 11 = the disclaimer slot
                 m_goT = 0.0f;
             }
             break;
@@ -304,7 +393,7 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
             m_attackT = 0.0f;
             m_attackImg = 0;
             m_gameover = false;
-            m_screen = SCR_GAMEOVER;                    // V1 = slot 1 = game over
+            RequestScreen(SCR_GAMEOVER);                    // V1 = slot 1 = game over
             m_cardT = 0.0f;
         }
     }
@@ -326,7 +415,7 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
 void FNaF4Game::GoWhatNight(i32 night) {
     m_night = night < 1 ? 1 : (night > 8 ? 8 : night);
     m_lastNight = m_night > 6 ? 6 : m_night;
-    m_screen = SCR_NIGHTSTART;
+            RequestScreen(SCR_NIGHTSTART);
     m_cardT = 0.0f;
     Sfx("snd_ambience", true, 1, 10);
 }
@@ -337,7 +426,7 @@ void FNaF4Game::TickWhatNight(f32 dt, const FNaF4Inputs& in) {
     if (m_cardT >= 2.1f) {
         m_cardT = 0.0f;
         StartNight(m_night < 1 ? 1 : m_night);
-        m_screen = SCR_BEDROOM;
+        RequestScreen(SCR_BEDROOM);
     }
 }
 
@@ -407,20 +496,20 @@ void FNaF4Game::TickNightWin(f32 dt, const FNaF4Inputs& in) {
             // g12: -> Cutscenes (scene = the beaten night)
             m_cut.Clear();
             m_cut.scene = beaten <= 4 ? beaten : 4;
-            m_screen = SCR_CUTSCENE;
+            RequestScreen(SCR_CUTSCENE);
             Sfx("snd_Deep_Ambience_With_Sc", true, 1, 15);
         } else if (beaten == 6) {
-            m_screen = SCR_ENDING;                    // g20: the ending
+            RequestScreen(SCR_ENDING);                    // g20: the ending
             m_endT = 0.0f; m_endLine = 0; m_endLetterT = 0.0f; m_endLetters = 0;
         } else if (beaten == 7) {
             // g21: night 7 -> the Plushtrap game (the dump's challenge==1
             // variant goes to the game-over frame; the port has no separate
             // challenge flag). The old code jumped to the lockbox — that
             // frame is reached from fr7, not from fr5.
-            m_screen = SCR_PLUSH;
+            RequestScreen(SCR_PLUSH);
             m_cardT = 0.0f;
         } else {
-            m_screen = SCR_GAMEOVER;                  // g22/23: -> the game over
+            RequestScreen(SCR_GAMEOVER);                  // g22/23: -> the game over
             m_cardT = 0.0f;
         }
     }
@@ -435,7 +524,7 @@ void FNaF4Game::TickGameOver(f32 dt, const FNaF4Inputs& in) {
     m_cardT += dt;
     if (m_cardT >= 7.0f || in.aPressed) {
         m_cardT = 0.0f;
-        m_screen = SCR_TITLE;
+        RequestScreen(SCR_TITLE);
     }
 }
 
@@ -449,7 +538,7 @@ void FNaF4Game::TickGameOver2(f32 dt) {
         } else {
             // v2.74: the dump's fr8 group 4 jumps to value 10 = "extras"
             // (the lockbox is reached from fr7, not from here).
-            m_screen = SCR_EXTRAS;
+            RequestScreen(SCR_EXTRAS);
             m_cardT = 0.0f;
         }
     }
@@ -498,7 +587,7 @@ void FNaF4Game::TickMinigame(f32 dt, const FNaF4Inputs& in) {
     if (in.bPressed) {
         // the dump's Escape quits; the console abandons to the card/lockbox
         SfxStop("snd_crickets");
-        if (pt.fromExtras) { m_screen = SCR_LOCKBOX; m_lockT = 0.0f; }
+        if (pt.fromExtras) { RequestScreen(SCR_LOCKBOX); m_lockT = 0.0f; }
         else                 GoWhatNight(m_night);
         return;
     }
@@ -522,7 +611,7 @@ void FNaF4Game::TickMinigame(f32 dt, const FNaF4Inputs& in) {
         m_cardT += dt;
         if (m_cardT >= 1.5f) {
             SfxStop("snd_crickets");
-            m_screen = SCR_GAMEOVER2;                  // g49: -> game over 2
+            RequestScreen(SCR_GAMEOVER2);                  // g49: -> game over 2
             m_cardT = 0.0f;
         }
         return;
@@ -619,10 +708,10 @@ void FNaF4Game::TickMinigame(f32 dt, const FNaF4Inputs& in) {
         if (pt.winT >= 150.0f) {
             SfxStop("snd_crickets");
             if (pt.game == 0) {
-                if (pt.fromExtras) { m_screen = SCR_LOCKBOX; m_lockT = 0.0f; }
+                if (pt.fromExtras) { RequestScreen(SCR_LOCKBOX); m_lockT = 0.0f; }
                 else                 GoWhatNight(m_night);   // g51: V2
             } else {
-                m_screen = SCR_LOCKBOX;                // g51 BB: -> extras slot
+                RequestScreen(SCR_LOCKBOX);                // g51 BB: -> extras slot
                 m_lockT = 0.0f;
             }
         }
@@ -633,7 +722,7 @@ void FNaF4Game::TickMinigame(f32 dt, const FNaF4Inputs& in) {
 
 void FNaF4Game::TickLockbox(f32 dt, const FNaF4Inputs& in) {
     if (m_screen == SCR_LOADX) {                       // frame 11: instant
-        m_screen = SCR_LOCKBOX;
+        RequestScreen(SCR_LOCKBOX);
         m_lockT = 0.0f;
         Sfx("snd_Deep_Ambience_With_Sc", true, 2, 15);
         return;
@@ -647,7 +736,7 @@ void FNaF4Game::TickLockbox(f32 dt, const FNaF4Inputs& in) {
         SfxStop("snd_Deep_Ambience_With_Sc");
         // v2.74: the dump's lockbox ends at the GAME OVER frame (group 12),
         // not the title.
-        m_screen = SCR_GAMEOVER;
+        RequestScreen(SCR_GAMEOVER);
         m_cardT = 0.0f;
         return;
     }
@@ -663,7 +752,7 @@ void FNaF4Game::TickLockbox(f32 dt, const FNaF4Inputs& in) {
     // (20000 ms) ends the scene -> the game-over frame.
     if (m_lockT >= 20.0f) {                            // g10: the auto-end
         SfxStop("snd_Deep_Ambience_With_Sc");
-        m_screen = SCR_GAMEOVER;
+        RequestScreen(SCR_GAMEOVER);
         m_cardT = 0.0f;
     }
 }
@@ -682,7 +771,7 @@ void FNaF4Game::TickExtras(f32 dt, const FNaF4Inputs& in) {
     if (in.bPressed) {
         SfxStop("snd_Deep_Ambience_With_Sc");
         SfxStop("snd_scream2");
-        m_screen = SCR_TITLE;
+        RequestScreen(SCR_TITLE);
         return;
     }
     if (in.aPressed) {
@@ -690,7 +779,7 @@ void FNaF4Game::TickExtras(f32 dt, const FNaF4Inputs& in) {
             case 4:                                    // fun with plushtrap
                 m_minigamePlay = true;
                 m_pt.game = 0;
-                m_screen = SCR_INTRO;
+                RequestScreen(SCR_INTRO);
                 m_cardT = 0.0f;
                 break;
             case 5:                                    // the shadow nights
@@ -701,12 +790,12 @@ void FNaF4Game::TickExtras(f32 dt, const FNaF4Inputs& in) {
             case 8:                                    // fun with BB
                 m_minigamePlay = true;
                 m_pt.game = 1;
-                m_screen = SCR_INTRO;
+                RequestScreen(SCR_INTRO);
                 m_cardT = 0.0f;
                 break;
             case 9:                                    // exit
                 SfxStop("snd_Deep_Ambience_With_Sc");
-                m_screen = SCR_TITLE;
+                RequestScreen(SCR_TITLE);
                 break;
             case 3:                                    // the jumpscare player
                 Sfx((m_ex.pick % 4) < 3 ? "snd_scream2" : "snd_scream3",
@@ -870,10 +959,10 @@ void FNaF4Game::TickCutscene(f32 dt, const FNaF4Inputs& in) {
             } else if (cs.scene <= 4) {
                 m_minigamePlay = false;                // g190-193: V5
                 m_pt.game = 0;
-                m_screen = SCR_INTRO;                  // -> intro to plushtrap
+                RequestScreen(SCR_INTRO);                  // -> intro to plushtrap
                 m_cardT = 0.0f;
             } else {
-                m_screen = SCR_TITLE;                  // g194: -> title
+                RequestScreen(SCR_TITLE);                  // g194: -> title
             }
         }
     }
@@ -932,7 +1021,7 @@ void FNaF4Game::TickEnding(f32 dt, const FNaF4Inputs& in) {
     // frame (group 20), not the title.
     if (m_endT >= 30.0f || in.bPressed || m_endLine >= 8) {
         SfxStop("snd_Deep_Ambience_With_Sc");
-        m_screen = SCR_GAMEOVER;
+        RequestScreen(SCR_GAMEOVER);
         m_cardT = 0.0f;
     }
 }
@@ -1053,7 +1142,7 @@ void FNaF4Game::TickClock(f32 dt) {
         Sfx("snd_clockchime7", false, 3, 60);
         ApplyNightAI();
         if (m_hour >= 6) {                      // g385 -> the 5->6 AM screen
-            m_screen = SCR_NIGHTWIN;
+            RequestScreen(SCR_NIGHTWIN);
             m_cardT = 0.0f;
             Sfx("snd_alarmclock4", false, 2, 100);
         }

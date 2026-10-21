@@ -106,9 +106,22 @@ bool FNaF2Module::Load(AppServices& services) {
     // v2.62: load the dump's own save ("freddy2") into the session
     // v2.74: the apply runs even WITHOUT a save — the date-based "term"
     // flag must be written into the INI on the very first launch too.
+    // v2.76: the dump's boot routing is "cine == 0 -> the DREAM intro
+    // (frame 13), else the title". In the ORIGINAL the INI is only written
+    // AFTER that intro (the "it's me" screen, frame 14, stores cine = 1),
+    // so a save that EXISTS means the intro was already seen and the boot
+    // goes to the menu. A save with cine == 0 can only come from a build
+    // that had no "it's me" screen at all (the port before v2.74) — treating
+    // it as "intro seen" restores the original's observable behaviour and
+    // stops the 33 s input-less intro from repeating on every launch.
     Progress::PrimeStorage();
     Progress::GameProgressF2 p2;
-    if (!Progress::LoadF2(p2)) Progress::ResetF2(p2);
+    const bool hadSave = Progress::LoadF2(p2);
+    if (!hadSave) {
+        Progress::ResetF2(p2);            // a fresh install: the intro
+    } else if (p2.cine < 1) {
+        p2.cine = 1;                      // an existing save: the menu
+    }
     m_game.ApplyProgressF2(p2);
     return true;
 }
@@ -285,6 +298,9 @@ void FNaF2Module::Render() {
         case FNaF2Game::SCR_ENDBARS:    m_render.RenderEndBars(); break;
         case FNaF2Game::SCR_RAREEXIT:   m_render.RenderEndBars(); break;
     }
+    // v2.76: the frame transition (the dump's black STDT/FADE) — LAST, so
+    // it covers the whole frame (and outside the perspective capture).
+    m_render.DrawFade(m_game.GetFadeAlpha());
 }
 // ============================================================
 //  FNaF3Module — v2.61: the FNAF3 night loop (FNaF3Game) + renderer.
@@ -436,6 +452,9 @@ void FNaF3Module::Render() {
         case FNaF3Game::SCR_MG:         m_render.RenderMinigame(m_game, m_time); break;
         case FNaF3Game::SCR_EXTRAS:     m_render.RenderExtras(m_game, m_time); break;
     }
+    // v2.76: the frame transition (the dump's black STDT/FADE) — LAST, so
+    // it covers the whole frame (and outside the perspective capture).
+    m_render.DrawFade(m_game.GetFadeAlpha());
 }
 
 // ============================================================
@@ -574,6 +593,9 @@ void FNaF4Module::Render() {
         case FNaF4Game::SCR_TEST:       m_render.RenderTest(); break;
         case FNaF4Game::SCR_NJSCARE:    m_render.RenderNJScare(); break;
     }
+    // v2.76: the frame transition (the dump's black STDT/FADE) — LAST, so
+    // it covers the whole frame.
+    m_render.DrawFade(m_game.GetFadeAlpha());
 }
 
 // ============================================================

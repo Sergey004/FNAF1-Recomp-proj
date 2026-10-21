@@ -602,9 +602,13 @@ void GameRender::DrawInstance(int imgHandle, float ix, float iy, u32 color, bool
 // edges. HUD/bezel/static/flash (layers 2/3) draw flat AFTER the panorama.
 // ------------------------------------------------------------
 
-// Tinted solid rectangle: img 23 is a fully white 1280x720 pak frame.
+// Tinted solid rectangle. v2.76: this used to be img 23 (a fully white
+// 1280x720 F1 pak frame) — but the fades must work in EVERY game, and in
+// module mode the pak belongs to the active game, not to F1. The engine
+// now has a pak-independent solid quad (SpriteBatch::DrawSolid).
 void GameRender::DrawSolidRect(float x, float y, float w, float h, u32 color) {
-    DrawFrame(IMG_BLIP_FULLWHITE, x, y, w, h, color);
+    if (!m_batch) return;
+    m_batch->DrawSolid(x, y, w, h, color);
 }
 
 void GameRender::StaticFrame(char out[32]) {

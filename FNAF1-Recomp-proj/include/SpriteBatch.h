@@ -63,6 +63,14 @@ public:
                    float u0, float v0, float u1, float v1,
                    u32 color);
 
+    // v2.76: a texture-less SOLID rectangle in screen space (the colour is
+    // used verbatim: the PS is tex2D(white) * colour = colour). The frame
+    // fades (CFT's STDT/FADE) are black overlays that must not depend on
+    // any pak asset — F1's fade used to borrow img_23, which only exists in
+    // the F1 pak. Colour is 0xAARRGGBB (alpha in the top byte, NOT
+    // premultiplied), so black at alpha a is (a<<24).
+    void DrawSolid(float x, float y, float w, float h, u32 argb);
+
     // General-purpose explicit triangle list in screen space (same vertex
     // layout as the quad path); one DrawPrimitiveUP for a whole mesh.
     // Flushes any queued quads first, so paint order stays exact.
@@ -108,6 +116,7 @@ private:
     void* m_panTex;                   // D3DTexture*     (resolve destination, sampleable)
     void* m_panPS;                    // D3DPixelShader* (parabola panorama)
     void* m_backRT;                   // D3DSurface*     (saved back-buffer RT0)
+    void* m_whiteTex;                 // D3DTexture*     (1x1 opaque white, v2.76)
     bool  m_panReady;
     PerspGeom m_perspGeom;   // v2.66: per-game perspective geometry
     bool  m_ready;

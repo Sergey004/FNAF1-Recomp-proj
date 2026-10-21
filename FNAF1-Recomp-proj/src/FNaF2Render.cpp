@@ -561,6 +561,16 @@ void FNaF2Render::RenderNextDay(const FNaF2Game& game) {
     Draw(kRoll[fi], 415.0f, 363.0f, 57.0f, 86.0f, 0xFFFFFFFF);
 }
 
+// v2.76: the frame transition overlay — a black fullscreen quad (the dump's
+// STDT/FADE). Drawn by the module AFTER the screen, outside the perspective
+// capture, so it covers the whole frame flat.
+void FNaF2Render::DrawFade(f32 alpha) {
+    if (!m_batch || alpha <= 0.0f) return;
+    u32 a = (u32)(alpha * 255.0f);
+    if (a > 255u) a = 255u;
+    m_batch->DrawSolid(0.0f, 0.0f, 1280.0f, 720.0f, (a << 24));
+}
+
 void FNaF2Render::RenderDream(const FNaF2Game& game, f32 time) {
     // frame 13: the 2500x768 panning room (616), the slumped pair
     // (609 Bonnie @243 / 614 Chica @2348), the night props, the static

@@ -300,6 +300,31 @@ bool SpriteBatch::Init(void* device)
         m_panTex = tex;
     }
 
+    // --- v2.76: the 1x1 opaque WHITE texture for DrawSolid() ---
+    // The frame fades (CFT's STDT/FADE) are black overlays; they must not
+    // depend on a pak asset (F1's fade used to borrow img_23, which only
+    // exists in the F1 pak — in module mode that is somebody else's image).
+    // The sprite PS is tex2D(tex0,uv) * colour, so a 1x1 white texel makes
+    // the result exactly the requested colour.
+    {
+        IDirect3DTexture9* tex = 0;
+        HRESULT ht = dev->CreateTexture(1, 1, 1, 0, D3DFMT_A8R8G8B8,
+                                       (D3DPOOL)0, &tex, NULL);
+        if (FAILED(ht) || !tex) {
+            _snprintf(m_initError, sizeof(m_initError) - 1,
+                      "Solid-rect texture failed (hr=0x%08X)", (unsigned)ht);
+            m_initError[sizeof(m_initError) - 1] = '\0';
+            return false;
+        }
+        D3DLOCKED_RECT lr;
+        if (SUCCEEDED(tex->LockRect(0, &lr, NULL, 0))) {
+            DWORD* px = (DWORD*)lr.pBits;
+            px[0] = 0xFFFFFFFF;               // opaque white
+            tex->UnlockRect(0);
+        }
+        m_whiteTex = tex;
+    }
+
     m_panReady = true;
     m_ready = true;
     return true;
@@ -313,6 +338,7 @@ void SpriteBatch::Shutdown()
     if (m_vertexDecl)   { ((IDirect3DVertexDeclaration9*)m_vertexDecl)->Release(); m_vertexDecl = 0; }
     if (m_panRT)        { ((IDirect3DSurface9*)m_panRT)->Release();  m_panRT = 0; }
     if (m_panTex)       { ((IDirect3DTexture9*)m_panTex)->Release(); m_panTex = 0; }
+    if (m_whiteTex)     { ((IDirect3DTexture9*)m_whiteTex)->Release(); m_whiteTex = 0; }
     if (m_backRT)       { ((IDirect3DSurface9*)m_backRT)->Release(); m_backRT = 0; }
     if (m_vertices)     { delete[] (SpriteVertex*)m_vertices; m_vertices = 0; }
     m_device = 0;
@@ -351,6 +377,16 @@ void SpriteBatch::Draw(void* tex, float x, float y, float w, float h,
 void SpriteBatch::Draw(void* tex, float x, float y, float w, float h, u32 color)
 {
     Draw(tex, x, y, w, h, 0.0f, 0.0f, 1.0f, 1.0f, color);
+}
+
+// v2.76: a solid rectangle that needs no pak asset. The sprite PS is
+// tex2D(tex0,uv) * colour, so with the 1x1 opaque white texture the
+// result is exactly the requested colour (0xAARRGGBB, alpha in the top
+// byte, SRCALPHA/INVSRCALPHA — not premultiplied).
+void SpriteBatch::DrawSolid(float x, float y, float w, float h, u32 argb)
+{
+    if (!m_ready || !m_whiteTex) return;
+    Draw(m_whiteTex, x, y, w, h, 0.0f, 0.0f, 1.0f, 1.0f, argb);
 }
 
 // General-purpose full-mesh primitive: one DrawPrimitiveUP for an explicit

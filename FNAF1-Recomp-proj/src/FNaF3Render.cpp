@@ -347,6 +347,16 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
 // — caught on the user's capture). The Perspective warp touches only the
 // office layer, so the HUD draws after it, unwarped.
 // Glyph strip [318,195,247..316] = 15x22 (alphabet 0-9-+.e).
+// v2.76: the frame transition overlay — a black fullscreen quad (the dump's
+// STDT/FADE). The module calls it LAST, after the screen's own render and
+// outside the perspective capture, so it covers the whole frame flat.
+void FNaF3Render::DrawFade(f32 alpha) {
+    if (!m_batch || alpha <= 0.0f) return;
+    u32 a = (u32)(alpha * 255.0f);
+    if (a > 255u) a = 255u;
+    m_batch->DrawSolid(0.0f, 0.0f, 1280.0f, 720.0f, (a << 24));
+}
+
 void FNaF3Render::DrawHud(const FNaF3Game& game) {
     if (!m_batch || !m_pak) return;
     static const int kHud[14] = { 318, 195, 247, 248, 249, 250, 306,

@@ -26,6 +26,62 @@ static const i32 kTimeAllowed[8] = { 100, 100, 80, 60, 55, 50, 50, 45 };
 
 static i32 NightIdx(i32 night) { return (night < 1) ? 1 : (night > 7 ? 7 : night); }
 
+// ---- v2.76: the frame transitions of the F2 dump ----
+// Every fade in the dump is a black STDT/FADE overlay; the duration sits in
+// the frame's Transition chunk (raw milliseconds). Only six F2 frames carry
+// one: f0 "Frame 17" (out 1010), f2 "what day" (out 1010), f5 "next day"
+// (in 1010 / out 900), f8 "ad" (2000/2000), f9/f10/f11 "the end*" (2000/2000)
+// and f26 "demo end" (1010/1010). Everything else is a hard cut.
+// The full table for all five games: docs/FRAME_FADES.md.
+static int FadeOutMs(i32 screen) {
+    switch (screen) {
+        case FNaF2Game::SCR_DISCLAIMER: return 1010;   // frame 0  "Frame 17"
+        case FNaF2Game::SCR_NIGHTSTART: return 1010;   // frame 2  "what day"
+        case FNaF2Game::SCR_NEXTDAY:    return 900;    // frame 5  "next day"
+        case FNaF2Game::SCR_AD:         return 2000;   // frame 8  "ad"
+        case FNaF2Game::SCR_END5:       return 2000;   // frame 9  "the end"
+        case FNaF2Game::SCR_END6:       return 2000;   // frame 10 "the end 2"
+        case FNaF2Game::SCR_END7:       return 2000;   // frame 11 "the end 3"
+        default: return 0;               // title / office / dream / card: hard cut
+    }
+}
+static int FadeInMs(i32 screen) {
+    switch (screen) {
+        case FNaF2Game::SCR_NEXTDAY:    return 1010;   // frame 5  "next day"
+        case FNaF2Game::SCR_AD:         return 2000;   // frame 8  "ad"
+        case FNaF2Game::SCR_END5:       return 2000;   // frame 9  "the end"
+        case FNaF2Game::SCR_END6:       return 2000;   // frame 10 "the end 2"
+        case FNaF2Game::SCR_END7:       return 2000;   // frame 11 "the end 3"
+        default: return 0;
+    }
+}
+
+// v2.76: a screen change fades the current screen out, then switches and
+// fades the new screen in (CFT's "Jump to frame" semantics). The switch is
+// deferred while the fade-out runs; `pendingNight` starts that night when
+// the switch lands (so the night card's dwell starts with the card).
+void FNaF2Game::RequestScreen(i32 target, i32 pendingNight) {
+    // v2.76: only a PENDING screen change blocks a new request. A running
+    // fade-IN must NOT swallow the input: the new frame is already live
+    // (CFT runs the frame's events during its fade-in), and dropping the
+    // request here is what made "A" do nothing for the whole fade.
+    if (m_fade.Switching()) return;
+    const int out = FadeOutMs((i32)m_screen);
+    if (out > 0) {
+        m_fade.StartOut(target, (float)out / 1000.0f);
+        m_pendingNight = pendingNight;
+        return;                          // the switch happens at the end
+    }
+    m_screen = (Screen)target;           // hard cut
+    if (pendingNight > 0) {
+        m_night = pendingNight;
+        m_cardT = 0.0f;
+        InitNightState();
+    }
+    const int in = FadeInMs(target);
+    if (in > 0) m_fade.StartIn((float)in / 1000.0f);
+}
+
 FNaF2Game::FNaF2Game() { ResetToTitle(); }
 
 void FNaF2Game::Sfx(const char* s, bool loop, i32 ch, i32 vol) {
@@ -36,6 +92,10 @@ void FNaF2Game::ChVol(i32 ch, i32 vol) { if (audio.channelVolume) audio.channelV
 
 void FNaF2Game::ResetToTitle() {
     m_screen = SCR_DISCLAIMER;
+    // v2.76: a fresh boot starts with no running transition (frame 0 has no
+    // fade-in in the dump — only a 1010 ms fade-OUT when it leaves)
+    m_fade.Init();
+    m_pendingNight = -1;
     m_cardT = 0.0f;
     m_night = 1;
     m_time = 0.0f;
@@ -190,10 +250,10 @@ void FNaF2Game::InitNightState() {
 }
 
 void FNaF2Game::StartNight(i32 night) {
-    m_night = night;
-    m_screen = SCR_NIGHTSTART;
-    m_cardT = 0.0f;
-    InitNightState();
+    // v2.76: the switch to the night card is deferred while the current
+    // screen fades out (the dump's per-frame STDT/FADE) — the night's state
+    // and the card's dwell start WITH the card, not during the fade.
+    RequestScreen(SCR_NIGHTSTART, night);
 }
 
 void FNaF2Game::ResetNightInPlace() {
@@ -951,7 +1011,7 @@ void FNaF2Game::TickOffice(f32 dt, const FNaF2Inputs& in) {
     if (m_scareT >= 0.0f) {
         m_scareT += dt;
         if (m_scareT >= 0.75f) {
-            m_screen = SCR_GAMEOVER;
+            RequestScreen(SCR_GAMEOVER);
             m_cardT = 0.0f;
             m_scareT = -1.0f;
             m_attacker = 0;
@@ -972,7 +1032,7 @@ void FNaF2Game::TickOffice(f32 dt, const FNaF2Inputs& in) {
         if (m_timeOfNight == 6) {
             // frame 4 "static" (the stare loop; the save happens on the
             // next-day screen per the dump's own order)
-            m_screen = SCR_STATIC;
+            RequestScreen(SCR_STATIC);
             m_cardT = 0.0f;
         }
     }
@@ -980,6 +1040,27 @@ void FNaF2Game::TickOffice(f32 dt, const FNaF2Inputs& in) {
 
 void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
     m_time += dt;
+
+    // v2.76: the frame transition. While the current screen fades out the
+    // switch waits; when the fade-out ends the new screen appears and its
+    // own fade-in runs (CFT plays the old frame's fade-out first, then
+    // loads the new frame and plays ITS fade-in).
+    if (m_fade.Active()) {
+        const int done = m_fade.Tick(dt);
+        if (done >= 0) {
+            const i32 night = m_pendingNight;
+            m_pendingNight = -1;
+            m_screen = (Screen)done;
+            if (night > 0) {
+                m_night = night;
+                m_cardT = 0.0f;
+                InitNightState();
+            }
+            const int in = FadeInMs((i32)m_screen);
+            if (in > 0) m_fade.StartIn((float)in / 1000.0f);
+            else         m_fade.Clear();
+        }
+    }
 
     switch (m_screen) {
         case SCR_DISCLAIMER:
@@ -1005,9 +1086,9 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             }
             if (m_cardT >= 2.0f || in.aPressed) {
                 m_cardT = 0.0f;
-                if (m_cine == 0)              m_screen = SCR_DREAM;   // fresh save
-                else if (m_bootRare == 1)     m_screen = SCR_RARE1;   // the 1/1000
-                else                          m_screen = SCR_TITLE;
+                if (m_cine == 0)              RequestScreen(SCR_DREAM);   // fresh save
+                else if (m_bootRare == 1)     RequestScreen(SCR_RARE1);   // the 1/1000
+                else                          RequestScreen(SCR_TITLE);
             }
             // the dump's group 8: Escape at the splash ends the application
             if (in.bPressed) m_exitRequested = true;
@@ -1029,7 +1110,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
                         // newspaper -> the card
                         m_night = 1;
                         m_doingCustom = 0;
-                        m_screen = SCR_AD;
+                        RequestScreen(SCR_AD);
                         m_cardT = 0.0f;
                         break;
                     case 1: StartNight(m_lastNight < 1 ? 1 :
@@ -1038,7 +1119,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
                     case 3:
                         // the custom night goes through the customize screen
                         // (dump frame 12: READY -> night number = 7 -> card)
-                        m_screen = SCR_CUSTOMIZE;
+                        RequestScreen(SCR_CUSTOMIZE);
                         m_cardT = 0.0f;
                         m_scratchT = 0.0f;
                         break;
@@ -1069,8 +1150,8 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             }
             m_cardT += dt;
             if (m_cardT >= 2.6f) {
-                if (m_rareRoll == 1) { m_screen = SCR_RARE3; m_scratchT = 0.0f; }
-                else { m_screen = SCR_OFFICE; m_cardT = 0.0f; }
+                if (m_rareRoll == 1) { RequestScreen(SCR_RARE3); m_scratchT = 0.0f; }
+                else { RequestScreen(SCR_OFFICE); m_cardT = 0.0f; }
             }
             break;
         }
@@ -1090,7 +1171,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             m_cardT += dt;
             if (m_cardT >= 5.0f) {
                 SfxStop("snd_stare");
-                if (m_rareRoll == 1) { m_screen = SCR_RAREEXIT; m_scratchT = 0.0f; }
+                if (m_rareRoll == 1) { RequestScreen(SCR_RAREEXIT); m_scratchT = 0.0f; }
                 else {
                     // frame 5 group 1: night number += 1 THEN save
                     m_nightNext = m_night + 1;
@@ -1099,7 +1180,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
                     // must resume the CURRENT night, not the boot one.
                     m_levelSave = m_nightNext;
                     m_lastNight = m_nightNext;
-                    m_screen = SCR_NEXTDAY;
+                    RequestScreen(SCR_NEXTDAY);
                     m_cardT = 0.0f;
                     m_scratchT = 0.0f;
                     // the save writes (dump g1: level = night number, cine = 1;
@@ -1141,14 +1222,14 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
                 SfxStop("snd_Clocks_Chimes_Cl_02480702");
                 if (m_nightNext == 2) StartNight(2);
                 else if (m_nightNext >= 3 && m_nightNext <= 5) {
-                    m_screen = SCR_DREAM;
+                    RequestScreen(SCR_DREAM);
                     m_scratchT = 0.0f; m_cardT = 0.0f;
                     m_dreamPan = 738.0f;   // the follow-screen anchor start
                     m_blackout = 0.0f;
                 }
-                else if (m_nightNext == 6) { m_nightNext = 5; m_screen = SCR_END5; m_cardT = 0.0f; m_beat5 = true; m_saveDirty = true; }
-                else if (m_nightNext == 7) { m_nightNext = 5; m_screen = SCR_END6; m_cardT = 0.0f; m_saveDirty = true; }
-                else                       { m_nightNext = 5; m_screen = SCR_END7; m_cardT = 0.0f; m_saveDirty = true; }
+                else if (m_nightNext == 6) { m_nightNext = 5; RequestScreen(SCR_END5); m_cardT = 0.0f; m_beat5 = true; m_saveDirty = true; }
+                else if (m_nightNext == 7) { m_nightNext = 5; RequestScreen(SCR_END6); m_cardT = 0.0f; m_saveDirty = true; }
+                else                       { m_nightNext = 5; RequestScreen(SCR_END7); m_cardT = 0.0f; m_saveDirty = true; }
             }
             break;
         }
@@ -1169,7 +1250,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
         case SCR_ERROR2:
             // dump frame 15: 3 s -> the title (one-shot 3000 ms)
             m_cardT += dt;
-            if (m_cardT >= 3.0f) { m_screen = SCR_TITLE; m_cardT = 0.0f; }
+            if (m_cardT >= 3.0f) { RequestScreen(SCR_TITLE); m_cardT = 0.0f; }
             break;
 
         case SCR_END5:
@@ -1186,7 +1267,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             const bool click = (m_screen == SCR_END7) && in.aPressed;
             if (m_cardT >= 15.0f || in.bPressed || click) {
                 SfxStop("snd_musicbox2");
-                m_screen = SCR_TITLE;
+                RequestScreen(SCR_TITLE);
                 m_cardT = 0.0f;
                 m_optionCount = 2 + (m_beat5 ? 1 : 0) + (m_beat6 ? 1 : 0);
                 m_optionSelected = 0;
@@ -1206,7 +1287,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             m_cardT += dt;
             if (m_cardT >= 10.0f || in.aPressed || in.bPressed) {
                 SfxStop("snd_popstatic");
-                m_screen = SCR_TITLE; m_cardT = 0.0f;
+                RequestScreen(SCR_TITLE); m_cardT = 0.0f;
             }
             break;
 
@@ -1218,7 +1299,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             if (m_cardT >= 10.0f || in.aPressed || in.bPressed) {
                 SfxStop("snd_popstatic");
                 m_cardT = 0.0f;              // re-enter the card (fresh roll)
-                m_screen = SCR_NIGHTSTART;
+                RequestScreen(SCR_NIGHTSTART);
             }
             break;
 
@@ -1231,7 +1312,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             m_cardT += dt;
             if (m_cardT >= 10.0f || in.aPressed || in.bPressed) {
                 if (m_rareRoll == 1) StartMinigame(1);
-                else { m_screen = SCR_TITLE; m_cardT = 0.0f; }
+                else { RequestScreen(SCR_TITLE); m_cardT = 0.0f; }
             }
             break;
 
@@ -1261,7 +1342,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
                     case 2: StartMinigame(2); break;   // TAKE CAKE
                     case 3: StartMinigame(3); break;   // GIVE GIFTS
                     case 5: StartMinigame(4); break;   // Foxy's party
-                    default: m_screen = SCR_ENDBARS; m_cardT = 0.0f; break;
+                    default: RequestScreen(SCR_ENDBARS); m_cardT = 0.0f; break;
                 }
             }
             break;
@@ -1274,7 +1355,7 @@ void FNaF2Game::Tick(f32 dt, const FNaF2Inputs& in) {
             // dump frame 20: staticend2, 2 s -> title
             if (m_cardT == 0.0f) Sfx("snd_staticend2", false, 1, 50);
             m_cardT += dt;
-            if (m_cardT >= 2.0f) { m_screen = SCR_TITLE; m_cardT = 0.0f; }
+            if (m_cardT >= 2.0f) { RequestScreen(SCR_TITLE); m_cardT = 0.0f; }
             break;
 
         case SCR_RAREEXIT:
@@ -1313,6 +1394,21 @@ void FNaF2Game::TickDream(f32 dt, const FNaF2Inputs& in) {
     }
     m_cardT += dt;
     m_scratchT += dt;
+
+    // v2.77 (DEVIATION, the user's "no control" report): the dump's dream
+    // has NO skip at all — only Escape quits the app, so the original locks
+    // the player out of a 33 s cutscene (and it plays between nights 3-5
+    // too, where it is pure dead time). The port lets A skip it, landing
+    // exactly where the dump's 33 s exit lands (the "it's me" / "err"
+    // screen). The 0.5 s guard keeps the A that entered the dream from
+    // skipping it instantly.
+    if (in.aPressed && m_scratchT > 0.5f) {
+        SfxStop("snd_Scary_Space_B"); SfxStop("snd_ambience2"); SfxStop("snd_machineturn2");
+        m_scratchT = 0.0f;
+        m_cardT = 0.0f;
+        RequestScreen(m_cine == 0 ? SCR_ERROR : SCR_ERROR2);
+        return;
+    }
 
     // the pan (dump groups 3-7: +-4/tick while Left/Right held)
     {
@@ -1429,7 +1525,7 @@ void FNaF2Game::TickCustomize(f32 dt, const FNaF2Inputs& in) {
 
     // READY (dump group 2): night number = 7 -> the card
     if (in.aPressed) StartNight(7);
-    if (in.bPressed) { m_screen = SCR_TITLE; m_cardT = 0.0f; }   // Escape mirror
+    if (in.bPressed) { RequestScreen(SCR_TITLE); m_cardT = 0.0f; }   // Escape mirror
 }
 
 // ------------------------------------------------------------
@@ -1441,7 +1537,7 @@ void FNaF2Game::StartMinigame(i32 which) {
     m_mg.game = which;
     switch (which) {
         case 1: {   // frame 19 SAVETHEM: the spawn table (dump groups 77/82-84)
-            m_screen = SCR_EIGHTBIT;
+            RequestScreen(SCR_EIGHTBIT);
             m_mg.spawnPick = 1 + (rand() % 4);
             // v2.62 slot 9: the 8-bit chain discovered (the 1/1000 death roll)
             if (audio.unlockAch) audio.unlockAch(9);
@@ -1456,16 +1552,16 @@ void FNaF2Game::StartMinigame(i32 which) {
             break;
         }
         case 2:     // frame 23 TAKE CAKE
-            m_screen = SCR_MG1;
+            RequestScreen(SCR_MG1);
             m_mg.px = 533; m_mg.py = 459; m_mg.facing = 2;
             for (i32 i = 0; i < 6; ++i) m_mg.kidSad[i] = rand() % 10;
             break;
         case 3:     // frame 24 GIVE GIFTS
-            m_screen = SCR_MG2;
+            RequestScreen(SCR_MG2);
             m_mg.px = 519; m_mg.py = 461; m_mg.facing = 2;
             break;
         case 4:     // frame 25 FOXY'S PARTY
-            m_screen = SCR_MG3;
+            RequestScreen(SCR_MG3);
             m_mg.px = 530; m_mg.py = 277; m_mg.facing = 1;
             break;
     }
@@ -1667,13 +1763,13 @@ void FNaF2Game::TickEightBit(f32 dt, const FNaF2Inputs& in) {
         FNaF2MgTouch((f32)m_mg.px, (f32)m_mg.py, m_mg.youCantX, m_mg.youCantY, 46.0f)) {
         // group 103: -> the load frame (the minigame rotation)
         SfxStop("snd_ComputerInteriorLong_EVL02_14");
-        m_screen = SCR_MGLOAD; m_cardT = 0.0f; return;
+        RequestScreen(SCR_MGLOAD); m_cardT = 0.0f; return;
     }
     if (m_mg.manOn &&
         FNaF2MgTouch((f32)m_mg.px, (f32)m_mg.py, m_mg.manX, m_mg.manY, 50.0f)) {
         // group 107: -> rare1 (the withered Foxy screen)
         SfxStop("snd_ComputerInteriorLong_EVL02_14");
-        m_screen = SCR_RARE2; m_cardT = 0.0f; return;
+        RequestScreen(SCR_RARE2); m_cardT = 0.0f; return;
     }
     if (m_mg.gfOn) {
         m_mg.gfT += dt;               // touching gf only plays his anim
@@ -1686,7 +1782,7 @@ void FNaF2Game::TickEightBit(f32 dt, const FNaF2Inputs& in) {
         m_mg.rollT = 0.0f;
         if ((rand() % 3) == 1) {
             SfxStop("snd_ComputerInteriorLong_EVL02_14");
-            m_screen = SCR_MGLOAD; m_cardT = 0.0f;
+            RequestScreen(SCR_MGLOAD); m_cardT = 0.0f;
         }
     }
 }
@@ -1771,7 +1867,7 @@ void FNaF2Game::TickMg1(f32 dt, const FNaF2Inputs& in) {
         m_mg.attackT += dt;
         if (m_mg.attackT >= 0.75f) {
             SfxStop("snd_staticend2");
-            m_screen = SCR_MGLOAD; m_cardT = 0.0f;
+            RequestScreen(SCR_MGLOAD); m_cardT = 0.0f;
         }
     }
 }
@@ -1847,7 +1943,7 @@ void FNaF2Game::TickMg2(f32 dt, const FNaF2Inputs& in) {
         m_mg.attackT += dt;
         if (m_mg.attackT >= 0.75f) {
             SfxStop("snd_staticend2");
-            m_screen = SCR_MGLOAD; m_cardT = 0.0f;
+            RequestScreen(SCR_MGLOAD); m_cardT = 0.0f;
         }
     }
 }
@@ -1902,7 +1998,7 @@ void FNaF2Game::TickMg3(f32 dt, const FNaF2Inputs& in) {
         m_mg.attackT += dt;
         if (m_mg.attackT >= 0.75f) {
             SfxStop("snd_staticend2");
-            m_screen = SCR_MGLOAD; m_cardT = 0.0f;
+            RequestScreen(SCR_MGLOAD); m_cardT = 0.0f;
         }
     }
 }

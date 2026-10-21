@@ -28,6 +28,10 @@ public:
     void RenderOffice(const FNaF3Game& game, f32 time);
     void RenderMonitor(const FNaF3Game& game, f32 time);
     void DrawAttack(const FNaF3Game& game);      // the office jumpscares
+
+    // v2.76: the frame transition overlay (the dump's black STDT/FADE) —
+    // drawn by the module LAST, outside the perspective capture.
+    void DrawFade(f32 alpha);
     void RenderPanel(const FNaF3Game& game);     // maintenance panel (also used
                                                  //  directly by the offline audit)
 

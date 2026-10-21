@@ -41,6 +41,10 @@ public:
     void RenderCutscene(const FNaF4Game& game);  // frame 12
     void RenderEnding(const FNaF4Game& game);    // frame 13
 
+    // v2.76: the frame transition overlay (the dump's black STDT/FADE) —
+    // drawn by the module LAST, outside any perspective capture.
+    void DrawFade(f32 alpha);
+
 private:
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);
     // v2.67: native-size draw from the pak cell + CNTR-strip counter digits

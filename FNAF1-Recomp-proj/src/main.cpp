@@ -20,6 +20,7 @@
 #include "Achievements.h" // v2.14: in-game achievements
 #include "SpriteBatch.h"
 #include "PakLoader.h"
+#include "ScreenFade.h"   // v2.76: the shared CFT frame-transition model
 #include "InputSystem.h"
 #include "GameRender.h"
 #include "AudioSystem.h"
@@ -352,42 +353,38 @@ static Achievements g_ach;      // v2.14: in-game achievements (auto-loaded at b
 static bool g_achScreen = false;
 
 // ---- v2.15 frame fade transitions (docs/FRAME_TRANSITIONS.md) ----
-// A black full-screen overlay whose alpha ramps 0..1 (fade-out) then 1..0
-// (fade-in), gated by per-state millisecond durations extracted from the
-// original's frame Transition blocks (STDT/FADE).
-struct ScreenFade {
-    int      phase;   // 0 = none, 1 = fade-out, 2 = fade-in
-    float    alpha;   // 0 clear .. 1 fully black
-    float    timer;   // seconds
-    float    dur;     // seconds
-    GameState target; // state to switch to after fade-out
-};
-static ScreenFade g_fade = { 0, 0.0f, 0.0f, 0.0f, GAME_STATE_MENU };
+// v2.76: the shared CFT transition model (include/ScreenFade.h) — a black
+// full-screen overlay whose alpha ramps 0..1 (fade-out) then 1..0 (fade-in),
+// gated by per-state millisecond durations taken from the original's frame
+// Transition blocks (STDT/FADE). The per-frame table of all five games and
+// the "our screen -> the dump's frame" mapping live in docs/FRAME_FADES.md.
+static fnaf::ScreenFade g_fade;
 static bool g_officeAmb = false;   // office ambience already started (edge guard)
 static bool g_menuAmb   = false;   // title ambience already started (edge guard)
 static bool g_nightBlip = false;   // "what day" card blip already played (edge guard)
 
 static int FadeOutMs(GameState s) {
     switch (s) {
-        case GAME_STATE_DISCLAIMER:     return 1010;
-        case GAME_STATE_NIGHT_START:    return 1010;
-        case GAME_STATE_NIGHT_COMPLETE: return 900;
-        case GAME_STATE_INTRO_AD:       return 2000;
+        case GAME_STATE_DISCLAIMER:     return 1010;   // frame 0 "Frame 17"
+        case GAME_STATE_NIGHT_START:    return 1010;   // frame 2 "what day"
+        case GAME_STATE_NIGHT_COMPLETE: return 900;    // frame 6 "next day"
+        case GAME_STATE_INTRO_AD:       return 2000;   // frame 10 "ad"
         default: return 0;   // title / office / power-out / jumpscare: hard cut
     }
 }
 static int FadeInMs(GameState s) {
     switch (s) {
-        case GAME_STATE_DISCLAIMER:     return 1010;
-        case GAME_STATE_NIGHT_COMPLETE: return 1010;
-        case GAME_STATE_GAME_OVER:      return 1010;
-        case GAME_STATE_INTRO_AD:       return 2000;
+        case GAME_STATE_DISCLAIMER:     return 1010;   // frame 0 "Frame 17"
+        case GAME_STATE_NIGHT_COMPLETE: return 1010;   // frame 6 "next day"
+        case GAME_STATE_GAME_OVER:      return 1010;   // frame 8 "gameover"
+        case GAME_STATE_INTRO_AD:       return 2000;   // frame 10 "ad"
+        case GAME_STATE_CUSTOMIZE:      return 560;    // frame 12 "customize"
         default: return 0;
     }
 }
 
 static void StartTransition(GameState& state, GameState to) {
-    if (g_fade.phase != 0) return;   // a transition is already running
+    if (g_fade.Active()) return;   // a transition is already running
     int out = FadeOutMs(state);
     int in  = FadeInMs(to);
     if (out <= 0 && in <= 0) {
@@ -395,52 +392,27 @@ static void StartTransition(GameState& state, GameState to) {
         return;
     }
     if (out > 0) {
-        g_fade.phase  = 1;
-        g_fade.alpha  = 0.0f;
-        g_fade.timer  = 0.0f;
-        g_fade.dur    = (float)out / 1000.0f;
-        g_fade.target = to;         // `state` does NOT change yet
+        g_fade.StartOut((int)to, (float)out / 1000.0f);
+        // `state` does NOT change yet — the switch happens when the
+        // fade-out completes (CFT keeps the old frame alive meanwhile)
     } else {
-        state         = to;         // no fade-out: switch now, then fade in
-        g_fade.phase  = 2;
-        g_fade.alpha  = 1.0f;
-        g_fade.timer  = 0.0f;
-        g_fade.dur    = (float)in / 1000.0f;
-        g_fade.target = to;
+        state = to;                 // no fade-out: switch now, then fade in
+        g_fade.StartIn((float)in / 1000.0f);
     }
 }
 
 static void TickFade(GameState& state, float dt) {
-    if (g_fade.phase == 0) return;
-    g_fade.timer += dt;
-    if (g_fade.phase == 1) {                 // fading out
-        if (g_fade.timer >= g_fade.dur) {
-            state = g_fade.target;
-            int in = FadeInMs(state);
-            if (in > 0) {
-                g_fade.phase = 2;
-                g_fade.alpha = 1.0f;
-                g_fade.timer = 0.0f;
-                g_fade.dur   = (float)in / 1000.0f;
-            } else {
-                g_fade.phase = 0;
-                g_fade.alpha = 0.0f;
-            }
-        } else {
-            g_fade.alpha = g_fade.timer / g_fade.dur;   // 0 -> 1
-        }
-    } else {                                 // fading in
-        if (g_fade.timer >= g_fade.dur) {
-            g_fade.phase = 0;
-            g_fade.alpha = 0.0f;
-        } else {
-            g_fade.alpha = 1.0f - g_fade.timer / g_fade.dur;  // 1 -> 0
-        }
+    const int done = g_fade.Tick(dt);
+    if (done >= 0) {                       // the fade-out just finished
+        state = (GameState)done;
+        const int in = FadeInMs(state);
+        if (in > 0) g_fade.StartIn((float)in / 1000.0f);
+        else         g_fade.Clear();
     }
 }
 
 static void DrawFadeOverlay() {
-    if (g_fade.alpha > 0.0f) g_render.DrawFade(g_fade.alpha);
+    if (g_fade.Alpha() > 0.0f) g_render.DrawFade(g_fade.Alpha());
 }
 
 // ---- v2.16 audio mixer channels (match the original "Speaker" channels) ----
@@ -1315,8 +1287,9 @@ int main(int argc, char* argv[]){
     // Boot: disclaimer first (original title-frame String obj 0 flow)
     GameState state = GAME_STATE_DISCLAIMER;
     // v2.15: boot fade-in for the disclaimer (1010 ms, FRAME_TRANSITIONS.md)
-    g_fade.phase = 2; g_fade.alpha = 1.0f; g_fade.timer = 0.0f; g_fade.dur = 1.010f;
-    if(cmdNight!=0){ game.Init(cmdNight); g_ach.BeginNight(cmdNight); state=GAME_STATE_NIGHT_START; g_fade.phase = 0; g_fade.alpha = 0.0f; }
+    g_fade.Init();
+    g_fade.StartIn(1.010f);
+    if(cmdNight!=0){ game.Init(cmdNight); g_ach.BeginNight(cmdNight); state=GAME_STATE_NIGHT_START; g_fade.Clear(); }
 
     i32 tickCount=0;
     static int menuFrameCounter = 0;
@@ -1367,8 +1340,21 @@ int main(int argc, char* argv[]){
             s_in = gi;
             s_svc.input = &s_in;
             m->Tick(1.0f / 60.0f);
-            if (gi.back) {
-                // v2.32: B = back to the boot selector (NOT a console kill):
+            // v2.77: B is the GAME's button again (the dump's Escape: the
+            // F2 "it's me" screen, the SL wave-2 screens, the F2/F3/F4
+            // Escape mirrors). Since v2.32 the core hijacked B to jump back
+            // to the boot selector, so in F2-SL the back button both acted
+            // inside the game AND threw the player out of it — the "no
+            // control" report. The selector return moves to START (the
+            // pause button), which none of the module games uses.
+            //
+            // v2.77: a module's "End application" request is honoured too —
+            // WantsExit() was declared but NEVER called, so the F2's
+            // post-night "rare exit" screen (frame 22) trapped the player
+            // forever. The console mirror of End application = back to the
+            // boot selector (the port's own note).
+            if (gi.pause || m->WantsExit()) {
+                // v2.32: back to the boot selector (NOT a console kill):
                 // drop the current pak, pick another game, load its bundle.
                 // v2.66: STOP ALL AUDIO BEFORE THE PAK UNLOAD — the live
                 // source voices reference the pak's sound buffers, and
@@ -1391,6 +1377,8 @@ int main(int argc, char* argv[]){
                 g_pakLoaded = pakOk2;
                 if (strcmp(AppRegistry_Active()->Name(), "FNAF1") == 0) {
                     state = GAME_STATE_DISCLAIMER;   // fresh FNAF1 boot flow
+                    // v2.76: frame 0 "Frame 17" fades IN over 1010 ms
+                    g_fade.StartIn(1.010f);
                 } else {
                     AppRegistry_Active()->Load(s_svc);
                     s_loadedModule = AppRegistry_Active();
@@ -1753,7 +1741,10 @@ int main(int argc, char* argv[]){
                     // the sliders are the 1987-easter-egg input too.
                     if(night == 7){
                         g_audio.Stop(Snd::STATIC2); g_audio.Stop(Snd::DARKNESS_MUSIC);
-                        state = GAME_STATE_CUSTOMIZE;
+                        // v2.76: the dump's frame 12 "customize" fades IN over
+                        // 560 ms (the title itself has no fade-out, so the
+                        // change is a hard cut into the new frame + its fade).
+                        StartTransition(state, GAME_STATE_CUSTOMIZE);
                         tickCount=0; accumulator=0; menuFrameCounter=0;
                         Sleep(16); continue;
                     }

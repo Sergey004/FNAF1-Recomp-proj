@@ -18,6 +18,7 @@
 
 #include "Types.h"
 #include "Progress.h"    // v2.62: GameProgressF2 (the "freddy2" save struct)
+#include "ScreenFade.h" // v2.76: the CFT frame-transition model
 
 namespace fnaf {
 
@@ -198,6 +199,16 @@ public:
     void StartNight(i32 night);
     void Tick(f32 dt, const FNaF2Inputs& in);
 
+    // v2.76: the CFT screen change. A screen change plays the CURRENT
+    // screen's fade-out (the dump's per-frame STDT/FADE) and only then
+    // loads the new screen, which fades in with its own transition. The
+    // switch is therefore DEFERRED: the old screen keeps running and
+    // drawing while it fades to black.
+    // `pendingNight` (>= 1) starts that night when the switch lands, so the
+    // night card's own dwell starts with the card and not during the fade.
+    void RequestScreen(i32 target, i32 pendingNight = -1);
+    f32  GetFadeAlpha()      const { return m_fade.Alpha(); }
+
     // audio hooks (module wires them once)
     FNaF2AudioHooks audio;
 
@@ -311,6 +322,9 @@ private:
     void HubDressRoom();                              // re-dress on room change
 
     Screen m_screen;
+    ScreenFade m_fade;       // v2.76: the frame transition (see docs/FRAME_FADES.md)
+    i32    m_pendingNight;   // v2.76: the night to start when the deferred
+                             // screen change lands (-1 = none)
     i32    m_night;
     i32    m_timeOfNight;      // 12,1..5 (6 = win)
     f32    m_amClock;          // 70 s per hour

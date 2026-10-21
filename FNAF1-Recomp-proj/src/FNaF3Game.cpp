@@ -18,12 +18,70 @@ namespace fnaf {
 // construction / flow
 // ------------------------------------------------------------
 
+// ---- v2.76: the frame transitions of the F3 dump ----
+// Every fade is a black STDT/FADE overlay; the duration sits in the frame's
+// Transition chunk (raw ms). Only eight F3 frames carry one: f0 "Frame 17"
+// (out 1010), f2 "what day" (out 1010), f5 "next day" (in 1010 / out 900),
+// f8 "ad" (2000/2000), f9 "bad end" (2000/2000), f10 "good end" (2000/2000),
+// f11 "the end 2" (2000/2000) and f15 "demo end" (1010/1010). The rest are
+// hard cuts. The full table for all five games: docs/FRAME_FADES.md.
+static int FadeOutMs(i32 screen) {
+    switch (screen) {
+        case FNaF3Game::SCR_DISCLAIMER: return 1010;   // frame 0  "Frame 17"
+        case FNaF3Game::SCR_NIGHTSTART: return 1010;   // frame 2  "what day"
+        case FNaF3Game::SCR_NEXTDAY:    return 900;    // frame 5  "next day"
+        case FNaF3Game::SCR_AD:         return 2000;   // frame 8  "ad"
+        case FNaF3Game::SCR_ENDBAD:     return 2000;   // frame 9  "bad end"
+        case FNaF3Game::SCR_ENDGOOD:    return 2000;   // frame 10 "good end"
+        case FNaF3Game::SCR_END2:       return 2000;   // frame 11 "the end 2"
+        default: return 0;
+    }
+}
+static int FadeInMs(i32 screen) {
+    switch (screen) {
+        case FNaF3Game::SCR_NEXTDAY:    return 1010;   // frame 5  "next day"
+        case FNaF3Game::SCR_AD:         return 2000;   // frame 8  "ad"
+        case FNaF3Game::SCR_ENDBAD:     return 2000;   // frame 9  "bad end"
+        case FNaF3Game::SCR_ENDGOOD:    return 2000;   // frame 10 "good end"
+        case FNaF3Game::SCR_END2:       return 2000;   // frame 11 "the end 2"
+        default: return 0;
+    }
+}
+
+// v2.76: a screen change fades the current screen out, then switches and
+// fades the new screen in (CFT's "Jump to frame" semantics). The switch is
+// deferred while the fade-out runs; `pendingNight` starts that night when
+// the switch lands.
+void FNaF3Game::RequestScreen(i32 target, i32 pendingNight) {
+    // v2.76: only a PENDING screen change blocks a new request — a running
+    // fade-IN must NOT swallow the input (the frame is already live).
+    if (m_fade.Switching()) return;
+    const int out = FadeOutMs((i32)m_screen);
+    if (out > 0) {
+        m_fade.StartOut(target, (float)out / 1000.0f);
+        m_pendingNight = pendingNight;
+        return;                          // the switch happens at the end
+    }
+    m_screen = (Screen)target;           // hard cut
+    if (pendingNight > 0) {
+        m_night = pendingNight;
+        InitNightState();
+        m_cardT = 0.0f;
+    }
+    const int in = FadeInMs(target);
+    if (in > 0) m_fade.StartIn((float)in / 1000.0f);
+}
+
 FNaF3Game::FNaF3Game() {
     ResetToTitle();
 }
 
 void FNaF3Game::ResetToTitle() {
     m_screen = SCR_DISCLAIMER;
+    // v2.76: a fresh boot starts with no running transition (frame 0 has no
+    // fade-in in the dump — only a 1010 ms fade-OUT when it leaves)
+    m_fade.Init();
+    m_pendingNight = -1;
     m_night = 1;
     m_timeOfNight = 0;
     m_hourClock = 0.0f;
@@ -83,10 +141,10 @@ void FNaF3Game::ResetToTitle() {
 }
 
 void FNaF3Game::StartNight(i32 night) {
-    m_night = night;
-    InitNightState();
-    m_screen = SCR_NIGHTSTART;
-    m_cardT = 0.0f;
+    // v2.76: the switch to the night card is deferred while the current
+    // screen fades out — the night's state and the card's dwell start WITH
+    // the card, not during the fade.
+    RequestScreen(SCR_NIGHTSTART, night);
 }
 
 void FNaF3Game::InitNightState() {
@@ -204,6 +262,26 @@ static i32 RoomToCam(i32 r) {
 void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
     m_time += dt;
 
+    // v2.76: the frame transition — the pending screen change lands when
+    // the current screen has finished fading out; the new screen then
+    // plays its own fade-in.
+    if (m_fade.Active()) {
+        const int done = m_fade.Tick(dt);
+        if (done >= 0) {
+            const i32 night = m_pendingNight;
+            m_pendingNight = -1;
+            m_screen = (Screen)done;
+            if (night > 0) {
+                m_night = night;
+                InitNightState();
+                m_cardT = 0.0f;
+            }
+            const int in = FadeInMs((i32)m_screen);
+            if (in > 0) m_fade.StartIn((float)in / 1000.0f);
+            else         m_fade.Clear();
+        }
+    }
+
     switch (m_screen) {
         case SCR_DISCLAIMER:
             // frame 0: 2 s / Enter / click; the boot roll is 1-in-1000.
@@ -218,9 +296,9 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
             }
             if (m_cardT >= 2.0f || in.aPressed || in.bPressed) {
                 if ((rand() % 1000) + 1 == 1) {
-                    m_screen = SCR_CUTSCENE;   // the dump's frame 16
+                    RequestScreen(SCR_CUTSCENE);   // the dump's frame 16
                 } else {
-                    m_screen = SCR_TITLE;
+                    RequestScreen(SCR_TITLE);
                 }
                 m_cardT = 0.0f;
             }
@@ -241,14 +319,14 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
                         m_bb = false; m_cake = false;
                         m_k1 = false; m_k2 = false; m_k3 = false; m_k4 = false;
                         m_saveDirty = true;
-                        m_screen = SCR_AD;
+                        RequestScreen(SCR_AD);
                         m_cardT = 0.0f;
                         break;
                     case 1: GoWhatDay(); break;                        // load: level
                     case 2: if (m_beat5) { m_night = 6; GoWhatDay(); } break;  // night 6
                     case 3:                                            // extras (slot 24)
                         m_ex.Clear();
-                        m_screen = SCR_EXTRAS;
+                        RequestScreen(SCR_EXTRAS);
                         m_cardT = 0.0f;
                         Sfx("snd_Desolate_Underworld2", true, 1, 100);
                         break;
@@ -275,7 +353,7 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
             if (m_waitT >= 0.1f) {
                 m_waitT = 0.0f;
                 StartNight(m_night < 1 ? 1 : m_night);
-                m_screen = SCR_OFFICE;
+                RequestScreen(SCR_OFFICE);
             }
             break;
 
@@ -336,9 +414,9 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
                 if (m_cs.scene != 5) {
                     GoWhatDay();
                 } else if (m_goodend) {
-                    m_screen = SCR_ENDGOOD;
+                    RequestScreen(SCR_ENDGOOD);
                 } else {
-                    m_screen = SCR_ENDBAD;
+                    RequestScreen(SCR_ENDBAD);
                 }
                 m_cardT = 0.0f;
             }
@@ -355,7 +433,7 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
             m_cardT += dt;
             if (m_cardT >= 15.0f || in.bPressed) {
                 SfxStop("snd_mb2");
-                m_screen = SCR_TITLE;
+                RequestScreen(SCR_TITLE);
                 m_cardT = 0.0f;
             }
             break;
@@ -371,7 +449,7 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
             m_cardT += dt;
             if (m_cardT >= 59.0f || in.bPressed) {
                 SfxStop("snd_ending");
-                m_screen = SCR_TITLE;
+                RequestScreen(SCR_TITLE);
                 m_cardT = 0.0f;
             }
             break;
@@ -545,7 +623,7 @@ void FNaF3Game::TickClock(f32 dt) {
         if (m_timeOfNight >= 6) {
             // the office win jumps V4 = next day directly (frame 4 "static"
             // is the DEATH screen, not the 6 AM transition)
-            m_screen = SCR_NEXTDAY;
+            RequestScreen(SCR_NEXTDAY);
             m_cardT = 0.0f;
             SfxStop("snd_tablefan");
         }
@@ -1013,7 +1091,7 @@ void FNaF3Game::TickGotYou(f32 dt) {
             m_died = true;
             m_gotYou = 0;
             m_scareT = 0.0f;
-            m_screen = SCR_STATIC6;
+            RequestScreen(SCR_STATIC6);
             m_cardT = 0.0f;
             SfxStop("snd_tablefan");
             Sfx("snd_stare", true, 1, 100);
@@ -1023,7 +1101,7 @@ void FNaF3Game::TickGotYou(f32 dt) {
 
 void FNaF3Game::ResetNightInPlace() {
     InitNightState();
-    m_screen = SCR_OFFICE;      // straight back into the office (g606)
+    RequestScreen(SCR_OFFICE);      // straight back into the office (g606)
     Sfx("snd_startday", false, 2, 100);
 }
 
@@ -1089,7 +1167,7 @@ void FNaF3Game::FillProgressF3(Progress::GameProgressF3& p) const {
 void FNaF3Game::GoWhatDay() {
     m_night = m_night < 1 ? 1 : (m_night > 6 ? 6 : m_night);
     m_lastNight = m_night;
-    m_screen = SCR_NIGHTSTART;
+            RequestScreen(SCR_NIGHTSTART);
     m_cardT = 0.0f;
     SfxStop("snd_tablefan");
     Sfx("snd_startday", false, 2, 100);
@@ -1104,9 +1182,9 @@ void FNaF3Game::TickWhatDay(f32 dt, const FNaF3Inputs& in) {
         m_cardT = 0.0f;
         if ((rand() % 1000) + 1 == 1) {
             m_rareId = 3;
-            m_screen = SCR_RARE3;
+            RequestScreen(SCR_RARE3);
         } else {
-            m_screen = SCR_WAIT;
+            RequestScreen(SCR_WAIT);
             m_waitT = 0.0f;
         }
     }
@@ -1118,7 +1196,7 @@ void FNaF3Game::TickStaticDeath(f32 dt) {
     m_cardT += dt;
     if (m_cardT >= 5.0f) {
         SfxStop("snd_stare");
-        m_screen = SCR_GAMEOVER;
+        RequestScreen(SCR_GAMEOVER);
         m_cardT = 0.0f;
     }
 }
@@ -1129,16 +1207,16 @@ void FNaF3Game::TickGameOver(f32 dt, const FNaF3Inputs& in) {
     if (m_cardT == 0.0f) {
         SfxStop("snd_stare");
         m_gameOverRare = (rand() % 1000) + 1;    // g2: rare random
-        m_screen = SCR_GAMEOVER;                 // (cardT stays 0 below)
+        RequestScreen(SCR_GAMEOVER);                 // (cardT stays 0 below)
     }
     m_cardT += dt;
     if (m_cardT >= 5.0f || in.aPressed || in.bPressed) {
         m_cardT = 0.0f;
         if (m_gameOverRare == 1) {
             m_rareId = 2;
-            m_screen = SCR_RARE2;
+            RequestScreen(SCR_RARE2);
         } else {
-            m_screen = SCR_TITLE;
+            RequestScreen(SCR_TITLE);
             m_died = false;
         }
     }
@@ -1157,7 +1235,7 @@ void FNaF3Game::TickRare(f32 dt, const FNaF3Inputs& in) {
         m_cardT = 0.0f;
         if (m_rareId == 3) GoWhatDay();
         else {
-            m_screen = SCR_TITLE;
+            RequestScreen(SCR_TITLE);
             m_died = false;
         }
     }
@@ -1180,7 +1258,7 @@ void FNaF3Game::TickLoad(f32 dt) {
         m_cs.Clear();
         m_cs.scene = m_cine < 1 ? 1 : (m_cine > 5 ? 5 : m_cine);
         m_cs.px = 500.0f; m_cs.py = 300.0f;   // g62: (500,272) rel backdrop
-        m_screen = SCR_CUTSCENE;
+        RequestScreen(SCR_CUTSCENE);
         // g33: the scene ambience (the rain + the scanner loops)
         Sfx("snd_rainstorm2", true, 2, 100);
         Sfx("snd_scanner4", true, 3, 100);
@@ -1200,7 +1278,7 @@ void FNaF3Game::WriteNightProgress() {
         m_night = 6;
         m_beat6 = true;
         m_fourthStar = !(m_fastNights || m_ventProof || m_hyper || m_noCams);
-        m_screen = SCR_END2;
+        RequestScreen(SCR_END2);
         m_cardT = 0.0f;
         return;
     }
@@ -1208,7 +1286,7 @@ void FNaF3Game::WriteNightProgress() {
     // g5-9: nights 2..6 -> load (slot 13) -> the retro cutscene. The dump
     // parks the night counter at 5 before the finale chain (g9).
     if (m_night == 6) m_night = 5;
-    m_screen = SCR_LOAD;
+    RequestScreen(SCR_LOAD);
     m_cardT = 0.0f;
 }
 
@@ -1461,7 +1539,7 @@ void FNaF3Game::StartMinigame(i32 game, bool fromExtras) {
     m_mg.camX = m_mg.px - 512.0f; m_mg.camY = m_mg.py - 384.0f;
     if (m_mg.camX < 0.0f) m_mg.camX = 0.0f;
     if (m_mg.camY < 0.0f) m_mg.camY = 0.0f;
-    m_screen = SCR_MG;
+    RequestScreen(SCR_MG);
     m_cardT = 0.0f;
     // the office / cutscene loops stop on entry
     SfxStop("snd_tablefan"); SfxStop("snd_rainstorm2"); SfxStop("snd_scanner4");
@@ -1473,7 +1551,7 @@ void FNaF3Game::StartMinigame(i32 game, bool fromExtras) {
 void FNaF3Game::ExitMinigameToExtras() {
     SfxStop(MgCfg(m_mg.game).music);
     m_ex.Clear();
-    m_screen = SCR_EXTRAS;
+    RequestScreen(SCR_EXTRAS);
     m_cardT = 0.0f;
     Sfx("snd_Desolate_Underworld2", true, 1, 100);
 }
@@ -1736,7 +1814,7 @@ void FNaF3Game::TickCutscene(f32 dt, const FNaF3Inputs& in) {
     if (in.bPressed) {
         // the dump's Escape quits; the console returns to the title
         SfxStop("snd_rainstorm2"); SfxStop("snd_scanner4"); SfxStop("snd_crazy garble");
-        m_screen = SCR_TITLE;
+        RequestScreen(SCR_TITLE);
         return;
     }
 
@@ -1852,7 +1930,7 @@ void FNaF3Game::TickCutscene(f32 dt, const FNaF3Inputs& in) {
         if (cs.killT >= 100.0f) {
             // g120: Next frame -> file 17, the end chooser
             SfxStop("snd_rainstorm2"); SfxStop("snd_scanner4");
-            m_screen = SCR_ENDCHOOSER;
+            RequestScreen(SCR_ENDCHOOSER);
             m_cardT = 0.0f;
         }
     }
@@ -1894,7 +1972,7 @@ void FNaF3Game::TickCutscene(f32 dt, const FNaF3Inputs& in) {
         } else if (cs.suitStage == 6 && cs.suitT >= 300.0f) {
             // g178: Next frame -> the chooser (scene 5 -> the endings)
             SfxStop("snd_rainstorm2"); SfxStop("snd_scanner4");
-            m_screen = SCR_ENDCHOOSER;
+            RequestScreen(SCR_ENDCHOOSER);
             m_cardT = 0.0f;
         }
     }
@@ -1945,7 +2023,7 @@ void FNaF3Game::TickExtras(f32 dt, const FNaF3Inputs& in) {
     if (in.bPressed) {                              // Escape -> title
         SfxStop("snd_Desolate_Underworld2");
         SfxStop("snd_scream3");
-        m_screen = SCR_TITLE;
+        RequestScreen(SCR_TITLE);
         return;
     }
 
@@ -1953,7 +2031,7 @@ void FNaF3Game::TickExtras(f32 dt, const FNaF3Inputs& in) {
         switch (ex.row) {
             case 4:                                  // exit -> title
                 SfxStop("snd_Desolate_Underworld2");
-                m_screen = SCR_TITLE;
+                RequestScreen(SCR_TITLE);
                 break;
             case 1:                                  // replay a minigame
                 if (m_goodend) {

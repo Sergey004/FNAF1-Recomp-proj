@@ -20,6 +20,7 @@
 
 #include "Types.h"
 #include "Progress.h"    // v2.62: GameProgressF3 (the "freddy3" save struct)
+#include "ScreenFade.h" // v2.76: the CFT frame-transition model
 
 namespace fnaf {
 
@@ -227,6 +228,12 @@ public:
     void StartNight(i32 night);
     void Tick(f32 dt, const FNaF3Inputs& in);
 
+    // v2.76: the CFT screen change — the current screen fades out (the
+    // dump's per-frame STDT/FADE), then the new screen appears and fades
+    // in. The switch is DEFERRED while the fade-out runs.
+    void RequestScreen(i32 target, i32 pendingNight = -1);
+    f32  GetFadeAlpha()      const { return m_fade.Alpha(); }
+
     // audio hooks (module wires them once)
     FNaF3AudioHooks audio;
 
@@ -357,6 +364,9 @@ private:
     void WriteNightProgress();                         // the next-day INI keys
 
     Screen m_screen;
+    ScreenFade m_fade;       // v2.76: the frame transition (docs/FRAME_FADES.md)
+    i32    m_pendingNight;   // v2.76: the night to start when the deferred
+                             // screen change lands (-1 = none)
     i32    m_night;
     i32    m_timeOfNight;    // 0 = 12 AM .. 5, 6 = 6 AM win
     f32    m_hourClock;      // seconds into the current hour
