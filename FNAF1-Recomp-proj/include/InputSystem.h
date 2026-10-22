@@ -35,6 +35,10 @@ struct GameInput {
     bool yToggle;           // v2.7.11: Y button edge (tuner knob reset)
     bool xHeld;             // v2.54: X button level (title hold-to-wipe save)
     bool aHeld;             // v2.60: A button level (FNAF2 cursor click/hold)
+    bool guidePressed;      // v2.77: the GUIDE (big X) button edge — the
+                            // console's normal "leave the game" key (the
+                            // user asked: exit via Guide; the boot selector
+                            // stays a start-screen-only thing)
 
     GameInput() : lookDir(0), leftLightToggle(false), rightLightToggle(false),
                   leftDoorToggle(false), rightDoorToggle(false),
@@ -42,7 +46,8 @@ struct GameInput {
                   cameraToggle(false), cameraUp(false), cameraDown(false),
                   cameraLeft(false), cameraRight(false), pause(false), back(false),
                   leftShoulderHeld(false), rightShoulderHeld(false),
-                  tunerToggle(false), yToggle(false), xHeld(false), aHeld(false) {}
+                  tunerToggle(false), yToggle(false), xHeld(false), aHeld(false),
+                  guidePressed(false) {}
 };
 
 // Poll XInput and fill GameInput with toggle detection (edge)

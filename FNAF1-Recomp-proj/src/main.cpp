@@ -1312,11 +1312,21 @@ int main(int argc, char* argv[]){
         GameInput gi; UpdateInput(gi);
         bool devToggled = false;   // v2.17: Start+B fired this frame (swallow it)
 
+        // v2.77: the GUIDE button (the big X) leaves the game — the
+        // console's normal "close this title" key, and the ONLY way out of
+        // a running game now (the boot selector is a start-screen thing).
+        // No game reads the button, so it cannot collide with anything.
+        if (gi.guidePressed) {
+            g_audio.StopAll();
+            ExitToDashboard();
+            break;
+        }
+
         // ---------------- MODULE MODE (v2.30) ----------------
         // A non-FNAF1 active module owns the frame: Tick + Render per loop,
-        // no FNAF1 state machine, no fades. B exits the app (the per-game
-        // XEX builds will own their own flow; this shared-core branch is
-        // the testbed for their screens until then).
+        // no FNAF1 state machine, no fades. v2.77: the boot selector is
+        // reached only at start-up; from a running game the ways out are
+        // the GUIDE button and the game's own "End application".
         if (strcmp(AppRegistry_Active()->Name(), "FNAF1") != 0) {
             AppModule* m = AppRegistry_Active();
             g_audio.Tick();
@@ -1345,44 +1355,21 @@ int main(int argc, char* argv[]){
             // Escape mirrors). Since v2.32 the core hijacked B to jump back
             // to the boot selector, so in F2-SL the back button both acted
             // inside the game AND threw the player out of it — the "no
-            // control" report. The selector return moves to START (the
-            // pause button), which none of the module games uses.
+            // control" report.
             //
-            // v2.77: a module's "End application" request is honoured too —
+            // v2.77: the boot selector is a START-SCREEN thing only — there
+            // is no jump back into it from a running game (the user asked:
+            // no abrupt exits into the selector). The ways out of a game:
+            //   * the GUIDE button — the console's normal "leave the title";
+            //   * the game's own "End application" (WantsExit) — the dump's
+            //     action, which ends the app exactly like the original.
             // WantsExit() was declared but NEVER called, so the F2's
             // post-night "rare exit" screen (frame 22) trapped the player
-            // forever. The console mirror of End application = back to the
-            // boot selector (the port's own note).
-            if (gi.pause || m->WantsExit()) {
-                // v2.32: back to the boot selector (NOT a console kill):
-                // drop the current pak, pick another game, load its bundle.
-                // v2.66: STOP ALL AUDIO BEFORE THE PAK UNLOAD — the live
-                // source voices reference the pak's sound buffers, and
-                // unloading under a playing voice crashes the XAudio2
-                // resampler on the driver's thread (oapresamplelinear;
-                // seen on the FNAF2/SL exits). StopAll drops every voice
-                // on the spot; the 50 ms sleep lets the mixer hand them off.
+            // forever.
+            if (m->WantsExit()) {
                 g_audio.StopAll();
-                Sleep(50);
-                g_pak.Unload();
-                g_pakLoaded = false;
-                s_loadedModule = 0;
-                RunBootSelector();
-                char pakPath2[128];
-                Snprintf(pakPath2, sizeof(pakPath2), "game:\\%s",
-                         AppRegistry_Active()->PakName());
-                const bool pakOk2 = AppRegistry_Active()->PrefersStreaming()
-                    ? g_pak.LoadStreaming(pakPath2, g_pd3dDevice)
-                    : g_pak.Load(pakPath2, g_pd3dDevice);
-                g_pakLoaded = pakOk2;
-                if (strcmp(AppRegistry_Active()->Name(), "FNAF1") == 0) {
-                    state = GAME_STATE_DISCLAIMER;   // fresh FNAF1 boot flow
-                    // v2.76: frame 0 "Frame 17" fades IN over 1010 ms
-                    g_fade.StartIn(1.010f);
-                } else {
-                    AppRegistry_Active()->Load(s_svc);
-                    s_loadedModule = AppRegistry_Active();
-                }
+                ExitToDashboard();
+                break;   // leave the loop
             }
             if (strcmp(AppRegistry_Active()->Name(), "FNAF1") != 0) {
                 FrameBegin(D3DCOLOR_XRGB(0,0,0));

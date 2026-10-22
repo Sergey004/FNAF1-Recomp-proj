@@ -27,6 +27,7 @@ void UpdateInput(GameInput& out)
     out.back = false;
     out.tunerToggle = false;
     out.yToggle = false;
+    out.guidePressed = false;
 
     XINPUT_STATE state;
     ZeroMemory(&state, sizeof(state));
@@ -105,6 +106,22 @@ void UpdateInput(GameInput& out)
 #define XINPUT_GAMEPAD_X 0x4000
 #endif
     out.xHeld = (state.Gamepad.wButtons & XINPUT_GAMEPAD_X) != 0;
+
+    // v2.77: the GUIDE button (the big X in the middle) — the console's
+    // normal "leave this title" key. The user asked for the exit to work
+    // through Guide, so the boot selector stays a start-screen-only thing.
+    // On the 360 the guide button is XINPUT_GAMEPAD_BIGBUTTON (0x0800) —
+    // note that 0x0010/0x0020 are START/BACK there, so the fallback must
+    // not reuse those.
+#ifndef XINPUT_GAMEPAD_BIGBUTTON
+#define XINPUT_GAMEPAD_BIGBUTTON 0x0800
+#endif
+    {
+        static bool guidePrev = false;
+        const bool guideNow = (state.Gamepad.wButtons & XINPUT_GAMEPAD_BIGBUTTON) != 0;
+        out.guidePressed = guideNow && !guidePrev;
+        guidePrev = guideNow;
+    }
 
     // v2.7.11: L3+R3 TOGETHER = PERSPECTIVE tuner enter/exit. The stick
     // buttons are never used anywhere else in the game, so the combo cannot
