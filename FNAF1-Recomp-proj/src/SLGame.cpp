@@ -14,12 +14,50 @@
 
 namespace fnaf {
 
+// the day plan's destination room per night (the TickHub switch), used to
+// stream the BIG room behind the hub dwell + vent crawl
+static i32 HubRoomFrame(i32 night) {
+    switch (night) {
+        case 1: return SLGame::SCR_BABY;      // night 1: Baby's Room
+        case 2: return SLGame::SCR_BALLORA;   // night 2: via the left vent
+        case 3: return SLGame::SCR_BREAKER;   // night 3: via the right vent
+        case 4: return SLGame::SCR_BREAKER;   // night 4: the P&S chain start
+        default: return SLGame::SCR_FUNTIME;  // nights 5+: Funtime Auditorium
+    }
+}
+
 // ------------------------------------------------------------
 // construction / helpers
 // ------------------------------------------------------------
 
 SLGame::SLGame() {
+    preloadFrame = 0;   // v2.78: the module wires it (offline probe = no-op)
     ResetToTitle();
+}
+
+// v2.78: fire the streaming preload for one dump frame (Screen == frame
+// index here). Null-guarded: the offline probe runs without a pak hook.
+static void PreloadDumpFrame(SLGame& g, i32 frame) {
+    if (g.preloadFrame) g.preloadFrame(frame);
+}
+
+// the go-to code -> destination frame, the same translation the frame-4
+// "load" router performs in TickLoad (used to preload DURING the trip)
+static i32 GoToTargetFrame(i32 code) {
+    switch (code) {
+        case 1:  return SLGame::SCR_ELEVATOR;   // the ride
+        case 3:  return SLGame::SCR_HUB;        // Circus Control
+        case 5:
+        case 8:  return SLGame::SCR_TOVENT;     // the vent hop
+        case 6:
+        case 11: return SLGame::SCR_BREAKER;
+        case 7:  return SLGame::SCR_BALLORA;
+        case 10: return SLGame::SCR_FUNTIME;
+        case 12: return SLGame::SCR_BABY;
+        case 13: return SLGame::SCR_SCOOPING;
+        case 30: return SLGame::SCR_BATHROOM;
+        default: return -1;                     // 2/4/9 hold (self)
+    }
 }
 
 void SLGame::ResetToTitle() {
@@ -102,6 +140,10 @@ void SLGame::SfxPan(i32 ch, i32 pan) {
 void SLGame::GoTo(i32 code) {
     m_goTo = code;
     ArmRouter();
+    // v2.78: the destination is decidable NOW — stream its room behind the
+    // SCR_LOAD trip (~1 s) + the two fades (the dump's own transitions).
+    const i32 target = GoToTargetFrame(code);
+    if (target >= 0) PreloadDumpFrame(*this, target);
 }
 
 void SLGame::ArmRouter() {
@@ -125,8 +167,17 @@ void SLGame::TickLoad(f32 dt) {
                 m_elevatorT = 0.0f;
                 m_elevButtonT = 0.0f;
                 m_screen = SCR_ELEVATOR;
+                // v2.78: the ride (25 s + 10 s of doors) is the dump's own
+                // loading window — pull the hub behind it.
+                PreloadDumpFrame(*this, SCR_HUB);
                 break;                                    // the ride
-            case 3:  m_screen = SCR_HUB;       break;   // Circus Control
+            case 3:
+                m_screen = SCR_HUB;
+                // v2.78: the night's room is already decidable from the day
+                // plan — stream it behind the hub dwell (6 s) + the trip +
+                // the vent crawl (~17 s).
+                PreloadDumpFrame(*this, HubRoomFrame(m_night));
+                break;                                    // Circus Control
             case 5:
             case 8:  m_screen = SCR_TOVENT;    break;   // the vent hop
             case 6:
@@ -317,6 +368,9 @@ void SLGame::NightStart() {
     m_cardT = 0.0f;
     // every night ride starts in the elevator (the dump's per-night presets)
     m_screen = SCR_ELEVATOR;
+    // v2.78: the ride (25 s + 10 s of doors) is the dump's own loading
+    // window — pull the hub behind it.
+    PreloadDumpFrame(*this, SCR_HUB);
     Sfx("snd_elevator ride loop", true, 1, 15);
 }
 

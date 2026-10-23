@@ -11,6 +11,8 @@
 #include "SpriteBatch.h"
 #include "InputSystem.h"    // GameInput snapshot (office pan / screen switch)
 #include "XdkCompat.h"      // Snprintf — XDK CRT predates C99 snprintf
+#include "assets/asset_mapping_sisterlocation.hpp"  // v2.78: the room-sorted
+                               // pak's per-frame preload table (SL only)
 #include <cstdio>
 
 namespace fnaf {
@@ -623,6 +625,20 @@ static void SLSfxPan(i32 channel, i32 pan) {
     (void)channel; (void)pan;
 }
 
+// v2.78: the room-sorted SL pak ships per-frame pak-index lists in its asset
+// mapping — the game's preload hook feeds one whole room to the streaming
+// worker in one call (the dump's elevator ride / load trip covers the read).
+static void SLPreloadFrame(i32 frame) {
+    if (!s_slPak || frame < 0) return;
+    for (int i = 0; i < sisterlocation::FRAME_COUNT; ++i) {
+        if (sisterlocation::frameImages[i].frame == frame) {
+            s_slPak->PreloadIndices(sisterlocation::frameImages[i].images,
+                                    sisterlocation::frameImages[i].count);
+            return;
+        }
+    }
+}
+
 bool SLModule::Load(AppServices& services) {
     m_services = services;
     m_wantsExit = false;
@@ -637,6 +653,7 @@ bool SLModule::Load(AppServices& services) {
     m_game.audio.stop           = SLSfxStop;
     m_game.audio.channelVolume  = 0;
     m_game.audio.pan            = SLSfxPan;
+    m_game.preloadFrame         = &SLPreloadFrame;   // v2.78: streaming rooms
     // v2.65: the fnaf_sl save ("sl") through the universal backend
     {
         Progress::GameProgressSL psl;

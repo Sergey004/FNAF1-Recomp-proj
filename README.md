@@ -39,7 +39,26 @@ Every game ships its own `.spa` (Xbox identity/achievements, not yet) and its ow
 > deliberate deviation from the dump is labelled as such in the code and in
 > the changelog.
 
-## Status (v2.71)
+## Status (v2.77)
+
+**Latest changes (v2.76–2.77, brief):**
+
+- **Dump-driven fades (v2.76).** Every frame transition in every game is now
+  the dump's black CFT fade with the dump's own durations (0.56–2.03 s)
+  instead of hard cuts. The switch is deferred: the old screen stays alive
+  while it darkens, the new one enters with its own fade-in. One shared
+  mechanism (`SpriteBatch::DrawSolid` + `include/ScreenFade.h`); SL has no
+  frame-level fades in its dump — noted, left unchanged.
+- **F2–SL controls fixed (v2.77).** The game selector shows only at boot (no
+  more abrupt exits into it); B belongs to the game again (the core used to
+  hijack it as "back to selector"); `WantsExit()` is finally called — the F2
+  "rare exit" screen no longer traps the player; the F2 dream and the SL
+  cutscenes skip on A; the F2 intro dream plays only on a fresh install
+  (an existing save boots straight into the menu).
+- **Leaving a game = the Guide button** (the big X, `0x0800`) or the game's
+  own "End application" (the dump's Escape).
+
+Earlier:
 
 - **FNAF1 — 100 %, playable 1:1** (see the table above): XContent saves and
   achievements are verified on hardware with a signed-in profile; only the

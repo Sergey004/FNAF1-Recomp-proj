@@ -82,6 +82,11 @@ public:
     // v2.29: queue names for background ensure-loaded (streaming mode only;
     // no-op in eager mode). Names not found are silently skipped.
     void PreloadAsync(const char* const* texNames, int count);
+    // v2.78: same, by PAK ARRAY INDEX (positions in the table, not image
+    // handles) — the room-sorted SL pak ships per-frame index lists in its
+    // asset mapping header (sisterlocation::frameImages), so a room preload
+    // needs no name lookups at all. No-op in eager mode / out of range.
+    void PreloadIndices(const int* texIdx, int count);
     bool IsStreaming() const { return m_streaming; }
 
     void Unload();
@@ -140,7 +145,10 @@ private:
     void* m_thread;                             // HANDLE (XDK)
     void* m_wakeEvent;                          // HANDLE (XDK)
     void* m_cs;                                 // CRITICAL_SECTION* (XDK)
-    volatile long m_queue[64];                  // texture indices
+    volatile long m_queue[512];                 // texture indices (v2.78: was
+                                                // 64 — a whole SL room is up to
+                                                // ~200 textures and overflowed)
+    static const int kPreloadQueueCap = 512;
     volatile int  m_qHead, m_qTail;
     volatile bool m_quit;
     static unsigned long PreloadThreadStatic(void* param); // XDK worker

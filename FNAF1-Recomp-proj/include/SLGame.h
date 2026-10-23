@@ -106,6 +106,14 @@ public:
 
     SLAudioHooks audio;
 
+    // v2.78: streaming preload hook — the module routes it to
+    // PakLoader::PreloadIndices with the room-sorted pak's per-frame index
+    // list (sisterlocation::frameImages). The game fires it inside the
+    // dump's own transitions (the elevator ride, the load-router trip, the
+    // vent crawl), so the next room streams in BEHIND dump-faithful
+    // visuals — no invented loading screens. Null = no-op (offline probe).
+    void (*preloadFrame)(i32 frame);   // frame == the Screen enum value
+
     // ---- state for the module renderer ----
     Screen GetScreen()    const { return m_screen; }
     f32    GetTime()     const { return m_time; }

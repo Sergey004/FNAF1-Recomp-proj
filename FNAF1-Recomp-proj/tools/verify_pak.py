@@ -181,12 +181,17 @@ for handle in (39, 431, 129, 103):   # office bg, menu bg, button, left door
 
 # ---- sounds: PCM payload must byte-match the dumped WAV data chunk
 # (needs the ctfak Sounds dump next to the Images dump; skipped otherwise)
+# SL's bank carries passthrough mp3 blobs (fmt != 0) — those are copied
+# through untouched by the repacker and have no WAV data chunk to compare.
 sndDump = os.path.join(os.path.dirname(DUMP.rstrip("/")) or ".", "Sounds")
 if not os.path.isdir(sndDump):
     print("sound cross-check skipped (no Sounds dump next to image dump)")
     print("PAK VERIFICATION PASSED")
     sys.exit(0)
-for s in snd[:3] + snd[-3:]:
+pcm = [s for s in snd if s["fmt"] == 0]
+skipped = len(snd) - len(pcm)
+sample = (pcm[:3] + pcm[-3:]) if pcm else []
+for s in sample:
     h = s["name"][4:]
     wav = open(f"{sndDump}/{h}.wav", "rb").read()
     dpos = wav.index(b"data") + 4
@@ -195,6 +200,8 @@ for s in snd[:3] + snd[-3:]:
     ok = wav[dpos:dpos+dsize] == data[s["off"]:s["off"]+s["size"]]
     print(f"sound {s['name']}: {s['sr']} Hz, {s['ch']} ch, fmt {s['fmt']}, payload match: {ok}")
     assert ok
+if skipped:
+    print(f"sound passthrough blobs skipped (no PCM to compare): {skipped}")
 
 names = {t["name"] for t in tex}
 for key in ("img_39", "img_431", "img_11", "img_129", "img_103", "img_119", "img_18", "img_167"):

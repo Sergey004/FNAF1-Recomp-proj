@@ -915,7 +915,7 @@ void PakLoader::PreloadThreadRun()
             if (m_cs) EnterCriticalSection((CRITICAL_SECTION*)m_cs);
 #endif
             if (m_qHead != m_qTail) {
-                idx = (int)m_queue[m_qHead % 64];
+                idx = (int)m_queue[m_qHead % kPreloadQueueCap];
                 m_qHead++;
             }
 #if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
@@ -938,7 +938,9 @@ void PakLoader::PreloadAsync(const char* const* texNames, int count)
                 if (m_textures[i].gpuReady) break;         // already there
                 if (m_cs) EnterCriticalSection((CRITICAL_SECTION*)m_cs);
                 const int tail = m_qTail;
-                if (tail - m_qHead < 64) { m_queue[tail % 64] = i; m_qTail = tail + 1; }
+                if (tail - m_qHead < kPreloadQueueCap) {
+                    m_queue[tail % kPreloadQueueCap] = i; m_qTail = tail + 1;
+                }
                 if (m_cs) LeaveCriticalSection((CRITICAL_SECTION*)m_cs);
                 if (m_wakeEvent) SetEvent((HANDLE)m_wakeEvent);
                 break;
@@ -951,6 +953,35 @@ void PakLoader::PreloadAsync(const char* const* texNames, int count)
         for (int i = 0; i < m_numTextures; ++i) {
             if (strcmp(m_textures[i].name, texNames[n]) == 0) { EnsureTextureLoaded(i); break; }
         }
+    }
+#endif
+}
+
+// v2.78: bulk preload by table position — the room-sorted SL pak's asset
+// mapping ships per-frame index lists (sisterlocation::frameImages), so the
+// game module pushes a whole room without any name scans. Same enqueue
+// rules as PreloadAsync (dedup happens through gpuReady at drain time).
+void PakLoader::PreloadIndices(const int* texIdx, int count)
+{
+    if (!m_streaming || !texIdx || count <= 0) return;
+#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
+    for (int n = 0; n < count; ++n) {
+        const int i = texIdx[n];
+        if (i < 0 || i >= m_numTextures) continue;
+        if (m_textures[i].gpuReady) continue;          // already there
+        if (m_cs) EnterCriticalSection((CRITICAL_SECTION*)m_cs);
+        const int tail = m_qTail;
+        if (tail - m_qHead < kPreloadQueueCap) {
+            m_queue[tail % kPreloadQueueCap] = i; m_qTail = tail + 1;
+        }
+        if (m_cs) LeaveCriticalSection((CRITICAL_SECTION*)m_cs);
+        if (m_wakeEvent) SetEvent((HANDLE)m_wakeEvent);
+    }
+#else
+    for (int n = 0; n < count; ++n) {
+        const int i = texIdx[n];
+        if (i < 0 || i >= m_numTextures) continue;
+        EnsureTextureLoaded(i);
     }
 #endif
 }
