@@ -5,6 +5,16 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.78 — SL's seamless loads: the room-grouped pak + preloading inside the dump's own transitions
+
+- **ctfak RecompPack: the room-sorted blob order — SISTER LOCATION ONLY** (the user's call, automatic by the game title, no prompt): COMMON images (used by ≥ 2 frames, 387 of them) first, then each frame's exclusive set as **one contiguous run** in frame order, then the frame-less images. Every other game (including FNAF1 with its HW-verified pak) keeps the classic order byte-identical. The repack also regenerates `pak_manifest.json` (+ `"roomSort"` and the frame → handles table) and `asset_mapping_sisterlocation.hpp` (+ `frameImages[]` — per frame, the **pak indices** ascending by position).
+- **Why (the dump's own numbers):** the room sets are small (hub 60 MB, Ballora 83 MB, Breaker 59 MB, Funtime 60 MB, P&S 85 MB), but in the old order a room's blobs were scattered across 486–1146 MB of the 1.45 GB pak (10–61 read fragments per room, 12–20× read amplification). After the sort a room = **1–3 sequential runs ≈ its own size** (the shared images sit in the pak head and load once).
+- **Port: `PakLoader::PreloadIndices(idx, count)`** — bulk preload by table position (no strcmp name scans), and the preload ring grew 64 → 512 (a whole SL room is up to ~200 textures and overflowed the old one).
+- **The preload hides inside the dump's own transitions** (no invented loading screens): `SLGame` got a `preloadFrame(frame)` hook, wired by SLModule to `sisterlocation::frameImages`. The firing points: the **elevator ride start** (25 s ride + 10 s of doors — the hub's window), **the hub entry** (the night's room is already decidable from the day plan — the window is the 6 s dwell + the trip + the ~17 s vent crawl), and **every `GoTo()`** (the target is known immediately — the ~1 s "load" trip + the two fades). Unloaded stragglers still stream lazily, as before.
+- **Verified:** `verify_pak.py` on the new SL pak — PASSED (table/offsets/DXT round trip/PCM bytes; the passthrough mp3s are skipped — the script learned, SL's bank carries 214 of them); the offline harness renders every SL screen **from the new pak** (`--pak`, the console DXT chain) — 0–2.7 % pixels differ from the PNG reference, visually identical (DXT quantization, confirmed by the user); all five games ran; PakLoader/SLGame/AppModules compiled by the real XDK cl.exe with no errors. Files: `src/PakLoader.cpp`, `include/PakLoader.h`, `src/SLGame.cpp`, `include/SLGame.h`, `src/AppModules.cpp`, `include/assets/asset_mapping_sisterlocation.hpp` (regenerated), `tools/verify_pak.py`; in ctfak — `src/plugins/RecompPack.cpp`. Nothing to add to the `.vcxproj`.
+
+---
+
 ## v2.77 — the control in F2–SL: three reasons there was none + the Guide exit
 
 - **The game selector is a start-screen thing only.** You could jump into the selector from a running game (B, later START), which looked like being thrown out of the game. The selector now shows once when the core boots — "pick one and that's it". The ways out of a game: the **Guide button** (the console's "leave this title", `XINPUT_GAMEPAD_BIGBUTTON` = 0x0800 on the 360) and the game's own **"End application"** (the dump's Escape → `WantsExit()` → out to the dashboard, exactly like the original).

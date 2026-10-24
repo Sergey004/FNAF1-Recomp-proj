@@ -39,10 +39,17 @@ Every game ships its own `.spa` (Xbox identity/achievements, not yet) and its ow
 > deliberate deviation from the dump is labelled as such in the code and in
 > the changelog.
 
-## Status (v2.77)
+## Status (v2.78)
 
-**Latest changes (v2.76–2.77, brief):**
+**Latest changes (v2.76–2.78, brief):**
 
+- **SL's seamless loads (v2.78).** The Sister Location pak is re-sorted
+  "by rooms" (shared images in the head, each room's set as one contiguous
+  run; every other game untouched), and the port streams the next room in
+  the background **inside the dump's own transitions** — the elevator ride
+  (35 s), the "load" router and the vent crawl. No invented loading
+  screens: the mid-room hitches are gone, and the "loading" is exactly
+  what the original shows.
 - **Dump-driven fades (v2.76).** Every frame transition in every game is now
   the dump's black CFT fade with the dump's own durations (0.56–2.03 s)
   instead of hard cuts. The switch is deferred: the old screen stays alive
@@ -213,3 +220,7 @@ the same time. Rule for behavior disputes: read the event groups in
 Unofficial fan reimplementation for personal console use. A legally purchased
 copy of the original game is required — all assets are extracted from it. Do
 not distribute the assets or built images. (In other words, Build it yourself)
+
+## For those who are against AI-generated code
+
+Feel free to create a port like that yourself; I don't mind.

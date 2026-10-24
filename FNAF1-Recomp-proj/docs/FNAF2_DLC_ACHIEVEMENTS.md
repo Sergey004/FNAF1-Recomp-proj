@@ -61,27 +61,82 @@ misbehaves; upgrade to the real PDLC later — the ids stay the same, so
 nothing in the save/achievement mask changes.
 
 ----------------------------------------------------------------------------
-3b. THE CONCRETE ENTRY TABLE (v2.62 — the game side is LIVE, type these 10)
+3b. THE ENTRY TABLE — the OFFICIAL XBOX ONE SET (user-provided 2026-10-23;
+    10 achievements, exactly 1000G, ids 11..20, spa id = slot + 10)
 ----------------------------------------------------------------------------
-The code unlocks by SLOT (Achievements::UnlockFnaf2, mask fnaf2_ach.ini);
-the spa id = slot + 10. Enter in XLAST exactly:
+The code unlocks by SLOT (Achievements::UnlockFnaf2, mask fnaf2_ach.ini).
+NOTE: the v2.62 slot order is DIFFERENT from this list — the code must be
+remapped before the spa rebuild (see the slot map below; nothing has been
+written to the profile yet — the spa still lacks ids 11..20 — so the local
+fnaf2_ach.ini mask can simply be reset when the remap lands).
 
-  id | suggested name            | GS  | unlock condition (the code beat)
-  11 | Night 1                   | 10G | complete night 1
-  12 | Night 2                   | 10G | complete night 2
-  13 | Night 3                   | 20G | complete night 3
-  14 | Night 4                   | 20G | complete night 4
-  15 | Night 5                   | 40G | complete night 5 (beatgame)
-  16 | Night 6                   | 40G | complete night 6
-  17 | Custom Night 20/20/20/20  | 50G | the custom night with all ten AI at 20
-  18 | 20/20/20/20 Challenge     | 30G | survive the "20/20/20/20" preset (c1)
-  19 | Challenge Master          | 40G | survive all ten challenge presets (c1..c10)
-  20 | SAVE THEM                 | 20G | discover the 8-bit chain (the 1/1000 roll)
+  id | slot | NAME (Xbox One)             | GS  | Secret | port trigger
+  11 |  0   | One Night at Freddy's       | 70G |        | complete Night 1 (LIVE)
+  12 |  1   | Two Nights at Freddy's      | 80G |        | complete Night 2 (LIVE)
+  13 |  2   | Three Nights at Freddy's    | 90G |        | complete Night 3 (LIVE)
+  14 |  3   | Four Nights at Freddy's     |100G |        | complete Night 4 (LIVE)
+  15 |  4   | Five Nights at Freddy's     |120G |        | complete Night 5 (LIVE)
+  16 |  5   | You Tampered                |200G |        | Custom Night with ALL AI
+     |      |                             |     |        | at 20 (code fires the OLD
+     |      |                             |     |        | slot 6 today -> remap)
+  17 |  6   | You Soothed                 |135G |        | keep the music box wound
+     |      |                             |     |        | ABOVE 50% for ALL of Night
+     |      |                             |     |        | 4 (checked during play, not
+     |      |                             |     |        | at the end) — NEW tracker
+  18 |  7   | You Stayed                  |150G |  X     | complete Night 6 (code
+     |      |                             |     |        | fires the OLD slot 5 -> remap)
+  19 |  8   | You Tried                   | 40G |  X     | play ALL the minigames
+     |      |                             |     |        | (per-minigame flags; the
+     |      |                             |     |        | beatgame/turn saves are the
+     |      |                             |     |        | seed) — NEW tracker
+  20 |  9   | You Failed                  | 15G |  X     | experience a jumpscare and
+     |      |                             |     |        | then... something more (the
+     |      |                             |     |        | rare post-scare event; the
+     |      |                             |     |        | exact trigger needs the dump
+     |      |                             |     |        | check) — NEW
 
-(GS values are proposals — tune to taste; 280G add-on, base 400G + 280G is
-under the 1000G cap.) After the rebuild the profile writes pass on their
-own — the local fnaf2_ach.ini mask already tracks everything earned before
-the spa caught up (the IsUnlockedFnaf2 gate prevents rewrites).
+The v2.62 slots that DIE with this list: c1 preset (old 7), all-ten-
+challenges (old 8), SAVETHEM discovery (old 9) — they are not in the Xbox
+One set. The old names/GS below are kept only as history.
+
+  [v2.62 PROPOSALS — SUPERSEDED by the Xbox One set]
+  Night 1..5 10/10/20/20/40, Night 6 40, Custom 20/20/20/20 50,
+  20/20/20/20 Challenge 30, Challenge Master 40, SAVE THEM 20 = 280G.
+
+----------------------------------------------------------------------------
+3c. READY-TO-TYPE STRINGS (v2.79 — for the XLAST entry; names <= 32 chars,
+    descriptions <= 100, the XACHIEVEMENT limits; unlocked and locked
+    descriptions share one string id, the same pattern ids 1..10 use)
+----------------------------------------------------------------------------
+
+  id | NAME                       | description (unlocked == locked)
+  11 | One Night at Freddy's      | Survive the 1st night.
+  12 | Two Nights at Freddy's     | Survive the 2nd night.
+  13 | Three Nights at Freddy's   | Survive the 3rd night.
+  14 | Four Nights at Freddy's    | Survive the 4th night.
+  15 | Five Nights at Freddy's    | Survive the 5th night.
+  16 | You Tampered               | Complete the custom night with all AIs
+                                  | set to 20.
+  17 | You Soothed                | Keep the music box wound above 50% for
+                                  | all of night 4.
+  18 | You Stayed                 | Survive the 6th night.
+  19 | You Tried                  | Play all the minigames.
+  20 | You Failed                 | Experience a jumpscare, and then...
+                                  | something more.
+
+Icon reminder: each id needs its own image entry in XLAST (imageId 11..20);
+the art is whatever you put in — dump-derived FNAF2 art or placeholders,
+replaceable by a later spa rebuild (the spa re-caches at every launch).
+
+AUTHORING NOTE (user decision, 2026-10-23; refined 2026-10-24): the spa is
+built with the XDK tooling — and it is fully CLI-driven, no GUI needed:
+edit the .xlast XML directly (icons under achievements_pics\<game>\), then
+`spac.exe proj.xlast -o out.spa -h out_spa.h -forceoverwrite` from the XDK
+bin (verified end-to-end from WSL2; the round trip reproduces the shipped
+spa byte-wise modulo the version counter). The in-house spaassembler/spaday
+pipeline stays analysis-only — its output is not trusted by the real
+console. The full mechanism and the rules (superset, projectVersion bump,
+append-only) live in docs/ACHIEVEMENTS_MECHANISM.md.
 
 ============================================================================
 4. CODE-SIDE NOTES
