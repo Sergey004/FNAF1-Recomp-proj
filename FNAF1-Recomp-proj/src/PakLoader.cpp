@@ -99,8 +99,11 @@ PakLoader::PakLoader()
     , m_thread(0)
     , m_wakeEvent(0)
     , m_cs(0)
+    , m_loadCs(0)   // v2.81
     , m_qHead(0)
     , m_qTail(0)
+    , m_sQHead(0)
+    , m_sQTail(0)
     , m_quit(false)
 {
 }
@@ -408,6 +411,7 @@ void PakLoader::Unload()
         m_thread = 0; m_wakeEvent = 0;
     }
     if (m_cs) { DeleteCriticalSection((CRITICAL_SECTION*)m_cs); delete (CRITICAL_SECTION*)m_cs; m_cs = 0; }
+    if (m_loadCs) { DeleteCriticalSection((CRITICAL_SECTION*)m_loadCs); delete (CRITICAL_SECTION*)m_loadCs; m_loadCs = 0; }
     if (m_textures) {
         for (int i = 0; i < m_numTextures; ++i) {
             if (m_textures[i].texture) {
@@ -741,15 +745,23 @@ void PakLoader::EnsureTextureLoaded(int idx)
     PakLoadedTexture& t = m_textures[idx];
     if (t.gpuReady) return;
     if (!t.dataSize || t.dataSize > 64u * 1024u * 1024u) { t.gpuReady = true; return; }
+    // v2.81: one blob at a time across BOTH threads — the render thread
+    // (FindTexture) and the worker used to be able to load the SAME texture
+    // concurrently (double read + an unsynchronized D3D create). The winner
+    // loads, the loser re-checks and returns on the retry.
+    if (m_loadCs) EnterCriticalSection((CRITICAL_SECTION*)m_loadCs);
+    if (t.gpuReady) { if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
     u8* staging = new u8[t.dataSize];
-    if (!staging) { t.gpuReady = true; return; }
+    if (!staging) { t.gpuReady = true; if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
     if (!ReadAt(t.fileOff, t.dataSize, staging)) {
         delete[] staging;
         t.gpuReady = true;                    // failed: mark done, texture stays 0
+        if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs);
         return;
     }
     UploadTexture(idx, staging);
     delete[] staging;                         // UMA: it is inside the D3D texture now
+    if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs);
 }
 
 void PakLoader::EnsureSoundLoaded(int idx)
@@ -758,11 +770,15 @@ void PakLoader::EnsureSoundLoaded(int idx)
     PakLoadedSound& s = m_sounds[idx];
     if (s.resident) return;
     if (!s.dataSize) { s.resident = true; s.format = 1; return; }
+    // v2.81: the same one-blob-at-a-time serialization as the textures.
+    if (m_loadCs) EnterCriticalSection((CRITICAL_SECTION*)m_loadCs);
+    if (s.resident) { if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
     u8* buf = new u8[s.dataSize];
-    if (!buf) { s.resident = true; s.format = 1; return; }
+    if (!buf) { s.resident = true; s.format = 1; if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
     if (!ReadAt(s.fileOff, s.dataSize, buf)) {
         delete[] buf;
         s.resident = true; s.format = 1;
+        if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs);
         return;
     }
     OwnedBuf* b = new OwnedBuf;
@@ -770,6 +786,7 @@ void PakLoader::EnsureSoundLoaded(int idx)
     s.data = buf;
     NormalizeOne(idx);
     s.resident = true;
+    if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs);
 }
 
 bool PakLoader::LoadStreaming(const char* pakPath, void* device)
@@ -885,8 +902,13 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
 #if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
     m_cs = new CRITICAL_SECTION;
     InitializeCriticalSection((CRITICAL_SECTION*)m_cs);
+    // v2.81: the ensure serialization CS — the render thread (FindTexture/
+    // FindSound) and the worker must never load the SAME blob concurrently.
+    m_loadCs = new CRITICAL_SECTION;
+    InitializeCriticalSection((CRITICAL_SECTION*)m_loadCs);
     m_wakeEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     m_qHead = m_qTail = 0;
+    m_sQHead = m_sQTail = 0;
     m_quit = false;
     m_thread = CreateThread(NULL, 0,
                             (LPTHREAD_START_ROUTINE)&PakLoader::PreloadThreadStatic,
@@ -895,8 +917,9 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
     return true;
 }
 
-// XDK worker: waits on the wake event (or 50 ms), drains the ring of
-// texture indices and runs the same ensure path the render thread would.
+// XDK worker: waits on the wake event (or 50 ms), drains the texture ring
+// then the sound ring (v2.81) and runs the same ensure path the render
+// thread would (serialized by m_loadCs).
 unsigned long PakLoader::PreloadThreadStatic(void* param)
 {
     ((PakLoader*)param)->PreloadThreadRun();
@@ -923,6 +946,22 @@ void PakLoader::PreloadThreadRun()
 #endif
             if (idx < 0) break;
             EnsureTextureLoaded(idx);
+        }
+        // v2.81: the sound ring — same drain, one blob per pass
+        for (;;) {
+            int idx = -1;
+#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
+            if (m_cs) EnterCriticalSection((CRITICAL_SECTION*)m_cs);
+#endif
+            if (m_sQHead != m_sQTail) {
+                idx = (int)m_sndQueue[m_sQHead % kPreloadQueueCap];
+                m_sQHead++;
+            }
+#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
+            if (m_cs) LeaveCriticalSection((CRITICAL_SECTION*)m_cs);
+#endif
+            if (idx < 0) break;
+            EnsureSoundLoaded(idx);
         }
     }
 }
@@ -982,6 +1021,36 @@ void PakLoader::PreloadIndices(const int* texIdx, int count)
         const int i = texIdx[n];
         if (i < 0 || i >= m_numTextures) continue;
         EnsureTextureLoaded(i);
+    }
+#endif
+}
+
+// v2.81: bulk preload of SOUND blobs by table position — the room-sorted SL
+// pak's asset mapping ships per-frame sound index lists
+// (sisterlocation::frameSounds), so a room transition pushes its sounds to
+// the worker exactly like its textures. The first Play of a room then finds
+// the blob resident instead of reading it mid-frame.
+void PakLoader::PreloadSoundIndices(const int* sndIdx, int count)
+{
+    if (!m_streaming || !sndIdx || count <= 0) return;
+#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
+    for (int n = 0; n < count; ++n) {
+        const int i = sndIdx[n];
+        if (i < 0 || i >= m_numSounds) continue;
+        if (m_sounds[i].resident) continue;            // already there
+        if (m_cs) EnterCriticalSection((CRITICAL_SECTION*)m_cs);
+        const int tail = m_sQTail;
+        if (tail - m_sQHead < kPreloadQueueCap) {
+            m_sndQueue[tail % kPreloadQueueCap] = i; m_sQTail = tail + 1;
+        }
+        if (m_cs) LeaveCriticalSection((CRITICAL_SECTION*)m_cs);
+        if (m_wakeEvent) SetEvent((HANDLE)m_wakeEvent);
+    }
+#else
+    for (int n = 0; n < count; ++n) {
+        const int i = sndIdx[n];
+        if (i < 0 || i >= m_numSounds) continue;
+        EnsureSoundLoaded(i);
     }
 #endif
 }

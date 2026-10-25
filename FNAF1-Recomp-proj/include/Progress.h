@@ -68,6 +68,15 @@ public:
     // No-op in the Live Safe build.
     static void PrimeStorage();
 
+    // v2.80: one-time migration into the per-module containers ("как миры
+    // Minecraft"). A pre-v2.80 boot kept every module's file in the single
+    // legacy container (FNAF1's "freddy" package); when the MODULE container
+    // lacks its file but the legacy one has it, copy the bytes over. The
+    // legacy copy stays (the F1 tile doubles as a full backup). Call from
+    // the module's Load BEFORE its Progress load. No-op for FNAF1 files and
+    // in the Live Safe build.
+    static void MigrateLegacySave(const char* file);
+
     // Number of title-screen stars (0..3) implied by the flags.
     static i32 StarCount(const GameProgress& p);
 

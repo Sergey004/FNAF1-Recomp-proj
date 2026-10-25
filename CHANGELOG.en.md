@@ -5,6 +5,87 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.81 — async room sounds for SL + the Russian achievement translation
+
+- **Room sounds no longer stall the render.** After v2.78 the room TEXTURES
+  streamed in the background, but sounds were read synchronously on the
+  first `FindSound` (a room loop = a multi-MB mp3 blob read mid-frame).
+  Now: ctfak collects per-frame sound sets from the parsed event program
+  (`Parameter::Kind::Sample`, conditions and actions alike; 122 common
+  sounds, all 36 SL frames carry a set) and **re-groups the sound blobs
+  themselves** with the same COMMON→frame-runs scheme;
+  `asset_mapping_sisterlocation.hpp` gained `frameSounds[]` (pak indices),
+  the manifest gained `"frameSounds"` (handles). Port: `PakLoader` got a
+  second ring in the worker and `PreloadSoundIndices(idx,count)`;
+  `SLPreloadFrame` pushes the room's sounds alongside its textures at the
+  same points (elevator/hub/`GoTo`).
+- **The load race is closed along the way.** The render thread
+  (`FindTexture`/`FindSound`) and the worker could load the SAME blob
+  concurrently (a double read + an unsynchronized D3D create). The
+  `EnsureTextureLoaded`/`EnsureSoundLoaded` bodies are now serialized by a
+  dedicated `m_loadCs` — at most one blob is in flight, the other thread
+  waits and re-checks.
+- **The achievements speak Russian.** The `.xlast` gained a second locale
+  `ru-RU`: all 100 achievement strings (F1 — the original names/
+  descriptions, F2–SL — the Xbox One sets) are translated («Одна ночь у
+  Фредди», «Ты вмешался», «Ты убаюкал», «Экзотическое масло», «Ужас
+  Фазбера»…). The dashboard/Guide shows the console's language, falling
+  back to en-US. The dashboard SYSTEM strings (X_STRINGID_*) are
+  deliberately NOT translated (the user's call) — their 28 `was not found`
+  warnings at build time are the normal fallback. The spa was rebuilt:
+  **192.8 KB, 0 errors**, spaday-verified (`3.ru-RU.json` = 128 strings).
+- Verified: the harness + SL from the pak (`--pak`) — ok; the XDK cl.exe on
+  `PakLoader.cpp`/`AppModules.cpp` — clean. Files: ctfak
+  `src/plugins/RecompPack.cpp`; the port `src/PakLoader.cpp`,
+  `include/PakLoader.h`, `src/AppModules.cpp`,
+  `include/assets/asset_mapping_sisterlocation.hpp` (regenerated),
+  `FNAF1-Recomp-proj.xlast`, `FNAF1-Recomp-proj.spa` (192.8 KB),
+  `include/FNAF1-Recomp-proj.spa.h`, `src/main.cpp` (the banner). Assets:
+  **`sisterlocation.pak` + `pak_manifest.json` rebuilt** (the sounds are
+  re-grouped). Nothing to add to the `.vcxproj`.
+
+---
+
+## v2.80 — one XContent container per game ("saves like Minecraft worlds")
+
+- **Five dashboard tiles instead of one.** Pre-v2.80 all five games wrote
+  into ONE container (`freddy` under `fnaf_save`, display "Five Nights at
+  Freddy's 1 Save") — 7 files in a single package. Now every module has
+  its OWN STFS package: its own mount root, its own container name and its
+  own storage tile — F1 "Five Nights at Freddy's 1 Save", F2 "…2 Save",
+  F3 "…3 Save", F4 "…4 Save", SL "Sister Location Save" (this is the
+  Minecraft LCE world scheme: one world = one `XCONTENT_DATA` with its own
+  `szDisplayName`; per the leaked sources' `C4JStorage` — one
+  `XContentCreate`+`XContentClose` pair per save operation).
+- **The game code is untouched.** Every save file name is module-unique,
+  so `StorageOpen` derives the container from the file name (the
+  `kSaveContainers` table in `src/Progress.cpp`); the
+  mount/unmount-per-operation pattern stays, `StorageClose` unmounts
+  exactly the last mounted root (`s_mountedRoot`); the
+  `XContentSetThumbnail` call is per container (the same game_icon.png).
+  Limits respected: display ≤ 31 WCHARs, root ≤ 12 chars.
+- **Lossless progress migration.** The legacy container IS FNAF1's
+  container (same `szFileName`), so F1 migrates by identity and its tile
+  stays live and doubles as a full backup. For F2/F3/F4/SL a
+  `Progress::MigrateLegacySave(file)` helper was added (called once per
+  module `Load` in `src/AppModules.cpp`, before the progress read): if the
+  module container lacks the file but the legacy one has it, the bytes are
+  copied over (the legacy copy is NOT deleted; the module never reads it
+  again).
+- The local fallback (`game:\save_fallback\`) and the Live Safe build
+  (`game:\save\`) are unchanged — their files are already module-unique
+  and neither is dashboard-visible. The loose `freddy` import (F1) works
+  as before. The recipe for future per-game save SLOTS ("worlds") —
+  `XContentCreateEnumerator` listing, rename = copy + delete — is
+  documented in `docs/SAVES_XCONTENT.md`.
+- Verified: the XDK cl.exe on `Progress.cpp`/`AppModules.cpp` — clean; the
+  harness is untouched (those TUs are not part of it). Files:
+  `src/Progress.cpp`, `include/Progress.h`, `src/AppModules.cpp`,
+  `src/main.cpp` (the banner), `docs/SAVES_XCONTENT.md`. Nothing to add to
+  the `.vcxproj`.
+
+---
+
 ## v2.79 — 50 achievements in one spa: the official Xbox One sets for F2/F3/F4/SL
 
 - **The spa now carries all 50 achievements.** The `.xlast` grew from 10 to

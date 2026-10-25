@@ -39,10 +39,15 @@ Every game ships its own `.spa` (Xbox identity/achievements, not yet) and its ow
 > deliberate deviation from the dump is labelled as such in the code and in
 > the changelog.
 
-## Status (v2.79)
+## Status (v2.80)
 
-**Latest changes (v2.76–2.79, brief):**
+**Latest changes (v2.76–2.80, brief):**
 
+- **A separate save per game (v2.80).** Every module writes into its own
+  XContent container with its own dashboard tile ("…2 Save", "…3 Save",
+  "…4 Save", "Sister Location Save") — the Minecraft world scheme. Progress
+  migrates automatically from the old single tile on each module's first
+  launch; the old tile (which is F1's tile) stays as a full backup.
 - **50 achievements in one spa (v2.79).** The `.xlast` now carries the
   official Xbox One achievement sets (F2/F3/F4/SL — 10 achievements and
   1000G each, ids 11..50; F1 = 1..10 as shipped), with the PS4 trophy art

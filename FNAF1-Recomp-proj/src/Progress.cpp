@@ -33,13 +33,51 @@ static const u32 PROGRESS_VERSION = 1;
 
 // Shared file names (the XContent root mounts them as a drive, the local
 // backend writes them under "game:\save\" next to the .xex).
-static const char* kXContentRoot = "fnaf_save";
 // The ORIGINAL save file is literally named "freddy" (no extension); its
 // contents are INI ([freddy] section). Both backends keep that exact name —
 // the system build stores it as the XContent content "freddy", the Live Safe
 // build as a plain file game:\save\freddy.
-static const char* kXContentFile = "freddy";
 static const char* kAchFile = "fnaf_ach.ini";
+// v2.80: the FNAF1 progress file name (the Load/Save/Import call sites);
+// the container itself resolves through the kSaveContainers table.
+static const char* const kF1SaveFile = "freddy";
+
+// ---------------------------------------------------------------------------
+// v2.80: ONE XCONTENT CONTAINER PER GAME MODULE ("как миры Minecraft").
+// Pre-v2.80 every module's file rode in a single container ("freddy" under
+// "fnaf_save" — one dashboard tile for all five games). Now every module
+// gets its OWN package: its own mount root, its own STFS file name and its
+// own dashboard display name. Every save file name is module-unique, so
+// StorageOpen derives the container from the file name — no game-side call
+// changes anywhere. Display names must stay <= 31 WCHARs (the 360's
+// XCONTENT_MAX_DISPLAYNAME_LENGTH = 32 incl. the terminator), roots <= 12.
+// ---------------------------------------------------------------------------
+struct SaveContainerSpec {
+    const char* files[2];        // the module's file names (module-unique)
+    const char* rootName;        // the XContent mount root
+    const char* fileName;        // the STFS package name
+    const WCHAR* displayName;    // the dashboard tile
+};
+static const SaveContainerSpec kSaveContainers[] = {
+    // FNAF1: the ORIGINAL container, byte-for-byte today's tile — its
+    // progress migrates by identity and the tile doubles as the full
+    // pre-migration backup (see Progress::MigrateLegacySave).
+    { { "freddy", "fnaf_ach.ini" },  "fnaf_save",  "freddy",  L"Five Nights at Freddy's 1 Save" },
+    { { "freddy2", "fnaf2_ach.ini" },"fnaf2_save", "freddy2", L"Five Nights at Freddy's 2 Save" },
+    { { "freddy3", 0 },              "fnaf3_save", "freddy3", L"Five Nights at Freddy's 3 Save" },
+    { { "fn4", 0 },                  "fnaf4_save", "fn4",     L"Five Nights at Freddy's 4 Save" },
+    { { "sl", 0 },                   "fnsl_save",  "sl",      L"Sister Location Save" },
+};
+static const SaveContainerSpec* FindContainerForFile(const char* file) {
+    for (int i = 0; i < (int)(sizeof(kSaveContainers) / sizeof(kSaveContainers[0])); ++i)
+        for (int j = 0; j < 2; ++j) {
+            const char* f = kSaveContainers[i].files[j];
+            if (f && strcmp(f, file) == 0) return &kSaveContainers[i];
+        }
+    return &kSaveContainers[0];   // unknown file -> the F1 container (as before)
+}
+// v2.80: the pre-v2.80 single container, addressed for the migration reads.
+static const SaveContainerSpec kLegacyContainer = { { 0, 0 }, "fnaf_save", "freddy", L"Five Nights at Freddy's 1 Save" };
 
 // ---------------------------------------------------------------------------
 // v2.20 storage backend switch (inverted from v2.14):
@@ -52,10 +90,8 @@ static const char* kAchFile = "fnaf_ach.ini";
 // ---------------------------------------------------------------------------
 #if !defined(FNAF_LIVE_SAFE)
 
-static const WCHAR kXContentDisplayName[] = L"Five Nights at Freddy's 1 Save";
 static XCONTENTDEVICEID g_saveDevice = XCONTENTDEVICE_ANY;
 static bool g_deviceChosen = false;
-
 // v2.43: after the device selector exhausts its retries, XAM keeps refusing
 // new UI for a long while (real HW) — don't re-stall every subsequent
 // StorageOpen in the same boot; cool down, then try the selector again later.
@@ -77,13 +113,9 @@ static DWORD PickSignedInUserIndex() {
     return 0xFFFFFFFF;   // player 1 has no profile signed in
 }
 
-// v2.37: was the XContent container actually mounted by the current
-// StorageOpen? Controls whether StorageClose must unmount it. When XContent
-// is unavailable (e.g. RGH without a signed-in profile) the storage FALLS
-// BACK to the plain HDD folder game:\save\ — this is what keeps the save
-// and achievements working on such setups (and fixes the "fresh game after
-// game over" bug).
-static bool s_usingXcontent = false;
+// v2.80: which container root is currently mounted — StorageClose unmounts
+// exactly that one (v2.37's s_usingXcontent flag became this pointer: with
+// per-module containers the root is no longer a constant).
 
 // Fallback dir for the SYSTEM build (used only when XContent is down):
 // deliberately NOT game:\save\ — that path is both the Live Safe storage
@@ -147,7 +179,11 @@ static bool PickStorageDevice()
     return true;
 }
 
-static bool XContentMount(bool create)
+// v2.80: mount ONE container (per the spec) and open a file inside it.
+// On a fopen failure the container is UNMOUNTED right here (the v2.48
+// stale-mount rule — a left-mounted root poisons every later create with
+// SHARING_VIOLATION). Returns 0 when the mount or the file open fails.
+static bool XContentMountSpec(const SaveContainerSpec* spec, bool create)
 {
     if (!PickStorageDevice()) return false;
 
@@ -155,8 +191,8 @@ static bool XContentMount(bool create)
     memset(&content, 0, sizeof(content));
     content.DeviceID = g_saveDevice;
     content.dwContentType = XCONTENTTYPE_SAVEDGAME;
-    wcscpy(content.szDisplayName, kXContentDisplayName);
-    strncpy(content.szFileName, kXContentFile, XCONTENT_MAX_FILENAME_LENGTH - 1);
+    wcsncpy(content.szDisplayName, spec->displayName, XCONTENT_MAX_DISPLAYNAME_LENGTH - 1);
+    strncpy(content.szFileName, spec->fileName, XCONTENT_MAX_FILENAME_LENGTH - 1);
 
     DWORD dwContentFlags;
     if (create) {
@@ -168,18 +204,18 @@ static bool XContentMount(bool create)
     DWORD dwDisposition = 0;
     ULARGE_INTEGER uliSize;
     uliSize.QuadPart = XContentCalculateSize(64 * 1024, 1);
-    DWORD res = XContentCreateEx(g_saveUser, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
+    DWORD res = XContentCreateEx(g_saveUser, spec->rootName, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
     if (res == ERROR_SHARING_VIOLATION || res == ERROR_ALREADY_EXISTS) {
         // v2.48: a leftover mount of this root from earlier in the boot poisons
         // every further open with SHARING_VIOLATION/ALREADY_EXISTS (real-HW
         // log). Close the stale root and retry once.
         printf("XContent: create hit 0x%08X — closing the stale root and retrying\n", (unsigned)res);
-        XContentClose(kXContentRoot, NULL);
+        XContentClose(spec->rootName, NULL);
         dwDisposition = 0;
-        res = XContentCreateEx(g_saveUser, kXContentRoot, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
+        res = XContentCreateEx(g_saveUser, spec->rootName, &content, dwContentFlags, &dwDisposition, NULL, 0, uliSize, NULL);
     }
-    printf("XContent: user=%u device=0x%08X create=0x%08X disp=0x%X\n",
-           (unsigned)g_saveUser, (unsigned)g_saveDevice, (unsigned)res, (unsigned)dwDisposition);
+    printf("XContent: user=%u device=0x%08X root=%s create=0x%08X disp=0x%X\n",
+           (unsigned)g_saveUser, (unsigned)g_saveDevice, spec->rootName, (unsigned)res, (unsigned)dwDisposition);
     if (res == ERROR_SUCCESS) MaybeSetThumbnail(content);
     return res == ERROR_SUCCESS;
 }
@@ -187,12 +223,13 @@ static bool XContentMount(bool create)
 // v2.48: where the 360 gets the save's picture from — the title icon in the
 // device picker comes from the embedded .spa (X_IMAGEID_GAME), and per-content
 // thumbnails are title-written PNGs via XContentSetThumbnail (max 15616 B).
-// Set ours once per boot right after the container mounts, so the storage
-// manager shows the game icon instead of a blank tile.
-static bool s_thumbDone = false;
+// Set ours once per CONTAINER (per root) right after it mounts, so the
+// storage manager shows the game icon instead of a blank tile.
+static char s_thumbRootDone[16] = "";
 static void MaybeSetThumbnail(const XCONTENT_DATA& content) {
-    if (s_thumbDone) return;
-    s_thumbDone = true;
+    // v2.80: the caller passes the mounted spec's content; the root is
+    // tracked through the content's file name (one container per file name).
+    if (strncmp(s_thumbRootDone, content.szFileName, sizeof(s_thumbRootDone) - 1) == 0) return;
     FILE* f = fopen("game:\\achievements_pics\\game_icon.png", "rb");
     if (!f) { printf("XContent: thumbnail skipped (game:\\achievements_pics\\game_icon.png missing)\n"); return; }
     static BYTE buf[15616];
@@ -201,50 +238,59 @@ static void MaybeSetThumbnail(const XCONTENT_DATA& content) {
     if (n == 0) return;
     DWORD res = XContentSetThumbnail(g_saveUser, &content, buf, (DWORD)n, NULL);
     printf("XContent: thumbnail -> 0x%08X (%u bytes)\n", (unsigned)res, (unsigned)n);
+    strncpy(s_thumbRootDone, content.szFileName, sizeof(s_thumbRootDone) - 1);
+    s_thumbRootDone[sizeof(s_thumbRootDone) - 1] = '\0';
 }
 
-// `file` is the short name ("freddy" / "fnaf_ach.ini"); `create`
-// selects XCONTENTFLAG_CREATEALWAYS (save) vs OPENEXISTING (load).
+// `file` is the short name ("freddy" / "freddy2" / ...); `create` selects
+// XCONTENTFLAG_CREATEALWAYS (save) vs OPENEXISTING (load). The container is
+// resolved from the file name (v2.80: one container per game module).
 // v2.37: XContent first (when it mounts); on ANY failure — mount or the
 // file open inside the container — FALL BACK to the plain HDD folder
-// (game:\save\ + file), so saves/achievements survive on RGH setups
+// (game:\save_fallback\ + file), so saves/achievements survive on RGH setups
 // without a usable XContent/profile.
+static const char* s_mountedRoot = 0;   // v2.80: the root StorageClose must unmount
+
+static FILE* MountAndOpen(const SaveContainerSpec* spec, const char* file, const char* mode, bool create) {
+    if (!XContentMountSpec(spec, create)) return 0;
+    char path[128];
+    fnaf::Snprintf(path, sizeof(path), "%s:\\%s", spec->rootName, file);
+    FILE* f = fopen(path, mode);
+    if (!f) {
+        // v2.48: the container fopen FAILED but the mount succeeded — unmount
+        // RIGHT HERE. The old code dropped s_usingXcontent without closing,
+        // so StorageClose skipped the unmount, the root stayed mounted for
+        // the rest of the boot, and every later XContentCreateEx answered with
+        // 0x20 SHARING_VIOLATION / 0xB7 ALREADY_EXISTS (seen in the HW log).
+        DWORD ferr = GetLastError();
+        // v2.50: ERROR_FILE_NOT_FOUND on a READ is expected on a fresh
+        // container (the file not written yet) — not an error.
+        DWORD fres = XContentFlush(spec->rootName, NULL);
+        DWORD cres = XContentClose(spec->rootName, NULL);
+        if (ferr == ERROR_FILE_NOT_FOUND && mode[0] == 'r')
+            printf("SAVE: no '%s' in %s yet (fresh) (flush=0x%08X close=0x%08X)\n",
+                   file, spec->rootName, (unsigned)fres, (unsigned)cres);
+        else
+            printf("SAVE: container file open failed (err=0x%08X) (flush=0x%08X close=0x%08X)\n",
+                   (unsigned)ferr, (unsigned)fres, (unsigned)cres);
+        return 0;
+    }
+    s_mountedRoot = spec->rootName;
+    printf("SAVE: storage = XContent (%s:\\%s)\n", spec->rootName, file);
+    return f;
+}
+
 static FILE* StorageOpen(const char* file, const char* mode, bool create) {
 #if !defined(FNAF_LIVE_SAFE)
     // Canonical XContent needs a LOCALLY SIGNED-IN gamer index; resolve it
     // once per boot. With nobody signed in, skip XContent entirely (it would
     // fail with ERROR_ACCESS_DENIED) and use the local fallback folder.
     if (g_saveUser == 0xFFFFFFFF) g_saveUser = PickSignedInUserIndex();
-    s_usingXcontent = (g_saveUser != 0xFFFFFFFF) && XContentMount(create);
-    if (s_usingXcontent) {
-        char path[128];
-        fnaf::Snprintf(path, sizeof(path), "%s:\\%s", kXContentRoot, file);
-        FILE* f = fopen(path, mode);
-        if (f) {
-            // v2.42: honest backend log — the import log used to claim the
-            // container while the write actually went to the fallback
-            printf("SAVE: storage = XContent (%s:\\%s)\n", kXContentRoot, file);
-            return f;
-        }
-        // v2.48: the container fopen FAILED but the mount succeeded — unmount
-        // RIGHT HERE. The old code dropped s_usingXcontent without closing,
-        // so StorageClose skipped the unmount, the root stayed mounted for
-        // the rest of the boot, and every later XContentCreateEx answered with
-        // 0x20 SHARING_VIOLATION / 0xB7 ALREADY_EXISTS (seen in the HW log).
-        {
-            DWORD ferr = GetLastError();
-            // v2.50: ERROR_FILE_NOT_FOUND on a READ is expected on a fresh
-            // container (fnaf_ach.ini not written yet) — not an error.
-            DWORD fres = XContentFlush(kXContentRoot, NULL);
-            DWORD cres = XContentClose(kXContentRoot, NULL);
-            if (ferr == ERROR_FILE_NOT_FOUND && mode[0] == 'r')
-                printf("SAVE: no '%s' in the container yet (fresh) -> local fallback (flush=0x%08X close=0x%08X)\n",
-                       file, (unsigned)fres, (unsigned)cres);
-            else
-                printf("SAVE: container file open failed (err=0x%08X) -> local fallback (flush=0x%08X close=0x%08X)\n",
-                       (unsigned)ferr, (unsigned)fres, (unsigned)cres);
-        }
-        s_usingXcontent = false;   // container closed above -> local file below
+    if (g_saveUser != 0xFFFFFFFF) {
+        const SaveContainerSpec* spec = FindContainerForFile(file);
+        FILE* f = MountAndOpen(spec, file, mode, create);
+        if (f) return f;
+        // fall through to the local fallback
     } else {
         // mount can fail for several honest reasons: no signed-in profile,
         // selector denied/cancelled, or the container simply not existing
@@ -259,13 +305,13 @@ static FILE* StorageOpen(const char* file, const char* mode, bool create) {
 }
 static void StorageClose() {
 #if !defined(FNAF_LIVE_SAFE)
-    if (s_usingXcontent) {
+    if (s_mountedRoot) {
         // commit pattern per the docs: flush buffers, then close — close
         // must succeed for a write to be considered valid
-        DWORD fres = XContentFlush(kXContentRoot, NULL);
-        DWORD cres = XContentClose(kXContentRoot, NULL);
-        printf("XContent: flush=0x%08X close=0x%08X\n", (unsigned)fres, (unsigned)cres);
-        s_usingXcontent = false;
+        DWORD fres = XContentFlush(s_mountedRoot, NULL);
+        DWORD cres = XContentClose(s_mountedRoot, NULL);
+        printf("XContent: flush=0x%08X close=0x%08X (%s)\n", (unsigned)fres, (unsigned)cres, s_mountedRoot);
+        s_mountedRoot = 0;
     }
 #endif
 }
@@ -283,6 +329,56 @@ static FILE* StorageOpen(const char* file, const char* mode, bool /*create*/) {
 static void StorageClose() { /* nothing mounted to close */ }
 
 #endif // FNAF_LIVE_SAFE
+
+// ---------------------------------------------------------------------------
+// v2.80: the pre-v2.80 -> per-module migration. A boot older than v2.80 kept
+// EVERY module's file in the single legacy container (the "freddy" package
+// under "fnaf_save" — which is FNAF1's container today, so F1 migrates by
+// identity). When the MODULE container lacks its file but the legacy one has
+// it, copy the bytes over once. The legacy copy is NOT deleted: the F1 tile
+// doubles as a complete backup of the migration moment (delete it from the
+// dashboard manually if you want; the module never reads it again).
+// Call once per module file, from the module's Load, BEFORE its Progress
+// load (AppModules.cpp).
+// ---------------------------------------------------------------------------
+void Progress::MigrateLegacySave(const char* file) {
+#if !defined(FNAF_LIVE_SAFE)
+    if (g_saveUser == 0xFFFFFFFF) g_saveUser = PickSignedInUserIndex();
+    if (g_saveUser == 0xFFFFFFFF) return;          // no profile: the local fallback rules
+    const SaveContainerSpec* spec = FindContainerForFile(file);
+    if (strcmp(spec->rootName, kLegacyContainer.rootName) == 0) return;   // F1 lives there already
+
+    // 1) already inside the module container?
+    FILE* f = MountAndOpen(spec, file, "rb", false);
+    if (f) { fclose(f); StorageClose(); return; }
+
+    // 2) does the legacy container carry it? read the whole file (the INI
+    // saves are tiny; the 256 KB cap is paranoia)
+    FILE* lf = MountAndOpen(&kLegacyContainer, file, "rb", false);
+    if (!lf) return;
+    long n = 0;
+    char* buf = 0;
+    fseek(lf, 0, SEEK_END);
+    n = ftell(lf);
+    fseek(lf, 0, SEEK_SET);
+    if (n > 0 && n <= 256 * 1024) {
+        buf = (char*)malloc((size_t)n);
+        if (buf && fread(buf, 1, (size_t)n, lf) != (size_t)n) { free(buf); buf = 0; }
+    }
+    fclose(lf);
+    StorageClose();
+    if (!buf) return;
+    // 3) write it into the module container
+    FILE* nf = MountAndOpen(spec, file, "wb", true);
+    if (!nf) { free(buf); return; }
+    size_t put = fwrite(buf, 1, (size_t)n, nf);
+    fclose(nf);
+    StorageClose();
+    free(buf);
+    printf("SAVE: migrated '%s' into the %s container (%u bytes; the legacy copy stays as a backup)\n",
+           file, spec->rootName, (unsigned)put);
+#endif
+}
 
 // v2.50: resolve the storage device once up front (called from main right
 // after the first presented frame, BEFORE any message box). On a
@@ -345,7 +441,7 @@ bool Progress::Load(GameProgress& p) {
     int val = 0;
     bool inFreddy = false;
 
-    FILE* f = StorageOpen(kXContentFile, "rb", false);
+    FILE* f = StorageOpen(kF1SaveFile, "rb", false);
     if (!f) return false;
     char buf[256];
     while (fgets(buf, sizeof(buf), f)) {
@@ -390,7 +486,7 @@ bool Progress::Save(const GameProgress& pIn) {
         out.beat6 ? 1 : 0,
         out.beat7 ? 1 : 0);
 
-    FILE* f = StorageOpen(kXContentFile, "wb", true);
+    FILE* f = StorageOpen(kF1SaveFile, "wb", true);
     if (!f) return false;
     size_t put = fwrite(iniBuf, 1, (size_t)len, f);
     fclose(f);
@@ -456,7 +552,7 @@ bool Progress::ImportSave() {
     buffer[got] = '\0';
     fclose(src);
 
-    FILE* dst = StorageOpen(kXContentFile, "wb", true);
+    FILE* dst = StorageOpen(kF1SaveFile, "wb", true);
     if (!dst) return false;
     size_t put = fwrite(buffer, 1, got, dst);
     fclose(dst);

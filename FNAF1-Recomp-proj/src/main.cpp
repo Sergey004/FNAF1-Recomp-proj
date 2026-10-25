@@ -1148,7 +1148,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.79 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.81 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists

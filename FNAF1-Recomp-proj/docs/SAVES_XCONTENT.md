@@ -87,3 +87,46 @@ rest of the boot — every later `XContentCreateEx` then failed with 0x20
 `StorageOpen`: on in-container fopen failure the root is flushed+closed
 IMMEDIATELY (and the failing `GetLastError()` is logged), and a mount that
 runs into those codes closes the stale root and retries once.
+## v2.80 — one container per game module ("как миры Minecraft")
+
+Pre-v2.80 all five modules wrote into ONE container (`freddy` under
+`fnaf_save`, display "Five Nights at Freddy's 1 Save") — a single
+dashboard tile held `freddy`, `freddy2`, `freddy3`, `fn4`, `sl` and the
+two achievement INIs. v2.80 gives every module its OWN package, exactly
+the Minecraft LCE world scheme (one world = one `XCONTENT_DATA` with its
+own `szDisplayName` tile and unique `szFileName`):
+
+| files | mount root | container | dashboard tile |
+|---|---|---|---|
+| `freddy`, `fnaf_ach.ini` | `fnaf_save` | `freddy` | Five Nights at Freddy's 1 Save |
+| `freddy2`, `fnaf2_ach.ini` | `fnaf2_save` | `freddy2` | Five Nights at Freddy's 2 Save |
+| `freddy3` | `fnaf3_save` | `freddy3` | Five Nights at Freddy's 3 Save |
+| `fn4` | `fnaf4_save` | `fn4` | Five Nights at Freddy's 4 Save |
+| `sl` | `fnsl_save` | `sl` | Sister Location Save |
+
+Mechanics:
+- Every save file name is module-unique, so `StorageOpen` resolves the
+  container from the file name (`kSaveContainers` table) — no game-side
+  call changed. The mount/unmount-per-operation pattern means two
+  containers are never mounted at once; `StorageClose` unmounts exactly
+  the root of the last mount (`s_mountedRoot`). Display names are capped
+  at 31 WCHARs (the 360's 32-WCHAR limit incl. terminator), roots at 12
+  chars. The thumbnail (game_icon.png) is set once per container.
+- **Migration**: `Progress::MigrateLegacySave(file)` (called from each
+  module's `Load` in AppModules.cpp before its progress read) copies a
+  module's file out of the legacy container when the module container
+  lacks it. The legacy container IS FNAF1's container (same `szFileName`),
+  so F1 migrates by identity and its tile keeps the F1 progress; the
+  legacy copies of F2/F3/F4/SL files are NOT deleted — the F1 tile doubles
+  as a complete backup of the migration moment (delete it from the
+  dashboard manually if you want; the modules never read it again).
+- The local fallback (`game:\save_fallback\`) and the Live Safe build
+  (`game:\save\`) stay flat — their files are already module-unique and
+  neither is dashboard-visible.
+- Future (not built): Minecraft-style per-game save SLOTS ("worlds") ride
+  the same pattern — enumerate with `XContentCreateEnumerator` +
+  `XEnumerate` over `XCONTENTTYPE_SAVEDGAME`, mint a fresh `szFileName`
+  per new world (Minecraft uses a creation timestamp), reuse the stored
+  `XCONTENT_DATA` for updates, and rename = create-new + copy + delete-old
+  (there is no XContentRename). The world list lives in the content
+  enumeration, never in the profile.

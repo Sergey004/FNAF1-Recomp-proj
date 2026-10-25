@@ -117,6 +117,9 @@ bool FNaF2Module::Load(AppServices& services) {
     // it as "intro seen" restores the original's observable behaviour and
     // stops the 33 s input-less intro from repeating on every launch.
     Progress::PrimeStorage();
+    // v2.80: pull the pre-v2.80 file out of the legacy container first (the
+    // per-module container may not exist yet on an old install)
+    Progress::MigrateLegacySave("freddy2");
     Progress::GameProgressF2 p2;
     const bool hadSave = Progress::LoadF2(p2);
     if (!hadSave) {
@@ -342,6 +345,8 @@ bool FNaF3Module::Load(AppServices& services) {
     // v2.62: load the dump's own save ("freddy3")
     // v2.74: the apply runs even WITHOUT a save — the date-based "term"
     // flag must be written into the INI on the very first launch too.
+    // v2.80: the legacy-container migration first (per-module containers)
+    Progress::MigrateLegacySave("freddy3");
     Progress::GameProgressF3 p3;
     if (!Progress::LoadF3(p3)) Progress::ResetF3(p3);
     m_game.ApplyProgressF3(p3);
@@ -494,6 +499,8 @@ bool FNaF4Module::Load(AppServices& services) {
     m_game.audio.channelVolume  = FNaF4ChVol;
     m_game.ResetToTitle();
     // v2.64: the fn4 save ("fn4") through the universal backend
+    // v2.80: the legacy-container migration first (per-module containers)
+    Progress::MigrateLegacySave("fn4");
     {
         Progress::GameProgressF4 p4;
         if (Progress::LoadF4(p4)) m_game.ApplyProgressF4(p4);
@@ -628,12 +635,23 @@ static void SLSfxPan(i32 channel, i32 pan) {
 // v2.78: the room-sorted SL pak ships per-frame pak-index lists in its asset
 // mapping — the game's preload hook feeds one whole room to the streaming
 // worker in one call (the dump's elevator ride / load trip covers the read).
+// v2.81: the frame's SOUNDS ride the same async lane (frameSounds) — the
+// first Play of a room finds the blob resident instead of reading it
+// mid-frame; and the ensure bodies are serialized so the render thread and
+// the worker never load the same blob twice.
 static void SLPreloadFrame(i32 frame) {
     if (!s_slPak || frame < 0) return;
     for (int i = 0; i < sisterlocation::FRAME_COUNT; ++i) {
         if (sisterlocation::frameImages[i].frame == frame) {
             s_slPak->PreloadIndices(sisterlocation::frameImages[i].images,
                                     sisterlocation::frameImages[i].count);
+            break;
+        }
+    }
+    for (int i = 0; i < sisterlocation::FRAME_SOUND_COUNT; ++i) {
+        if (sisterlocation::frameSounds[i].frame == frame) {
+            s_slPak->PreloadSoundIndices(sisterlocation::frameSounds[i].sounds,
+                                         sisterlocation::frameSounds[i].count);
             return;
         }
     }
@@ -655,6 +673,8 @@ bool SLModule::Load(AppServices& services) {
     m_game.audio.pan            = SLSfxPan;
     m_game.preloadFrame         = &SLPreloadFrame;   // v2.78: streaming rooms
     // v2.65: the fnaf_sl save ("sl") through the universal backend
+    // v2.80: the legacy-container migration first (per-module containers)
+    Progress::MigrateLegacySave("sl");
     {
         Progress::GameProgressSL psl;
         if (Progress::LoadSL(psl)) m_game.ApplyProgressSL(psl);

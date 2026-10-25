@@ -82,11 +82,15 @@ public:
     // v2.29: queue names for background ensure-loaded (streaming mode only;
     // no-op in eager mode). Names not found are silently skipped.
     void PreloadAsync(const char* const* texNames, int count);
-    // v2.78: same, by PAK ARRAY INDEX (positions in the table, not image
-    // handles) — the room-sorted SL pak ships per-frame index lists in its
-    // asset mapping header (sisterlocation::frameImages), so a room preload
-    // needs no name lookups at all. No-op in eager mode / out of range.
+    // v2.78: bulk preload by table position — the room-sorted SL pak ships
+    // per-frame index lists in its asset mapping header
+    // (sisterlocation::frameImages), so a room preload needs no name lookups
+    // at all. No-op in eager mode / out of range.
     void PreloadIndices(const int* texIdx, int count);
+    // v2.81: the same for SOUNDS (sisterlocation::frameSounds) — the worker
+    // reads a room's sound blobs in the background so the first Play of a
+    // room never stalls the render thread. No-op in eager mode.
+    void PreloadSoundIndices(const int* sndIdx, int count);
     bool IsStreaming() const { return m_streaming; }
 
     void Unload();
@@ -133,7 +137,9 @@ private:
     void* m_file;            // FILE* of the open pak (streaming mode)
     bool  m_streaming;
     bool  m_swapAll;         // pak-wide PCM byte-order verdict (mini-vote at load)
-    // background preload (XDK): ring queue of texture indices + worker
+    // background preload (XDK): ring queues of texture AND sound indices +
+    // worker. v2.81: sounds ride the same async lane (a room's blobs used to
+    // be read synchronously on the first Play — a mid-room hitch).
     void  EnsureTextureLoaded(int idx);
     void  EnsureSoundLoaded(int idx);
     bool  ReadAt(u32 off, u32 size, u8* dst);   // CS-guarded seek+read
@@ -144,12 +150,19 @@ private:
     int   m_voteCount;
     void* m_thread;                             // HANDLE (XDK)
     void* m_wakeEvent;                          // HANDLE (XDK)
-    void* m_cs;                                 // CRITICAL_SECTION* (XDK)
+    void* m_cs;                                 // CRITICAL_SECTION* (XDK): the queues
+    void* m_loadCs;                             // v2.81: serializes the ensure
+                                                // bodies — the render thread and
+                                                // the worker used to be able to
+                                                // load the SAME blob concurrently
+                                                // (double read + a D3D race)
     volatile long m_queue[512];                 // texture indices (v2.78: was
                                                 // 64 — a whole SL room is up to
                                                 // ~200 textures and overflowed)
     static const int kPreloadQueueCap = 512;
     volatile int  m_qHead, m_qTail;
+    volatile long m_sndQueue[512];              // v2.81: sound indices
+    volatile int  m_sQHead, m_sQTail;
     volatile bool m_quit;
     static unsigned long PreloadThreadStatic(void* param); // XDK worker
     void PreloadThreadRun();
