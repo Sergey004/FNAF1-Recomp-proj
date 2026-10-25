@@ -39,10 +39,16 @@ Every game ships its own `.spa` (Xbox identity/achievements, not yet) and its ow
 > deliberate deviation from the dump is labelled as such in the code and in
 > the changelog.
 
-## Status (v2.80)
+## Status (v2.81)
 
-**Latest changes (v2.76–2.80, brief):**
+**Latest changes (v2.76–2.81, brief):**
 
+- **Async room sounds + Russian achievements (v2.81).** SL room sounds are
+  no longer read mid-frame — they ride the same background worker as the
+  textures (ctfak collects each frame's sounds from the events and re-groups
+  the blobs; `PreloadSoundIndices` + the load race is closed). All 100
+  achievements are translated to Russian inside the spa (the `ru-RU`
+  locale) — the dashboard shows the console's language.
 - **A separate save per game (v2.80).** Every module writes into its own
   XContent container with its own dashboard tile ("…2 Save", "…3 Save",
   "…4 Save", "Sister Location Save") — the Minecraft world scheme. Progress
