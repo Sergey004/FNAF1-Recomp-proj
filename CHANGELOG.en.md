@@ -5,6 +5,54 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
 ---
 
+## v2.79 — 50 achievements in one spa: the official Xbox One sets for F2/F3/F4/SL
+
+- **The spa now carries all 50 achievements.** The `.xlast` grew from 10 to
+  **50 achievements** (projectVersion 1.00.0040.0 → **1.00.0050.0**):
+  F1 = ids 1..10 (unchanged, 400G), F2 = 11..20, F3 = 21..30, F4 = 31..40,
+  SL = 41..50 — the **official Xbox One lists** (1000G each; names/GS/
+  secret flags from the console listings, user-provided; the full registry
+  with the port conditions is `docs/ACHIEVEMENTS_SETS.md`). The icons are
+  the PS4 trophy art (`achievements_pics\FNAF 1..FNAF SL\`, mapped per
+  `Pic mapping.txt`; renamed to `f2_trop000.png`…`sl_trop009.png` because
+  spac requires unique file names across the whole project). Compiled with
+  `spac.exe` (the XDK CLI, from WSL): 0 errors; the header carries 50
+  `ACHIEVEMENT_*` constants; the spa was verified with spaday (50 XACH
+  records, 4400G total, 51 images).
+- **The strings are real now.** The spa's string table held `<String text>`
+  placeholders (the dashboard showed exactly that!) — filled in: F1 with
+  the original XBLA spa's texts (the apostrophed names + the real
+  descriptions, recovered from the `SPA-TEST/fnaf1.spa_src` extraction),
+  F2–SL with the Xbox One descriptions.
+- **The F2 slots are remapped to the Xbox One set** (`src/FNaF2Game.cpp`):
+  nights 1..5 = slots 0..4, **You Tampered** (custom all-20) = slot 5 (was
+  6), **You Stayed** (night 6) = slot 7 (was 5); the old c1-preset /
+  all-ten-challenges / SAVETHEM firings are gone (not in the set). Slots
+  **You Soothed** (6, the music box >50% for all of night 4), **You Tried**
+  (8, all minigames) and **You Failed** (9, the post-jumpscare event) wait
+  for their trackers (the registry's open items). The `fnaf2_ach.ini` mask
+  is version-gated (`v=2`): the pre-remap mask is discarded on load — its
+  bits mean different achievements now; nothing was ever written to the
+  profile, so nothing is lost.
+- **The pinning is extended**: 40 static_asserts pin the new ids (the
+  "a regenerated spa.h with shifted ids fails THIS build loudly" pattern
+  now covers the whole 1..50 range). The comments state the new fact — the
+  spa carries ids 11..20, so the F2 `XUserWriteAchievements` writes land
+  (with a signed-in profile).
+- **F3/F4/SL achievements are declared; the unlock code is the next step**
+  (the per-module funnels per the registry; some conditions wait for SL
+  wave 2 and the dump verifications — the open items in
+  `docs/ACHIEVEMENTS_SETS.md`).
+- Verified: spac.exe — 0 errors; the spaday verification of the spa; the
+  harness (FNaF2Game changed); the XDK cl.exe: Achievements/FNaF2Game/
+  Progress — clean. Files: `FNAF1-Recomp-proj.xlast`, `FNAF1-Recomp-proj.spa`
+  (rebuilt, 185.8 KB), `include/FNAF1-Recomp-proj.spa.h` (regenerated),
+  `src/Achievements.cpp`, `include/Achievements.h`, `src/FNaF2Game.cpp`,
+  `src/Progress.cpp`, `src/main.cpp` (the banner), the
+  `achievements_pics/` icons (renamed). Nothing to add to the `.vcxproj`.
+
+---
+
 ## v2.78 — SL's seamless loads: the room-grouped pak + preloading inside the dump's own transitions
 
 - **ctfak RecompPack: the room-sorted blob order — SISTER LOCATION ONLY** (the user's call, automatic by the game title, no prompt): COMMON images (used by ≥ 2 frames, 387 of them) first, then each frame's exclusive set as **one contiguous run** in frame order, then the frame-less images. Every other game (including FNAF1 with its HW-verified pak) keeps the classic order byte-identical. The repack also regenerates `pak_manifest.json` (+ `"roomSort"` and the frame → handles table) and `asset_mapping_sisterlocation.hpp` (+ `frameImages[]` — per frame, the **pak indices** ascending by position).

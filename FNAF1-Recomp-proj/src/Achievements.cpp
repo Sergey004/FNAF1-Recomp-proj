@@ -53,14 +53,63 @@ static_assert(ACHIEVEMENT_NO_RUNNING             == 8,  "spa.h id 8 must stay 8"
 static_assert(ACHIEVEMENT_NO_LAUGHING            == 9,  "spa.h id 9 must stay 9");
 static_assert(ACHIEVEMENT_NO_HIDING              == 10, "spa.h id 10 must stay 10");
 
+// v2.79: the four add-on sets — the OFFICIAL XBOX ONE lists, 1000G each
+// (docs/ACHIEVEMENTS_SETS.md; the .xlast carries them since projectVersion
+// 1.0.50). Same rule: a regenerated spa.h with shifted ids fails THIS
+// build loudly. F3 21..30 / F4 31..40 / SL 41..50 have no unlock code yet
+// (the per-module funnels are the registry's next step); F2 11..20 is the
+// live UnlockFnaf2 range.
+static_assert(ACHIEVEMENT_F2_ONE_NIGHT             == 11, "spa.h id 11 must stay 11");
+static_assert(ACHIEVEMENT_F2_TWO_NIGHTS            == 12, "spa.h id 12 must stay 12");
+static_assert(ACHIEVEMENT_F2_THREE_NIGHTS          == 13, "spa.h id 13 must stay 13");
+static_assert(ACHIEVEMENT_F2_FOUR_NIGHTS           == 14, "spa.h id 14 must stay 14");
+static_assert(ACHIEVEMENT_F2_FIVE_NIGHTS           == 15, "spa.h id 15 must stay 15");
+static_assert(ACHIEVEMENT_F2_YOU_TAMPERED          == 16, "spa.h id 16 must stay 16");
+static_assert(ACHIEVEMENT_F2_YOU_SOOTHED           == 17, "spa.h id 17 must stay 17");
+static_assert(ACHIEVEMENT_F2_YOU_STAYED            == 18, "spa.h id 18 must stay 18");
+static_assert(ACHIEVEMENT_F2_YOU_TRIED             == 19, "spa.h id 19 must stay 19");
+static_assert(ACHIEVEMENT_F2_YOU_FAILED            == 20, "spa.h id 20 must stay 20");
+static_assert(ACHIEVEMENT_F3_ONE_NIGHT             == 21, "spa.h id 21 must stay 21");
+static_assert(ACHIEVEMENT_F3_TWO_NIGHTS            == 22, "spa.h id 22 must stay 22");
+static_assert(ACHIEVEMENT_F3_THREE_NIGHTS          == 23, "spa.h id 23 must stay 23");
+static_assert(ACHIEVEMENT_F3_FOUR_NIGHTS           == 24, "spa.h id 24 must stay 24");
+static_assert(ACHIEVEMENT_F3_FIVE_NIGHTS           == 25, "spa.h id 25 must stay 25");
+static_assert(ACHIEVEMENT_F3_NIGHTMARE             == 26, "spa.h id 26 must stay 26");
+static_assert(ACHIEVEMENT_F3_AGGRESSIVE_NIGHTMARE  == 27, "spa.h id 27 must stay 27");
+static_assert(ACHIEVEMENT_F3_TRAPPED               == 28, "spa.h id 28 must stay 28");
+static_assert(ACHIEVEMENT_F3_THE_END               == 29, "spa.h id 29 must stay 29");
+static_assert(ACHIEVEMENT_F3_TRUE_END              == 30, "spa.h id 30 must stay 30");
+static_assert(ACHIEVEMENT_F4_ONE_NIGHT             == 31, "spa.h id 31 must stay 31");
+static_assert(ACHIEVEMENT_F4_TWO_NIGHTS            == 32, "spa.h id 32 must stay 32");
+static_assert(ACHIEVEMENT_F4_THREE_NIGHTS          == 33, "spa.h id 33 must stay 33");
+static_assert(ACHIEVEMENT_F4_FOUR_NIGHTS           == 34, "spa.h id 34 must stay 34");
+static_assert(ACHIEVEMENT_F4_FIVE_NIGHTS           == 35, "spa.h id 35 must stay 35");
+static_assert(ACHIEVEMENT_F4_6TH_NIGHT             == 36, "spa.h id 36 must stay 36");
+static_assert(ACHIEVEMENT_F4_NIGHTMARE             == 37, "spa.h id 37 must stay 37");
+static_assert(ACHIEVEMENT_F4_20_20_20_20           == 38, "spa.h id 38 must stay 38");
+static_assert(ACHIEVEMENT_F4_FUN                   == 39, "spa.h id 39 must stay 39");
+static_assert(ACHIEVEMENT_F4_TOO_BAD               == 40, "spa.h id 40 must stay 40");
+static_assert(ACHIEVEMENT_SL_CONTROLLED_SHOCK      == 41, "spa.h id 41 must stay 41");
+static_assert(ACHIEVEMENT_SL_BREAKER_ROOM          == 42, "spa.h id 42 must stay 42");
+static_assert(ACHIEVEMENT_SL_PARTS_AND_SERVICE     == 43, "spa.h id 43 must stay 43");
+static_assert(ACHIEVEMENT_SL_SPRING_LOCK_MAINTENANCE == 44, "spa.h id 44 must stay 44");
+static_assert(ACHIEVEMENT_SL_ICE_CREAM             == 45, "spa.h id 45 must stay 45");
+static_assert(ACHIEVEMENT_SL_MEET_THE_CAST         == 46, "spa.h id 46 must stay 46");
+static_assert(ACHIEVEMENT_SL_LOOK_LIKE_YOU         == 47, "spa.h id 47 must stay 47");
+static_assert(ACHIEVEMENT_SL_EXOTIC_BUTTERS        == 48, "spa.h id 48 must stay 48");
+static_assert(ACHIEVEMENT_SL_YOU_WONT_DIE          == 49, "spa.h id 49 must stay 49");
+static_assert(ACHIEVEMENT_SL_FAZBEARS_FRIGHT       == 50, "spa.h id 50 must stay 50");
+
 // v2.47: id/gamerscore mirror the official config (the .xlast project); id 4
 // is 50G there (this table used to hand-roll 30 — total is 400 G now). The
 // console has no visibility flag for achievements (the config's
 // showUnachieved does nothing), so in-game `secret` stays hand-picked:
-// 6/7/10 are the hidden ones. Name/description text stays in-game too — the
-// config's language strings are placeholders and its friendly names are
-// restricted (no apostrophes etc.); reading them via XReadStringsFromSpaFile
-// (the SPASTRING_* ids in the spa header) is future work.
+// 6/7/10 are the hidden ones. Name/description text stays in-game too —
+// v2.79: the config's language strings are REAL now (the .xlast was filled
+// from the original XBLA spa's strings; the spa decompile proved it) and
+// its friendly names are still restricted (no apostrophes etc.); reading
+// them via XReadStringsFromSpaFile (the SPASTRING_* ids in the spa header)
+// remains future work.
 static const AchievementDef kAchievements[Achievements::COUNT] = {
     { ACHIEVEMENT_ONE_NIGHT_AT_FREDDYS,    20, "One Night at Freddy's",   "Survive your first night on the job.",               "ach_night1.png",    false },
     { ACHIEVEMENT_TWO_NIGHTS_AT_FREDDYS,   20, "Two Nights at Freddy's",  "Survive a second night.",                            "ach_night2.png",    false },
@@ -234,8 +283,8 @@ void Achievements::UnlockFnaf2(int slot) {
     if (m_unlockedF2 & (1u << slot)) return;  // already earned
     m_unlockedF2 |= (1u << slot);
     if (!Progress::SaveAchieveF2(m_unlockedF2)) printf("ACH F2 save FAILED\n");
-    // the profile write: the same pipe as the base ids; harmless failure
-    // until the spa carries the add-on ids (the local mask stays the record)
+    // the profile write: the same pipe as the base ids. v2.79: the spa
+    // carries ids 11..20 now (projectVersion 1.0.50) — the write lands.
 #if !defined(FNAF_LIVE_SAFE)
     if (XUserGetSigninState(0) == eXUserSigninState_NotSignedIn) {
         printf("ACH F2 %d -> skipped (no signed-in profile at slot 0)\n", id);

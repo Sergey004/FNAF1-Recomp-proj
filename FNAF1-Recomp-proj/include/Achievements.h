@@ -94,17 +94,18 @@ public:
     const char* ToastName() const;
     int         ToastGamerscore() const;
 
-    // ---- v2.62: the FNAF2 add-on slots (spa ids 11..20) ----
-    // The mask lives in fnaf2_ach.ini (bits 0..9); the profile write targets
-    // the same spa — the user extends the base .xlast with ids 11..20 per
-    // docs/FNAF2_DLC_ACHIEVEMENTS.md (the add-on superset rule keeps the ids
-    // identical if the real PDLC replaces it). Until the spa carries them the
-    // XUserWriteAchievements call fails harmlessly and the local mask + the
-    // printf log stay the record.
-    // Slot map (name them to match in the XLAST):
-    //   0..4 = nights 1..5 beaten, 5 = night 6, 6 = custom all-20,
-    //   7 = the 20/20/20/20 challenge (c1), 8 = all ten challenges,
-    //   9 = the 8-bit SAVETHEM chain discovered.
+    // ---- v2.62/v2.79: the FNAF2 add-on slots (spa ids 11..20) ----
+    // The spa NOW carries the ids: the base .xlast was extended with the
+    // OFFICIAL XBOX ONE set (docs/ACHIEVEMENTS_SETS.md, projectVersion
+    // 1.0.50) — the superset rule keeps the ids identical if the real PDLC
+    // replaces it. The mask lives in fnaf2_ach.ini (bits 0..9); v2.79 gates
+    // the file with a version marker because the slot meanings changed with
+    // the Xbox One set (the pre-remap mask is discarded on load).
+    // Slot map (the Xbox One list order):
+    //   0..4 = nights 1..5, 5 = You Tampered (custom all-20),
+    //   6 = You Soothed (music box — tracker TODO),
+    //   7 = You Stayed (night 6), 8 = You Tried (all minigames — TODO),
+    //   9 = You Failed (the post-jumpscare event — TODO, dump check).
     bool IsUnlockedFnaf2(int slot) const { return (m_unlockedF2 & (1u << slot)) != 0; }
     void UnlockFnaf2(int slot);      // idempotent: mark + save + system write
 

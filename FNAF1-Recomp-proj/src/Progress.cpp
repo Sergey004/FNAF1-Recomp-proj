@@ -525,10 +525,14 @@ bool Progress::SaveAchieve(u32 bits) {
 }
 
 // ---- v2.62: the FNAF2 achievement mask (fnaf2_ach.ini, bits 0..9) ----
+// v2.79: the file is gated with a "v=2" marker — the v1 mask predates the
+// slot remap (the Xbox One set), its bits mean DIFFERENT achievements now,
+// so an unmarked file is discarded instead of re-read.
 
 bool Progress::LoadAchieveF2(u32* bits) {
     *bits = 0;
     bool ok = false;
+    bool v2 = false;
     FILE* f = StorageOpen("fnaf2_ach.ini", "rb", false);
     if (!f) return false;
     char buf[128];
@@ -539,6 +543,10 @@ bool Progress::LoadAchieveF2(u32* bits) {
         if (eol) *eol = '\0';
         char* s = buf;
         while (*s && (*s == ' ' || *s == '\t')) ++s;
+        if (strncmp(s, "v=2", 3) == 0) {
+            v2 = true;
+            continue;
+        }
         if (strncmp(s, "unlocked=", 9) == 0) {
             *bits = (u32)atoi(s + 9);
             ok = true;
@@ -546,12 +554,13 @@ bool Progress::LoadAchieveF2(u32* bits) {
     }
     fclose(f);
     StorageClose();
+    if (!v2) { *bits = 0; return false; }
     return ok;
 }
 
 bool Progress::SaveAchieveF2(u32 bits) {
     char buf[64];
-    int len = fnaf::Snprintf(buf, sizeof(buf), "unlocked=%u\n", (unsigned)bits);
+    int len = fnaf::Snprintf(buf, sizeof(buf), "v=2\nunlocked=%u\n", (unsigned)bits);
     FILE* f = StorageOpen("fnaf2_ach.ini", "wb", true);
     if (!f) return false;
     size_t put = fwrite(buf, 1, (size_t)len, f);

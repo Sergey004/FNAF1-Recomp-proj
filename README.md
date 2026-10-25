@@ -39,10 +39,18 @@ Every game ships its own `.spa` (Xbox identity/achievements, not yet) and its ow
 > deliberate deviation from the dump is labelled as such in the code and in
 > the changelog.
 
-## Status (v2.78)
+## Status (v2.79)
 
-**Latest changes (v2.76–2.78, brief):**
+**Latest changes (v2.76–2.79, brief):**
 
+- **50 achievements in one spa (v2.79).** The `.xlast` now carries the
+  official Xbox One achievement sets (F2/F3/F4/SL — 10 achievements and
+  1000G each, ids 11..50; F1 = 1..10 as shipped), with the PS4 trophy art
+  as the icons; built with the XDK `spac.exe` CLI, 0 errors. The spa's
+  string table is filled with real texts (it held `<String text>`
+  placeholders — that is what the dashboard showed). The F2 slots are
+  remapped to the set; F3/F4/SL are declared — the unlock code is the next
+  step (`docs/ACHIEVEMENTS_SETS.md`).
 - **SL's seamless loads (v2.78).** The Sister Location pak is re-sorted
   "by rooms" (shared images in the head, each room's set as one contiguous
   run; every other game untouched), and the port streams the next room in
