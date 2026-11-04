@@ -145,6 +145,16 @@ public:
     bool IsBeat1() const { return m_beat1; }   // extras unlocked
     bool IsBeat3() const { return m_beat3; }   // custom unlocked
 
+    // v2.91 finale-wave state for the overlays
+    i32  GetCustRow()   const { return m_custRow; }
+    i32  GetCustDiff(i32 i) const { return (i >= 0 && i < 10) ? m_custDiff[i] : 0; }
+    bool GetCustDoor(i32 i) const { return (i >= 0 && i < 3) ? m_custDoor[i] : false; }
+    bool GetCustLane(i32 i) const { return (i >= 0 && i < 3) ? m_custLane[i] : false; }
+    i32  GetCustHour()  const { return m_custHour; }
+    i32  GetFinalHour() const { return m_finalHour; }
+    bool GetFinalCue()  const { return m_finalCue; }
+    i32  GetGirlLine()  const { return m_girlLine; }
+
 private:
     void Sfx(const char* s, bool loop, i32 ch, i32 vol);
     void SfxStop(const char* s);
@@ -170,6 +180,16 @@ private:
     void TickDeath(f32 dt, const SLInputs& in);
     void TickGameOver(f32 dt, const SLInputs& in);
     void TickLoad(f32 dt);
+    // v2.91 finale wave (frames 17/27/29-35)
+    void TickIntro4(f32 dt, const SLInputs& in);   // the night-4 card -> P&S
+    void TickFinal(f32 dt, const SLInputs& in);    // the Final Encounter
+    void TickCustMenu(f32 dt, const SLInputs& in); // the ten AI levels
+    void TickCustWait(f32 dt);                     // the 2 s loader
+    void TickCustLevel(f32 dt, const SLInputs& in);// the custom office
+    void TickCustDeath(f32 dt);                    // 2 s -> menu
+    void TickCustWin(f32 dt);                      // 8bit first / menu
+    void TickCust8bit(f32 dt, const SLInputs& in); // the first-win cutscene
+    void TickFinalCS(f32 dt, const SLInputs& in);  // the custom final cutscene
     void TickWalkRoom(f32 dt, const SLInputs& in);   // the shared walk skeleton
     void NightStart();                                // the presets per night
 
@@ -265,6 +285,28 @@ private:
     f32    m_winT;
     f32    m_tvT;
     f32    m_girlT;
+    i32    m_girlLine;       // v2.91: frame 25 — the line index 1..6
+
+    // v2.91 finale wave: the Final Encounter (frame 27) — Ennard's night;
+    // the hour counter (60 s/hour, the dump's hour model) + the approach
+    // rolls (hide on the cue or die); hour 6 = B_final_16 + beat3 unlock
+    f32    m_finalT;
+    i32    m_finalHour;
+    f32    m_finalRollT;
+    bool   m_finalCue;       // Ennard is at the vent — hide now
+    f32    m_finalHideT;
+
+    // v2.91 custom night (frames 29-35): ten AI levels, three defended
+    // lanes (Ballora left door, Funtime Foxy right door, Lolbit vent)
+    i32    m_custRow;
+    i32    m_custDiff[10];
+    f32    m_custHourT;
+    i32    m_custHour;
+    f32    m_custRollT[3];
+    bool   m_custLane[3];
+    bool   m_custDoor[3];    // the door/vent toggles (LB/RB/Y press)
+    i32    m_custWins;
+    bool   m_cust8bit;       // the first-win 8-bit cutscene was played
 
     // the fnaf_sl save state (keys: current/intro/beat1/beat3/keycard/104)
     bool   m_saveDirty;

@@ -308,6 +308,56 @@ void SLRender::RenderGameOver() {
     // v2.73: black, per the frame_15 rest state (was an invented ". . .").
 }
 
+// ------------------------------------------------------------
+// v2.91 finale-wave overlays: the Wave2 frame art stays underneath; the
+// text panels carry the new screens' live state until the exe frame art
+// is wired into the pak renders.
+// ------------------------------------------------------------
+void SLRender::RenderCustMenuOver(const SLGame& game) {
+    if (!m_text) return;
+    static const char* kRows[10] = {
+        "Ballora", "Funtime Freddy", "Funtime Foxy", "Bidybab", "Minireena",
+        "Minireena 2", "Yenndo", "Lolbit", "Electrobab", "Bonnet"
+    };
+    m_text->DrawText(480, 40, "CUSTOM NIGHT", 0xFFFFFFFF);
+    for (int i = 0; i < 10; ++i) {
+        const bool sel = (i == game.GetCustRow());
+        char line[96];
+        Snprintf(line, sizeof(line), "%s%s  %d", kRows[i],
+                 sel ? "  <" : "   ", game.GetCustDiff(i));
+        m_text->DrawText(420, 90 + i * 44, line, sel ? 0xFF60FF60 : 0xFFB0B0B0);
+    }
+    m_text->DrawText(420, 560, "left/right = level   A = start   B = back", 0xFF808080);
+}
+
+void SLRender::RenderCustLevelOver(const SLGame& game) {
+    if (!m_text) return;
+    static const char* kLanes[3] = { "Ballora  [LB]", "F.Foxy  [RB]", "Lolbit  [Y]" };
+    char hour[32];
+    Snprintf(hour, sizeof(hour), "%d AM", game.GetCustHour() == 12 ? 12 : game.GetCustHour());
+    m_text->DrawText(590, 30, hour, 0xFFFFFFFF);
+    for (int i = 0; i < 3; ++i) {
+        const bool danger = game.GetCustLane(i);
+        const bool closed = game.GetCustDoor(i);
+        char line[96];
+        Snprintf(line, sizeof(line), "%s  %s", kLanes[i],
+                 closed ? "CLOSED" : (danger ? "!! AT THE DOOR" : "open"));
+        m_text->DrawText(60, 520 + i * 44, line,
+                         danger ? 0xFFFF5050 : (closed ? 0xFF60A0FF : 0xFF909090));
+    }
+}
+
+void SLRender::RenderFinalOver(const SLGame& game) {
+    if (!m_text) return;
+    char hour[32];
+    Snprintf(hour, sizeof(hour), "%d AM", game.GetFinalHour() == 12 ? 12 : game.GetFinalHour());
+    m_text->DrawText(590, 30, hour, 0xFFE0E0E0);
+    if (game.GetFinalCue())
+        m_text->DrawText(430, 340, "HE IS AT THE VENT - HOLD A", 0xFFFF5050);
+    else
+        m_text->DrawText(500, 660, "wait for the cue...", 0xFF808080);
+}
+
 void SLRender::RenderHold(const char* caption) {
     if (m_text)
         m_text->DrawText(440, 340, caption ? caption : "the wave-2 room", 0xFF909090);

@@ -240,6 +240,18 @@ void FNaF4Game::ApplyNightAI() {
 
 void FNaF4Game::TriggerJumpscare(i32 overlayImg) {
     if (m_gameover) return;
+    // v2.91: the dump's shadow-night route (frame 3 "level" Group 432):
+    // fredbear scare > 0 AND shadow > 0 -> frame 15 "nightmare jumpscare"
+    // (distortion loop, 5 s -> "load extras") instead of the game over.
+    if (m_shadow != 0) {
+        m_attackImg = overlayImg;
+        m_attackT = 0.001f;
+        m_gameover = true;
+        Sfx("distortion", true, 16, 100);
+        RequestScreen(SCR_NJSCARE);
+        m_goT = 0.0f;
+        return;
+    }
     m_attackImg = overlayImg;
     m_attackT = 0.001f;
     m_gameover = true;
@@ -379,8 +391,14 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
 
         case SCR_NJSCARE:
             m_goT += dt;
+            // v2.91: the dump (frame 15 Group 2) — 5 s distortion, then jump
+            // to frame 11 "load extras" (was: the title), and the shadow
+            // flag clears once used (the game-over g2 reset, bypassed here)
             if (m_goT >= 5.0f) {
-                RequestScreen(SCR_TITLE);      // V11 = slot 11 = the disclaimer slot
+                SfxStop("distortion");
+                m_shadow = 0;
+                m_saveDirty = true;
+                RequestScreen(SCR_EXTRAS);
                 m_goT = 0.0f;
             }
             break;

@@ -67,6 +67,7 @@ static const SaveContainerSpec kSaveContainers[] = {
     { { "freddy3", 0 },              "fnaf3_save", "freddy3", L"Five Nights at Freddy's 3 Save" },
     { { "fn4", 0 },                  "fnaf4_save", "fn4",     L"Five Nights at Freddy's 4 Save" },
     { { "sl", 0 },                   "fnsl_save",  "sl",      L"Sister Location Save" },
+    { { "fnafworld", 0 },            "fnfw_save",  "fnafworld", L"FNAF World Save" },
 };
 static const SaveContainerSpec* FindContainerForFile(const char* file) {
     for (int i = 0; i < (int)(sizeof(kSaveContainers) / sizeof(kSaveContainers[0])); ++i)
@@ -1015,6 +1016,124 @@ void Progress::WipeSL() {
     GameProgressSL p;
     ResetSL(p);
     SaveSL(p);
+}
+
+// ------------------------------------------------------------
+// v2.90: the FNAF World save ("fnafworld") — binary struct with an xor
+// checksum (the original's INI keys carry no checksum, but our F1 progress
+// has used this wrapper since v2.11; same discipline here). Own container
+// fnfw_save (see kSaveContainers) + the local fallback via StorageOpen.
+// ------------------------------------------------------------
+static const u32 FW_PROGRESS_MAGIC   = 0x444C5746u;   // 'FWLD'
+static const u32 FW_PROGRESS_VERSION = 2;             // v2: party/inventory
+
+struct FWSaveBlob {                 // on-disk layout (POD, no padding surprises:
+    u32 magic;                      // all members u32/i32)
+    u32 version;
+    i32 zoneLevel;
+    i32 fazTokens;
+    i32 lastX, lastY;
+    i32 lastFrame;
+    // v2: the party/inventory (v1 files read fine — the tail just defaults)
+    i32 party[4];
+    u32 chipsOwned;
+    u32 chipsEq;
+    u32 bytesOwned;
+    u32 checksum;                   // xor of everything above ^ 0x5A5A5A5A
+};
+
+static u32 ComputeFWChecksum(const FWSaveBlob& b) {
+    const u32* w = reinterpret_cast<const u32*>(&b);
+    const size_t count = offsetof(FWSaveBlob, checksum) / sizeof(u32);
+    u32 sum = 0;
+    for (size_t i = 0; i < count; ++i) sum ^= w[i];
+    return sum ^ 0x5A5A5A5Au;
+}
+
+void Progress::ResetFW(GameProgressFW& p) {
+    p.zoneLevel = 1;
+    p.fazTokens = 0;
+    p.lastX = 0;
+    p.lastY = 0;
+    p.lastFrame = 0;
+    // the classic four lead (Freddy/Bonnie/Chica/Foxy — the exe's first party)
+    p.party[0] = 0;  p.party[1] = 12;  p.party[2] = 13;  p.party[3] = 14;
+    p.chipsOwned = 0;
+    p.chipsEq = 0xFFFFFFFFu;      // 4 x 0xFF = nothing equipped
+    p.bytesOwned = 0;
+}
+
+bool Progress::LoadFW(GameProgressFW& p) {
+    ResetFW(p);
+    FWSaveBlob b;
+    memset(&b, 0, sizeof(b));
+    FILE* f = StorageOpen("fnafworld", "rb", false);
+    if (!f) return false;
+    size_t rd = fread(&b, 1, sizeof(b), f);
+    fclose(f);
+    StorageClose();
+    // v2.91: two on-disk shapes. v1 = 8 words (magic..lastFrame + checksum,
+    // the checksum landed where party[0] now sits); v2 = the full layout.
+    const size_t kV1Bytes = 32;
+    if (rd != kV1Bytes && rd != sizeof(b)) return false;     // fresh / junk
+    if (b.magic != FW_PROGRESS_MAGIC) return false;
+    u32 stored, sum = 0;
+    const u32* w = reinterpret_cast<const u32*>(&b);
+    if (rd == kV1Bytes) {
+        if (b.version != 1) return false;
+        for (size_t i = 0; i < 7; ++i) sum ^= w[i];
+        stored = w[7];
+    } else {
+        if (b.version != FW_PROGRESS_VERSION) return false;
+        for (size_t i = 0; i < offsetof(FWSaveBlob, checksum) / sizeof(u32); ++i) sum ^= w[i];
+        stored = b.checksum;
+    }
+    if (stored != (sum ^ 0x5A5A5A5Au)) return false;         // corrupt
+    if (b.zoneLevel < 1 || b.zoneLevel > 3) b.zoneLevel = 1; // Save.c cap 3
+    p.zoneLevel = b.zoneLevel;
+    p.fazTokens = b.fazTokens;
+    p.lastX     = (f32)b.lastX;
+    p.lastY     = (f32)b.lastY;
+    p.lastFrame = b.lastFrame;
+    if (rd != kV1Bytes) {
+        for (int i = 0; i < 4; ++i) {
+            if (b.party[i] >= 0 && b.party[i] < 256) p.party[i] = b.party[i];
+        }
+        p.chipsOwned = b.chipsOwned;
+        p.chipsEq    = b.chipsEq;
+        p.bytesOwned = b.bytesOwned;
+    }
+    return true;
+}
+
+bool Progress::SaveFW(const GameProgressFW& pIn) {
+    FWSaveBlob b;
+    memset(&b, 0, sizeof(b));
+    b.magic     = FW_PROGRESS_MAGIC;
+    b.version   = FW_PROGRESS_VERSION;
+    b.zoneLevel = pIn.zoneLevel < 1 ? 1 : (pIn.zoneLevel > 3 ? 3 : pIn.zoneLevel);
+    b.fazTokens = pIn.fazTokens;
+    b.lastX     = (i32)pIn.lastX;
+    b.lastY     = (i32)pIn.lastY;
+    b.lastFrame = pIn.lastFrame;
+    for (int i = 0; i < 4; ++i) b.party[i] = pIn.party[i];
+    b.chipsOwned = pIn.chipsOwned;
+    b.chipsEq    = pIn.chipsEq;
+    b.bytesOwned = pIn.bytesOwned;
+    b.checksum  = ComputeFWChecksum(b);
+
+    FILE* f = StorageOpen("fnafworld", "wb", true);
+    if (!f) return false;
+    size_t put = fwrite(&b, 1, sizeof(b), f);
+    fclose(f);
+    StorageClose();
+    return put == sizeof(b);
+}
+
+void Progress::WipeFW() {
+    GameProgressFW p;
+    ResetFW(p);
+    SaveFW(p);
 }
 
 } // namespace fnaf

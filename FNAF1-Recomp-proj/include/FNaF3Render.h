@@ -44,6 +44,7 @@ public:
     void RenderWait();                           // frame 7: the 100 ms black
     void RenderStaticDeath();                    // frame 4: the death static
     void RenderGameOver();                       // frame 6
+    void RenderDemoEnd();                        // v2.91: frame 15 (img 46)
     void RenderRare(i32 id);                     // frames 12/13/14 (225/228/252)
     void RenderLoad(f32 t);                      // frame 18: the glitch loader
     void RenderCutscene(const FNaF3Game& game, f32 time);   // frame 16

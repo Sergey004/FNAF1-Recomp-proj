@@ -1133,7 +1133,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.65 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.91 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -1148,7 +1148,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.81 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.91 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1331,10 +1331,17 @@ int main(int argc, char* argv[]){
             AppModule* m = AppRegistry_Active();
             g_audio.Tick();
             // fill the shared services once and hand them over; the pad
-            // snapshot is refreshed every frame before Tick
+            // snapshot is refreshed every frame before Tick.
+            // v2.90 ORDER FIX: s_in/s_svc.input MUST be assigned BEFORE
+            // m->Load — the module COPIES AppServices inside its Load, so a
+            // NULL input at Load time stayed NULL in the module's own copy
+            // forever = zero controls in F2/3/4/SL/World while the selector
+            // and FNAF1 (which read `gi` directly) kept working.
             static AppServices s_svc;
             static GameInput   s_in;
             static AppModule*  s_loadedModule = 0;
+            s_in = gi;
+            s_svc.input = &s_in;
             if (s_loadedModule != m) {
                 if (!s_svc.pak) {
                     s_svc.audio = &g_audio;
@@ -1347,8 +1354,6 @@ int main(int argc, char* argv[]){
                 s_loadedModule = m;
                 g_debugConsole.Print("Module %s: services handed over", m->Name());
             }
-            s_in = gi;
-            s_svc.input = &s_in;
             m->Tick(1.0f / 60.0f);
             // v2.77: B is the GAME's button again (the dump's Escape: the
             // F2 "it's me" screen, the SL wave-2 screens, the F2/F3/F4

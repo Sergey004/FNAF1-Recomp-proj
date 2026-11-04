@@ -42,10 +42,12 @@ AudioSystem::AudioSystem()
     , m_ok(false)
 {
     for (int i = 0; i < 32; ++i) m_channelVolumeDb[i] = 0.0f;   // v2.19: unity (0 dB)
+    for (int i = 0; i < 32; ++i) m_channelPan[i] = 0.0f;        // v2.91: centre
     for (int i = 0; i < MAX_VOICES; ++i) {
         m_slots[i].voice = 0;
         m_slots[i].name[0] = '\0';
         m_slots[i].channel = -1;
+        m_slots[i].pan = 0.0f;
         m_slots[i].inUse = false;
     }
 }
@@ -87,6 +89,7 @@ void AudioSystem::FreeSlot(int idx) {
     }
     s.name[0] = '\0';
     s.channel = -1;
+    s.pan = 0.0f;
     s.inUse = false;
 }
 
@@ -184,10 +187,21 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
         return false;
     }
 
+    // v2.91: bind the channel's current pan to this voice through its
+    // output matrix (Stereo out: [L, R] gains from pan -1..1).
+    float pan = (channel >= 0 && channel < 32) ? m_channelPan[channel] : 0.0f;
+    if (pan < -1.0f) pan = -1.0f;
+    if (pan >  1.0f) pan =  1.0f;
+    const float lVol = (pan < 0.0f) ? 1.0f : 1.0f - pan;
+    const float rVol = (pan > 0.0f) ? 1.0f : 1.0f + pan;
+    const float matrix[2] = { lVol, rVol };
+    voice->SetOutputMatrix(1, 2, matrix);
+
     VoiceSlot& s = m_slots[slot];
     s.voice = voice;
     s.inUse = true;
     s.channel = channel;
+    s.pan = pan;
     strncpy(s.name, sndName, sizeof(s.name) - 1);
     s.name[sizeof(s.name) - 1] = '\0';
     return true;
@@ -198,6 +212,17 @@ bool AudioSystem::Play(PakLoader* pak, const char* sndName, bool loop, float vol
 }
 
 bool AudioSystem::PlayOnChannel(PakLoader* pak, const char* sndName, bool loop, int channel) {
+    // v2.90: Clickteam semantics — a CHANNEL plays ONE sound. The old voice
+    // on this channel MUST die here: without this, every office re-entry
+    // (11 loops per entry in FNAF2) STACKED another voice per channel and
+    // SetChannelVolume then amplified them all — the "almost went deaf"
+    // report. (Play() on channel -1 keeps its fire-and-forget semantics.)
+    if (channel >= 0) {
+        for (int i = 0; i < m_slotCount; ++i) {
+            if (m_slots[i].inUse && m_slots[i].channel == channel)
+                FreeSlot(i);
+        }
+    }
     // Play at the channel's CURRENT dB; later SetChannelVolume re-applies the
     // (possibly ramping) volume to this live voice.
     return PlayInternal(pak, sndName, loop, DbToAmplitude(GetChannelVolume(channel)), channel);
@@ -220,6 +245,28 @@ void AudioSystem::SetChannelVolume(int channel, float volumeDb) {
 float AudioSystem::GetChannelVolume(int channel) const {
     if (channel < 0 || channel >= 32) return 0.0f;
     return m_channelVolumeDb[channel];
+}
+
+void AudioSystem::SetChannelPan(int channel, float pan) {
+    if (channel < 0 || channel >= 32) return;
+    if (pan < -1.0f) pan = -1.0f;
+    if (pan >  1.0f) pan =  1.0f;
+    m_channelPan[channel] = pan;
+    // Re-apply live to every voice bound to this channel.
+    const float lVol = (pan < 0.0f) ? 1.0f : 1.0f - pan;
+    const float rVol = (pan > 0.0f) ? 1.0f : 1.0f + pan;
+    const float matrix[2] = { lVol, rVol };
+    for (int i = 0; i < m_slotCount; ++i) {
+        if (m_slots[i].inUse && m_slots[i].channel == channel && m_slots[i].voice) {
+            reinterpret_cast<IXAudio2SourceVoice*>(m_slots[i].voice)
+                ->SetOutputMatrix(1, 2, matrix);
+        }
+    }
+}
+
+float AudioSystem::GetChannelPan(int channel) const {
+    if (channel < 0 || channel >= 32) return 0.0f;
+    return m_channelPan[channel];
 }
 
 void AudioSystem::Stop(const char* sndName) {

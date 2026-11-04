@@ -150,6 +150,12 @@ public:
     void SetChannelVolume(int channel, float volumeDb);
     float GetChannelVolume(int channel) const;   // returns dB
 
+    // v2.91: per-channel pan (-1.0 = full left, 0 = centre, +1.0 = full
+    // right) through the voice output matrix — the SL Ballora side cue.
+    // Clickteam's -100..100 maps outside this call. Re-applied live.
+    void SetChannelPan(int channel, float pan);
+    float GetChannelPan(int channel) const;
+
     // Stop every voice currently playing the given sound
     void Stop(const char* sndName);
 
@@ -163,6 +169,7 @@ private:
         void*  voice;        // IXAudio2SourceVoice*
         char   name[64];
         int    channel;      // v2.16: mixer channel this voice is bound to (-1 = none)
+        float  pan;          // v2.91: channel pan at play time (-1..1)
         bool   inUse;
     };
 
@@ -174,6 +181,7 @@ private:
     VoiceSlot m_slots[16];
     int   m_slotCount;
     float m_channelVolumeDb[32];   // v2.19: per-channel volume in dB (default 0.0 = unity)
+    float m_channelPan[32];        // v2.91: per-channel pan (default 0 = centre)
     bool  m_ok;
 };
 

@@ -25,6 +25,7 @@
 #include "FNaF4Render.h"
 #include "SLGame.h"       // v2.65: Sister Location wave 1
 #include "SLRender.h"
+#include "FNaFWorldModule.h"   // v2.90: FNAF World (own pak/game/render)
 
 namespace fnaf {
 

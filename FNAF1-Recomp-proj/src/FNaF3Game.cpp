@@ -125,6 +125,7 @@ void FNaF3Game::ResetToTitle() {
     // Porting it literally would end the game on every date except
     // November 8th — a behaviour the shipped game does not have.
     m_term = false;   // the flag to ACT on comes from the save (ApplyProgressF3)
+    m_bbTapT = -1.0f; // the cam-08 double-click window (v2.91)
     m_rareId = 1;
     m_gameOverRare = 0;
     m_waitT = 0.0f;
@@ -371,6 +372,11 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
             TickGameOver(dt, in);
             break;
 
+        case SCR_DEMOEND:
+            // v2.91: frame 15 — Desolate_Underworld2 loop, 10 s / click -> title
+            TickDemoEnd(dt, in);
+            break;
+
         case SCR_NEXTDAY:
             m_cardT += dt;
             if (m_cardT >= 3.5f) {
@@ -461,6 +467,9 @@ void FNaF3Game::Tick(f32 dt, const FNaF3Inputs& in) {
 // ------------------------------------------------------------
 
 void FNaF3Game::TickOffice(f32 dt, const FNaF3Inputs& in) {
+    // the cam-08 BB double-click window (v2.91)
+    if (m_bbTapT > 0.0f) m_bbTapT -= dt;
+
     // ---- office pan (dump scroll moves +-8/frame = 480 px/s) ----
     if (m_viewing == 0 && m_gotYou == 0)
         m_pan += in.lookDir * 480.0f * dt;
@@ -542,10 +551,19 @@ void FNaF3Game::TickOffice(f32 dt, const FNaF3Inputs& in) {
             // on the right cam. The BB toy (CAM 08) and the puppet toy
             // (CAM 03) cams are dump-pinned; the arcade/cupcakes/keypad cam
             // picks are approximations (their objects aren't cam-labeled).
-            if (m_night == 2 && selCam == 7 && !m_mapVent) {
+            // v2.91 dump-correction (Group 702): the CAM-08 BB DOUBLE-click
+            // goes to frame 15 "demo end", NOT the BB minigame — the BB
+            // minigame's only office-side route in the dump is the
+            // gameover rare roll (frame 6 groups 6/7).
+            if (selCam == 8 && !m_mapVent) {
+                if (m_bbTapT > 0.0f) {
+                    m_bbTapT = -1.0f;
+                    RequestScreen(SCR_DEMOEND);       // frame 15
+                } else {
+                    m_bbTapT = 0.35f;                 // the double-click window
+                }
+            } else if (m_night == 2 && selCam == 7 && !m_mapVent) {
                 StartMinigame(MG_MANGLE, false);      // the arcade cabinet
-            } else if (selCam == 8 && !m_mapVent) {
-                StartMinigame(MG_BB, false);          // the BB toy
             } else if (selCam == 5 && !m_mapVent) {
                 StartMinigame(MG_TOYCHICA, false);    // the cupcake run
             } else if (selCam == 1 && !m_mapVent) {
@@ -1213,12 +1231,33 @@ void FNaF3Game::TickGameOver(f32 dt, const FNaF3Inputs& in) {
     if (m_cardT >= 5.0f || in.aPressed || in.bPressed) {
         m_cardT = 0.0f;
         if (m_gameOverRare == 1) {
-            m_rareId = 2;
-            RequestScreen(SCR_RARE2);
+            // v2.91 dump-correction (frame 6 groups 6/7): the rare roll's
+            // only route is frame 19 "BB" — the BB MINIGAME, not the rare-2
+            // poster (rare2's route is the next-day roll, frame 5 -> 13).
+            StartMinigame(MG_BB, false);
         } else {
             RequestScreen(SCR_TITLE);
             m_died = false;
         }
+    }
+}
+
+// ---- v2.91: frame 15 "demo end" — the cam-08 BB easter egg (Group 702).
+// Desolate_Underworld2 loop; 10 s (Timer 10000 ms) or a click -> title.
+// The art is the "THANKS FOR PLAYING THE DEMO!" banner (img 46) — the full
+// exe still carries the screen, so the port keeps it 1:1.
+// ----
+
+void FNaF3Game::TickDemoEnd(f32 dt, const FNaF3Inputs& in) {
+    if (m_cardT == 0.0f) {
+        SfxStop("snd_stare");
+        Sfx("Desolate_Underworld2", true, 1, 100);
+    }
+    m_cardT += dt;
+    if (m_cardT >= 10.0f || in.aPressed || in.bPressed) {
+        SfxStop("Desolate_Underworld2");
+        m_cardT = 0.0f;
+        RequestScreen(SCR_TITLE);
     }
 }
 

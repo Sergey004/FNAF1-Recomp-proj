@@ -84,7 +84,11 @@ public:
         SCR_LOAD       = 15,  // frame 18: the between-night glitch (5 s) -> cutscene
         SCR_CUTSCENE   = 16,  // frame 16: the retro decommission scenes (5x5 rooms)
         SCR_MG         = 17,  // frames 19-24: the six Atari minigames (m_mgGame)
-        SCR_EXTRAS     = 18   // frame 25: the extras menu
+        SCR_EXTRAS     = 18,  // frame 25: the extras menu
+        // v2.91: frame 15 "demo end" — the cam-08 BB toy double-click easter
+        // egg (Group 702, still armed in the full exe): "THANKS FOR PLAYING
+        // THE DEMO!" art, Desolate_Underworld2 loop, 10 s / click -> title
+        SCR_DEMOEND    = 19
     };
 
     // The six minigames (frames 19-24). Entry points are the office secrets:
@@ -351,6 +355,7 @@ private:
     void TickWhatDay(f32 dt, const FNaF3Inputs& in);   // the night card + wait
     void TickStaticDeath(f32 dt);                      // the death static (frame 4)
     void TickGameOver(f32 dt, const FNaF3Inputs& in);  // frame 6
+    void TickDemoEnd(f32 dt, const FNaF3Inputs& in);   // v2.91: frame 15
     void TickRare(f32 dt, const FNaF3Inputs& in);      // frames 12/13/14
     void TickLoad(f32 dt);                             // frame 18
     void TickCutscene(f32 dt, const FNaF3Inputs& in);  // frame 16
@@ -468,6 +473,7 @@ private:
                               // 771 shows the lights + the jack-o-lantern)
     bool   m_exitRequested;   // v2.74: the dump's "End application"
     i32    m_gameOverRare;    // the gameover 1/1000 roll result
+    f32    m_bbTapT;          // v2.91: the cam-08 BB double-click window (-1 idle)
     f32    m_waitT;           // the 100 ms wait screen
     bool   m_died;            // the office death routed to the static+gameover
     Mg3State       m_mg;

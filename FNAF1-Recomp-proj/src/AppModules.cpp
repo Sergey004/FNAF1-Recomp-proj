@@ -452,6 +452,7 @@ void FNaF3Module::Render() {
         // v2.63: the new flow screens + the minigames/cutscenes/extras
         case FNaF3Game::SCR_WAIT:       m_render.RenderWait(); break;
         case FNaF3Game::SCR_GAMEOVER:   m_render.RenderGameOver(); break;
+        case FNaF3Game::SCR_DEMOEND:    m_render.RenderDemoEnd(); break;  // v2.91
         case FNaF3Game::SCR_RARE1:      m_render.RenderRare(1); break;
         case FNaF3Game::SCR_RARE3:      m_render.RenderRare(3); break;
         case FNaF3Game::SCR_LOAD:       m_render.RenderLoad(m_time); break;
@@ -627,9 +628,9 @@ static void SLSfxStop(const char* name) {
     if (s_slAudio && name) s_slAudio->Stop(name);
 }
 static void SLSfxPan(i32 channel, i32 pan) {
-    // Labeled: AudioSystem has no per-channel pan yet — the Ballora side
-    // cue rides the volume via the game loop instead (dump deviation).
-    (void)channel; (void)pan;
+    // v2.91: the Ballora side cue through the real per-channel pan
+    // (Clickteam -100..100 -> AudioSystem -1..1 output matrix).
+    if (s_slAudio) s_slAudio->SetChannelPan(channel, (f32)pan * 0.01f);
 }
 
 // v2.78: the room-sorted SL pak ships per-frame pak-index lists in its asset
@@ -674,12 +675,16 @@ bool SLModule::Load(AppServices& services) {
     m_game.preloadFrame         = &SLPreloadFrame;   // v2.78: streaming rooms
     // v2.65: the fnaf_sl save ("sl") through the universal backend
     // v2.80: the legacy-container migration first (per-module containers)
+    // v2.91 ORDER FIX (same class of bug as the v2.90 module-input fix):
+    // ResetToTitle() clobbers current/beat1/beat3/keycard — the save MUST
+    // be applied AFTER it, or Continue always started night 1 and every
+    // beat flag came back false (FNaF2/3/4 already use this order).
     Progress::MigrateLegacySave("sl");
+    m_game.ResetToTitle();
     {
         Progress::GameProgressSL psl;
         if (Progress::LoadSL(psl)) m_game.ApplyProgressSL(psl);
     }
-    m_game.ResetToTitle();
     return true;
 }
 
@@ -769,6 +774,14 @@ void SLModule::Render() {
         case SLGame::SCR_GIRLVOICE: m_render.RenderGirlVoice(); break;
         case SLGame::SCR_DEATH:     m_render.RenderDeath(m_game, m_time); break;
         case SLGame::SCR_GAMEOVER:  m_render.RenderGameOver(); break;
+        // v2.91: the interactive finale screens draw the Wave2 art plus
+        // their live-state overlays
+        case SLGame::SCR_CUSTMENU:  m_render.RenderWave2(m_game);
+                                    m_render.RenderCustMenuOver(m_game); break;
+        case SLGame::SCR_CUSTLEVEL: m_render.RenderWave2(m_game);
+                                    m_render.RenderCustLevelOver(m_game); break;
+        case SLGame::SCR_FINAL:     m_render.RenderWave2(m_game);
+                                    m_render.RenderFinalOver(m_game); break;
         // v2.74: the wave-2 screens draw their own art (frame 16/17/26-35)
         default:                    m_render.RenderWave2(m_game); break;
     }

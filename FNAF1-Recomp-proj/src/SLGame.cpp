@@ -112,6 +112,16 @@ void SLGame::ResetToTitle() {
     m_winT = 0.0f;
     m_tvT = 0.0f;
     m_girlT = 0.0f;
+    m_girlLine = 0;
+    // v2.91 finale-wave state
+    m_finalT = 0.0f; m_finalHour = 12; m_finalRollT = 20.0f;
+    m_finalCue = false; m_finalHideT = 0.0f;
+    m_custRow = 0;
+    for (int i = 0; i < 10; ++i) m_custDiff[i] = 0;
+    m_custHourT = 0.0f; m_custHour = 12;
+    for (int i = 0; i < 3; ++i) { m_custRollT[i] = 0.0f; m_custLane[i] = false; m_custDoor[i] = false; }
+    m_custWins = 0;
+    m_cust8bit = false;
     m_saveDirty = false;
     m_current = 1;
     m_intro = false;
@@ -213,7 +223,9 @@ void SLGame::Tick(f32 dt, const SLInputs& in) {
             SfxStop("snd_hub hum");
             SfxStop("snd_elevator ride loop");
             SfxStop("snd_ballora box");
-            m_screen = SCR_GAMEOVER;
+            // v2.91: the custom-night office dies into its own death screen
+            // (TRANSITIONS: 31 -> 32), everything else -> the game over
+            m_screen = (m_screen == SCR_CUSTLEVEL) ? SCR_CUSTDEATH : SCR_GAMEOVER;
             m_cardT = 0.0f;
         }
         return;
@@ -253,6 +265,16 @@ void SLGame::Tick(f32 dt, const SLInputs& in) {
         case SCR_GAMEOVER:  TickGameOver(dt, in); break;
         case SCR_TVSHOW:    TickTvShow(dt);       break;
         case SCR_GIRLVOICE: TickGirlVoice(dt);    break;
+        // v2.91 finale wave (the dump's frames 17/27/29-35)
+        case SCR_INTRO4:    TickIntro4(dt, in);    break;
+        case SCR_FINAL:     TickFinal(dt, in);     break;
+        case SCR_CUSTMENU:  TickCustMenu(dt, in);  break;
+        case SCR_CUSTWAIT:  TickCustWait(dt);      break;
+        case SCR_CUSTLEVEL: TickCustLevel(dt, in); break;
+        case SCR_CUSTDEATH: TickCustDeath(dt);     break;
+        case SCR_CUSTWIN:   TickCustWin(dt);       break;
+        case SCR_CUST8BIT:  TickCust8bit(dt, in);  break;
+        case SCR_FINALCS:   TickFinalCS(dt, in);   break;
         default:
             // the wave-2 screens (scooping chain, extras, custom night, the
             // 8-bit game, the keypad) hold with A -> title (labeled)
@@ -873,7 +895,13 @@ void SLGame::TickPS(f32 dt, const SLInputs& in) {
     if (in.bPressed && m_scriptEvent >= 168) {
         SfxStop("snd_control room power down vrs3");
         SfxStop("snd_drips");
-        if (m_night >= 4) {
+        if (m_screen == SCR_PS2) {
+            // v2.91: night 5 (frame 19) — the task feeds the death router's
+            // Final Encounter route (TRANSITIONS: frame 14 "death" -> frame
+            // 27; the router's hop lands here, labeled)
+            m_screen = SCR_FINAL;
+            m_cardT = 0.0f;
+        } else if (m_night >= 4) {
             // the port's night-4/5 plan: the P&S task feeds the Funtime
             // walk (label; the dump rides the Script Event spine)
             m_progress = 0; m_foxyDist = 0;
@@ -1048,6 +1076,9 @@ void SLGame::TickWinNight(f32 dt) {
         if (m_current > 6) m_current = 6;
         m_night = m_current;
         m_saveDirty = true;
+        // v2.91: the extras unlock — night 5 beaten (the title's extras row
+        // is gated on IsBeat1(); nothing ever set the flag before).
+        if (m_night >= 5) m_beat1 = true;
         SfxStop("snd_Jingle_4b");
         // the checkmark beat, then the tv show
         m_screen = SCR_TVSHOW;
@@ -1076,16 +1107,28 @@ void SLGame::TickTvShow(f32 dt) {
 
 void SLGame::TickGirlVoice(f32 dt) {
     m_girlT += dt;
-    // v2.74: the dump's frame 25 plays the six lines 900 ms apart
-    // (one-shot/periodic 900 ms), then jumps (was 6 s per line).
+    // v2.91: the dump's frame 25 — six "line_N" voices 900 ms apart, then
+    // the route (TRANSITIONS: line_4 -> frame 17 "intro" [night 4],
+    // line_6 -> frame 19 "Parts and Service 2" [night 5+]; other
+    // interludes end at the title/boot).
     if (m_girlT >= 0.9f) {
         m_girlT = 0.0f;
-        if (m_night >= 5) {
-            // the final route: red fade -> the P&S 2 chain (wave 2 hold)
-            m_screen = SCR_TITLE;
-            m_started = false;
-        } else {
-            m_screen = SCR_TITLE;                       // interlude end = next
+        ++m_girlLine;
+        static const char* kLines[6] = { "line_1", "line_2", "line_3",
+                                         "line_4", "line_5", "line_6" };
+        if (m_girlLine >= 1 && m_girlLine <= 6)
+            Sfx(kLines[m_girlLine - 1], false, 3, 100);
+        if (m_girlLine >= 6) {
+            m_girlLine = 0;
+            if (m_night >= 5) {
+                m_screen = SCR_PS2;                     // frame 25 -> 19
+                m_cardT = 0.0f;
+            } else if (m_night == 4) {
+                m_screen = SCR_INTRO4;                  // frame 25 -> 17
+                m_cardT = 0.0f;
+            } else {
+                m_screen = SCR_TITLE;
+            }
         }
     }
 }
@@ -1156,6 +1199,218 @@ void SLGame::WipeSave() {
     m_endsceneno = 0;
     m_star104 = false;
     m_saveDirty = true;
+}
+
+// ============================================================
+// v2.91 finale wave — the dump's frames 17/27/29-35.
+// ============================================================
+
+// ------------------------------------------------------------
+// INTRO4 (frame 17 "intro"): the night-4 card -> P&S (17 -> 11).
+// ------------------------------------------------------------
+void SLGame::TickIntro4(f32 dt, const SLInputs& in) {
+    m_cardT += dt;
+    if (m_cardT >= 2.5f || in.aPressed) {
+        m_screen = SCR_PS;                     // TRANSITIONS: 17 -> 11
+        m_cardT = 0.0f;
+    }
+}
+
+// ------------------------------------------------------------
+// Final Encounter (frame 27): Ennard's night. The dump runs the hour
+// counter (60 s/hour, win at 6 with "B_final_16" + the beat3 INI write)
+// and routes to the game over on the catch. The approach: Ennard rolls
+// toward the vent every 20-40 s, a static cue warns, holding B hides
+// (3 s) — missing the window is the death. Hour 6 -> Baby's Room
+// (TRANSITIONS: 27 -> 6) with the custom-night unlock.
+// ------------------------------------------------------------
+void SLGame::TickFinal(f32 dt, const SLInputs& in) {
+    if (m_cardT == 0.0f) {
+        m_finalT = 0.0f;
+        m_finalHour = 12;
+        m_finalRollT = 20.0f;
+        m_finalCue = false;
+        m_finalHideT = 0.0f;
+        Sfx("snd_control room power down vrs3", true, 1, 60);
+    }
+    m_cardT += dt;
+    if (m_scareT > 0.0f) return;
+
+    m_finalT += dt;
+    // the hour hand (frame 27/31 model: 60 s per hour, 12 -> 1..6)
+    if (m_finalT >= 60.0f) {
+        m_finalT -= 60.0f;
+        m_finalHour = (m_finalHour == 12) ? 1 : m_finalHour + 1;
+        if (m_finalHour >= 6) {
+            // the dump: hour 6 -> B_final_16 + Ini beat3 = 1 -> Baby's Room
+            SfxStop("snd_control room power down vrs3");
+            Sfx("B_final_16", false, 3, 100);
+            m_beat3 = true;
+            m_saveDirty = true;
+            GoTo(6);                            // -> Baby's Room (win night)
+            return;
+        }
+    }
+
+    // the approach rolls
+    if (!m_finalCue) {
+        m_finalRollT -= dt;
+        if (m_finalRollT <= 0.0f) {
+            m_finalCue = true;
+            m_finalHideT = 0.0f;
+            Sfx("snd_Ballora static", false, 3, 100);   // the warning cue
+            m_finalRollT = 20.0f + (f32)(rand() % 21);
+        }
+    } else {
+        m_finalHideT += dt;
+        if (in.aHeld) {
+            // hiding (A hold — the port's steady-hand convention): the cue
+            // must be answered within 5 s, hold 3 s total
+            if (m_finalHideT >= 3.0f) {
+                m_finalCue = false;
+                SfxStop("snd_Ballora static");
+            }
+        } else if (m_finalHideT > 5.0f) {
+            // caught in the open — the frame-27 game-over route
+            m_scareT = 0.001f;
+            m_scareImg = 5;
+            Sfx("snd_scream op5-8", false, 24, 100);
+        }
+    }
+}
+
+// ------------------------------------------------------------
+// Custom menu (frame 29): ten AI levels 0..20 (Ballora, F Freddy, F Foxy,
+// Bidybab, Minireena, Minireena 2, Yenndo, Lolbit, Electrobab, Bonnet —
+// the dump's Diff counters), A starts, B leaves.
+// ------------------------------------------------------------
+void SLGame::TickCustMenu(f32 dt, const SLInputs& in) {
+    (void)dt;
+    static const char* kRows[10] = {
+        "Ballora", "Funtime Freddy", "Funtime Foxy", "Bidybab", "Minireena",
+        "Minireena 2", "Yenndo", "Lolbit", "Electrobab", "Bonnet"
+    };
+    (void)kRows;   // the renderer draws the rows from the same order
+    if (in.upPressed)   { m_custRow = (m_custRow + 9) % 10; Sfx("snd_select3", false, 3, 80); }
+    if (in.downPressed) { m_custRow = (m_custRow + 1) % 10; Sfx("snd_select3", false, 3, 80); }
+    if (in.leftPressed)  { if (m_custDiff[m_custRow] > 0)  --m_custDiff[m_custRow]; Sfx("snd_select3", false, 3, 80); }
+    if (in.rightPressed) { if (m_custDiff[m_custRow] < 20) ++m_custDiff[m_custRow]; Sfx("snd_select3", false, 3, 80); }
+    if (in.bPressed) { m_screen = SCR_TITLE; return; }
+    if (in.aPressed) {
+        m_screen = SCR_CUSTWAIT;               // TRANSITIONS: 29 -> 30 -> 31
+        m_cardT = 0.0f;
+    }
+}
+
+void SLGame::TickCustWait(f32 dt) {
+    m_cardT += dt;
+    // frame 30 "custom please wait": the 2 s loader (t2: R 2000)
+    if (m_cardT >= 2.0f) {
+        m_cardT = 0.0f;
+        m_screen = SCR_CUSTLEVEL;
+        m_custHour = 12;
+        m_custHourT = 0.0f;
+        for (int i = 0; i < 3; ++i) { m_custRollT[i] = 0.0f; m_custLane[i] = false; }
+    }
+}
+
+// ------------------------------------------------------------
+// Custom level (frame 31): the office. Hour hand 60 s, win at 6. The
+// three defended lanes (the dump's ten reduced to the port's three-lane
+// input model — labeled): Ballora = left door (LB), Funtime Foxy =
+// right door (RB), Lolbit = the vent (Y). Each lane rolls toward the
+// kill on its Diff-scaled interval; a closed door repels.
+// ------------------------------------------------------------
+void SLGame::TickCustLevel(f32 dt, const SLInputs& in) {
+    if (m_scareT > 0.0f) return;
+
+    m_custHourT += dt;
+    if (m_custHourT >= 60.0f) {
+        m_custHourT -= 60.0f;
+        m_custHour = (m_custHour == 12) ? 1 : m_custHour + 1;
+        if (m_custHour >= 6) {
+            m_screen = SCR_CUSTWIN;            // TRANSITIONS: 31 -> 33
+            m_cardT = 0.0f;
+            return;
+        }
+    }
+
+    // lanes: 0 Ballora (left door), 1 Funtime Foxy (right door), 2 Lolbit
+    // (the vent). The doors are toggles (the FNAF1 door convention): LB/RB/Y
+    // press flips the lane's barrier.
+    if (in.lbPressed) { m_custDoor[0] = !m_custDoor[0]; Sfx("snd_select3", false, 3, 80); }
+    if (in.rbPressed) { m_custDoor[1] = !m_custDoor[1]; Sfx("snd_select3", false, 3, 80); }
+    if (in.yPressed)  { m_custDoor[2] = !m_custDoor[2]; Sfx("snd_select3", false, 3, 80); }
+    for (int i = 0; i < 3; ++i) {
+        const i32 diff = m_custDiff[i == 0 ? 0 : (i == 1 ? 2 : 7)];
+        if (diff <= 0) continue;
+        if (m_custLane[i]) {
+            // at the door: it strikes within 1.5 s unless the door closes
+            m_custRollT[i] -= dt;
+            if (m_custDoor[i]) {
+                m_custLane[i] = false;
+                Sfx("snd_select3", false, 3, 60);      // the repel beat
+                m_custRollT[i] = 0.0f;
+            } else if (m_custRollT[i] <= 0.0f) {
+                m_scareT = 0.001f;
+                m_scareImg = 3 + i;
+                Sfx("snd_scream op5-8", false, 24, 100);
+            }
+        } else {
+            m_custRollT[i] -= dt;
+            if (m_custRollT[i] <= 0.0f) {
+                m_custLane[i] = true;
+                m_custRollT[i] = 1.5f;
+                Sfx(i == 0 ? "snd_ballora box" : "snd_select3", false, 3, 100);
+            }
+        }
+        // re-arm the roll while idle (Diff 1..20 -> 9..0.9 s)
+        if (!m_custLane[i] && m_custRollT[i] <= 0.0f) {
+            const f32 interval = 9.0f - (f32)diff * 0.4f;
+            m_custRollT[i] = (interval < 0.9f) ? 0.9f : interval;
+        }
+    }
+    // the death routes through the shared scare flow -> SCR_CUSTDEATH
+    // (the scare router checks the screen); 31 -> 32 per TRANSITIONS
+}
+
+void SLGame::TickCustDeath(f32 dt) {
+    m_cardT += dt;
+    // frame 32 "custom death": the hold -> back to the menu (32 -> 29)
+    if (m_cardT >= 2.0f) { m_screen = SCR_CUSTMENU; m_cardT = 0.0f; }
+}
+
+void SLGame::TickCustWin(f32 dt) {
+    m_cardT += dt;
+    // frame 33: the first win plays the 8-bit cutscene (33 -> 34), the
+    // rest return to the menu (33 -> 29); the third win routes the final
+    // cutscene (33 -> 35, the star-2/104 path, simplified)
+    if (m_cardT >= 2.0f) {
+        m_cardT = 0.0f;
+        ++m_custWins;
+        m_saveDirty = true;
+        if (!m_cust8bit) {
+            m_cust8bit = true;
+            m_screen = SCR_CUST8BIT;
+        } else if (m_custWins >= 3) {
+            m_star104 = true;
+            m_screen = SCR_FINALCS;
+        } else {
+            m_screen = SCR_CUSTMENU;
+        }
+    }
+}
+
+void SLGame::TickCust8bit(f32 dt, const SLInputs& in) {
+    m_cardT += dt;
+    // frame 34 "custom 8-bit cutscene" -> the menu (34 -> 29)
+    if (m_cardT >= 6.0f || in.aPressed) { m_screen = SCR_CUSTMENU; m_cardT = 0.0f; }
+}
+
+void SLGame::TickFinalCS(f32 dt, const SLInputs& in) {
+    m_cardT += dt;
+    // frame 35 "Final Cutscene" -> the menu (35 -> 29)
+    if (m_cardT >= 10.0f || in.aPressed) { m_screen = SCR_CUSTMENU; m_cardT = 0.0f; }
 }
 
 } // namespace fnaf

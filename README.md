@@ -39,6 +39,31 @@ Every game ships its own `.spa` (Xbox identity/achievements, not yet) and its ow
 > deliberate deviation from the dump is labelled as such in the code and in
 > the changelog.
 
+## Status (v2.91)
+
+**Latest changes (v2.91, brief):**
+
+- **Full-gameplay wave.** SL is finishable end-to-end: the save no longer
+  clobbers at module load, the Ballora pan is real (`SetChannelPan`), extras
+  unlock, and the finale chain is in per the dump — Girl Voice's six lines
+  route night 4 -> intro -> P&S and night 5+ -> P&S 2 -> the Final Encounter
+  (hour hand + hide-on-cue) -> Baby's Room -> tv show -> red fade -> bathroom
+  -> **credits**; the custom night (10 AI levels, three defended lanes) runs
+  through its death/win screens, the first-win 8-bit cutscene and the Final
+  Cutscene with the star.
+- **FNAF World plays**: the exe's overworld (all 2207 instances, collisions,
+  camera, zone grounds per area, coin chests, wild encounters) and the
+  Battle_Rework battle (5 s cooldowns, HP bars, graves, tokens).
+- **Dump fixes**: F3's cam-08 BB double-click -> the missing "demo end"
+  screen (26/26 frames now covered) and the BB minigame moved to its real
+  gameover-rare-roll entry; F4's shadow-night catch now runs the nightmare
+  jumpscare -> extras; F2's "You Failed" achievement fires on death.
+- Harness-verified through the port's own renderers (all six games; new FNAF
+  World driver + the F2 monitor shots fixed). Details: CHANGELOG v2.91.
+  Add the generated `include/FNaFWorldMap.h` to the .vcxproj by hand.
+
+---
+
 ## Status (v2.81)
 
 **Latest changes (v2.76–2.81, brief):**

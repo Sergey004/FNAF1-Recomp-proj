@@ -338,6 +338,9 @@ void FNaF2Game::DispatchAttack(i32 ch) {
     m_scareAnim = (ch == C_GOLDEN) ? 21 : 11 + ch;
     m_scareT = 0.0f;
     Sfx("snd_Xscream3", false, 12, 100);
+    // v2.91: slot 9 "You Failed" — the post-jumpscare event fires on every
+    // death (the single DispatchAttack entry is the one choke point)
+    if (audio.unlockAch) audio.unlockAch(9);
     if (ch == C_PUPPET) { /* puppet kill flag for the post-death frames */ }
 }
 

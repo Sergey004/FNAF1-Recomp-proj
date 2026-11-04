@@ -3,6 +3,75 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.91 — full-gameplay wave: SL finale + FNAF World overworld/battle + F3/F4 dump fixes
+
+- **SL is finishable.** The save no longer self-destructs at module load
+  (`SLModule::Load` applied the save BEFORE `ResetToTitle`, which clobbered
+  current/beat1/beat3/keycard — Continue always started night 1; the F2/3/4
+  order fix applies). The Ballora pan is real now (`AudioSystem::SetChannelPan`
+  through the XAudio2 output matrix, Clickteam -100..100 -> -1..1; the hook was
+  a no-op). Extras unlock (beat1) fires on the night-5 win. The finale chain is
+  in, per the dump's TRANSITIONS.txt: Girl Voice plays all six `line_N` voices
+  (900 ms apart) and routes night 4 -> frame 17 intro -> P&S, night 5+ -> frame
+  19 "Parts and Service 2"; the PS2 task's exit jumps the death-router hop to
+  the **Final Encounter** (frame 27): the hour hand (60 s/hour), Ennard's
+  approach rolls (hide on the cue, A-hold, or die), hour 6 = `B_final_16` +
+  the beat3 INI write -> Baby's Room -> win night -> tv show -> red fade ->
+  bathroom -> **credits** (the real ending). The custom night (frames 29-35)
+  is playable: ten AI levels 0..20 (the dump's Diff counters), the office with
+  three defended lanes (Ballora LB / F.Foxy RB / Lolbit Y toggles), death ->
+  its own screen (31 -> 32), the first win plays the 8-bit cutscene (33 -> 34),
+  the third routes the Final Cutscene (33 -> 35) with the star flag. Text
+  overlays carry the new screens until their frame art is wired.
+- **FNAF World plays.** The overworld is the exe's frame 5: a generated
+  `FNaFWorldMap.h` (all 2207 instances painter-sorted, a 120x80 collision grid
+  RLE'd from name-classified solids, the 28 coin chests at the exe's
+  "spawn chest" positions), axis-separated 4-corner movement (the C-Edition
+  semantics), the camera window clamped to 6000x4000, zone grounds swapped
+  per area (Hills grass 2383 / Woods pond 4312 / Dusting snow 3454 / Lilygear
+  water 2693 / Mine stone 2713 — the exe's camera-attached "background N"
+  family, NOT map scenery), coin chests pay faz-tokens, wild-area encounters
+   The exe's file setup (frame 3) is wired between the title and the
+   world: stage 0 — the three slot plates with "Name: X : Level: N"
+   summaries (the port's single backing save reads as slot 1; labeled),
+   stage 1 — new game / continue, stage 2 — the YES/NO confirm; YES
+   commits (new game wipes, continue re-places at the save) into the
+   overworld. Defeat now runs the exe's game over (frame 6): the "death"
+   sample, the img 3405 plate, 5 s -> title.
+  trigger the battle, Y = the battle test. The battle (Battle_Rework
+  semantics): 5 s cooldowns + the enemy stagger, A strikes the ready member,
+  random-target AI, HP bars, graves, floating damage, victory pays tokens,
+  defeat returns to the title. Freddy/Bonnie/Chica/Foxy walk tables come from
+  the exe's `character` object (one front-facing 11-frame anim per character).
+- **F3 gaps closed against the dump.** The cam-08 BB toy DOUBLE-click goes to
+  frame 15 "demo end" (Group 702; the screen was missing entirely — 26/26 dump
+  frames now covered): the "THANKS FOR PLAYING THE DEMO!" banner (img 46),
+  `Desolate_Underworld2` loop, 10 s / click -> title. The BB minigame's entry
+  moved to its only dump route — the gameover rare roll (frame 6 groups 6/7;
+  the port sent that roll to the rare-2 poster, whose real route is the
+  next-day roll).
+- **F4's dead screen lives.** The shadow nights (extras row 5, beat 6) now
+  route a catch to frame 15 "nightmare jumpscare" (level Group 432): the
+  `distortion` loop, 5 s, then frame 11 "load extras" (was: the title), and
+  the shadow flag clears.
+- **F2's "You Failed" fires** — achievement slot 9 unlocks on every
+  `DispatchAttack` (the single jumpscare choke point).
+- **The offline harness grew a FNAF World driver** (splash/title/world walk/
+  battle shots) and the F2 driver raises the monitor explicitly (the AD's
+  auto-advance consumed the office A; the monitor/cam-11 shots never fired).
+  A `ProgressStub.cpp` keeps the drivers XDK-free. Sweep verified through the
+  port's own renderers: F1 office (door buttons), F2 office/CAM 11 music box,
+  F3 office/monitor/minigames, F4 bedroom, SL hub/rooms, FW title/world/battle.
+- Files: `src/SLGame.cpp` + `include/SLGame.h`, `src/SLRender.cpp` +
+  `include/SLRender.h`, `src/AppModules.cpp`, `src/FNaFWorldGame.cpp` +
+  `include/FNaFWorldGame.h`, `src/FNaFWorldRender.cpp` +
+  `include/FNaFWorldRender.h`, **new generated `include/FNaFWorldMap.h`**
+  (add it to the .vcxproj by hand — ClInclude), `src/FNaF2Game.cpp`,
+  `src/FNaF3Game.cpp` + `include/FNaF3Game.h`, `src/FNaF3Render.cpp` +
+  `include/FNaF3Render.h`, `src/FNaF4Game.cpp`, `src/AudioSystem.cpp` +
+  `include/AudioSystem.h`, `src/main.cpp` (banners v2.91),
+  `tools/offline/main_offline.cpp`, `tools/offline/stubs/ProgressStub.cpp`.
+
 ---
 
 ## v2.81 — async room sounds for SL + the Russian achievement translation

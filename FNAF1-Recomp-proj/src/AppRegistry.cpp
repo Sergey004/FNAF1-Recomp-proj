@@ -9,16 +9,17 @@
 
 namespace fnaf {
 
-static const i32 kModuleCount = 5;   // FNAF1, FNAF2, FNAF3, FNAF4, SL
+static const i32 kModuleCount = 6;   // FNAF1, FNAF2, FNAF3, FNAF4, SL, FNAFWORLD
 
 static FNaF1Module s_fnaf1;
 static FNaF2Module s_fnaf2;
 static FNaF3Module s_fnaf3;
 static FNaF4Module s_fnaf4;
 static SLModule    s_sl;
+static FNaFWorldModule s_fw;
 
 static AppModule* const s_modules[kModuleCount] = {
-    &s_fnaf1, &s_fnaf2, &s_fnaf3, &s_fnaf4, &s_sl
+    &s_fnaf1, &s_fnaf2, &s_fnaf3, &s_fnaf4, &s_sl, &s_fw
 };
 static i32 s_active = 0;   // FNAF1 unless the pak scan says otherwise
 

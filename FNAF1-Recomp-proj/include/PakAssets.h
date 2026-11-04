@@ -96,18 +96,23 @@ enum PakImg {
     // Button panels — states verified from pixels + events:
     //   img 122/124/125/130 = LEFT panel  @ instance (48,390),  hs (42,127)
     //   img 134/135/131/47  = RIGHT panel @ instance (1546,400), hs (49,127)
-    //   122/134 = door CLOSED (red button), light off
-    //   124/135 = door open (green button), light off
-    //   125/131 = door closed + light on (glowing light button)
-    //   130/47  = door open  + light on
-    IMG_PANEL_L_CLOSED = 122,
-    IMG_PANEL_L_OPEN   = 124,
-    IMG_PANEL_L_CL_LT  = 125,
-    IMG_PANEL_L_OP_LT  = 130,
-    IMG_PANEL_R_CLOSED = 134,
-    IMG_PANEL_R_OPEN   = 135,
-    IMG_PANEL_R_CL_LT  = 131,
-    IMG_PANEL_R_OP_LT  = 47,
+    //   v2.82 HW-verified correction: the door button must be GREEN when the
+    //   door is CLOSED (safe) and RED when it is OPEN (danger). The dump's
+    //   event groups 91-94 assign img 122 (RED) to "closed" and img 124
+    //   (GREEN) to "open" — but the console player sees the opposite of
+    //   what the original shows, so the images are SWAPPED here:
+    //   124/135 = door CLOSED (green button), light off
+    //   122/134 = door open (red button), light off
+    //   130/47  = door closed + light on (glowing light button)
+    //   125/131 = door open  + light on
+    IMG_PANEL_L_CLOSED = 124,
+    IMG_PANEL_L_OPEN   = 122,
+    IMG_PANEL_L_CL_LT  = 130,
+    IMG_PANEL_L_OP_LT  = 125,
+    IMG_PANEL_R_CLOSED = 135,
+    IMG_PANEL_R_OPEN   = 134,
+    IMG_PANEL_R_CL_LT  = 47,
+    IMG_PANEL_R_OP_LT  = 131,
 
     // "open/put down monitor" bar — the ONLY real bar art (600x60, rounded
     // dark slab with chevrons). Frame obj 'flip panel' @ instance (554,668),

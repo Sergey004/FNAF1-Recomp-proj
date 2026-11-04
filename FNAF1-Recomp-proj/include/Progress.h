@@ -181,6 +181,26 @@ public:
     static bool LoadSL(GameProgressSL& p);
     static bool SaveSL(const GameProgressSL& p);
     static void WipeSL();   // the Warning-frame Delete wipe
+
+    // ---- v2.90: the FNAF World save ("fnafworld", own fnfw_save container).
+    // Keys mirror the original's INI ("info" section, frame 1 "check"): the
+    // C-Edition Save.c fields — Zone_Level (capped 3 by GetZone_Level),
+    // Faz-Tokens, Last_Location (x/y), Chips/Bytes/Party arrays (step 4).
+    struct GameProgressFW {
+        i32  zoneLevel;   // 1..3 (Save.c SetZone_Level caps 3)
+        i32  fazTokens;   // "Faz-Tokens"
+        i32  lastX, lastY;// "Last_Location" (tile coords)
+        i32  lastFrame;   // the frame the save was written from (router)
+        // v2.91 blob v2: the party/inventory (the exe file-setup's counters)
+        i32  party[4];    // the active four (character anim ids 0/12/13/14..)
+        u32  chipsOwned;  // bitmask of collected chips (the chip chests)
+        u32  chipsEq;     // 4 x 8-bit equipped chip id (0xFF = none)
+        u32  bytesOwned;  // bitmask of collected bytes
+    };
+    static void ResetFW(GameProgressFW& p);
+    static bool LoadFW(GameProgressFW& p);
+    static bool SaveFW(const GameProgressFW& p);
+    static void WipeFW();
 };
 
 } // namespace fnaf

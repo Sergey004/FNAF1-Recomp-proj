@@ -40,6 +40,10 @@ public:
     void RenderGirlVoice();
     void RenderDeath(const SLGame& game, f32 time);
     void RenderGameOver();
+    // v2.91 finale-wave overlays (the Wave2 art stays underneath)
+    void RenderCustMenuOver(const SLGame& game);   // the ten rows + diffs
+    void RenderCustLevelOver(const SLGame& game);  // doors, lanes, the hour
+    void RenderFinalOver(const SLGame& game);      // the hour + the hide cue
 
 private:
     void Draw(int handle, float fx, float fy, float fw, float fh, u32 color);

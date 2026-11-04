@@ -105,7 +105,7 @@ public:
     //   0..4 = nights 1..5, 5 = You Tampered (custom all-20),
     //   6 = You Soothed (music box — tracker TODO),
     //   7 = You Stayed (night 6), 8 = You Tried (all minigames — TODO),
-    //   9 = You Failed (the post-jumpscare event — TODO, dump check).
+    //   9 = You Failed (the post-jumpscare event — fires on every death).
     bool IsUnlockedFnaf2(int slot) const { return (m_unlockedF2 & (1u << slot)) != 0; }
     void UnlockFnaf2(int slot);      // idempotent: mark + save + system write
 

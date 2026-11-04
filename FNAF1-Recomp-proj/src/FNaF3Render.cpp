@@ -610,6 +610,15 @@ void FNaF3Render::RenderGameOver() {
     DrawNat(709, 0.0f, 361.0f, 0xFFFFFFFF);
 }
 
+void FNaF3Render::RenderDemoEnd() {
+    // v2.91: frame 15 "demo end" — the "THANKS FOR PLAYING THE DEMO!"
+    // banner (img 46) at its layout point (left 199, top 298 in the
+    // 1024x768 frame) over black. The hold/sound live in the game tick.
+    if (m_batch) m_batch->DrawSolid(0.0f, 0.0f, 1280.0f, 720.0f, 0xFF000000);
+    // 1024x768 -> 1280x720: x * 1.25, y * 0.9375
+    DrawNat(46, 199.0f * 1.25f, 298.0f * 0.9375f, 0xFFFFFFFF);
+}
+
 void FNaF3Render::RenderRare(i32 id) {
     // frame 12 = img 225 / frame 13 = img 228 / frame 14 = img 252
     const int img = (id == 1) ? 225 : (id == 2) ? 228 : 252;

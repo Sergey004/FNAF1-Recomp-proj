@@ -350,6 +350,9 @@
     <ClInclude Include="include\Progress.h" />
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\SLGame.h" />
+    <ClInclude Include="include\FNaFWorldGame.h" />
+    <ClInclude Include="include\FNaFWorldRender.h" />
+    <ClInclude Include="include\FNaFWorldModule.h" />
     <ClInclude Include="include\SLRender.h" />
     <ClInclude Include="include\SpriteBatch.h" />
     <ClInclude Include="include\TextRenderer.h" />
@@ -384,6 +387,9 @@
     <ClCompile Include="src\Room.cpp" />
     <ClCompile Include="src\SLGame.cpp" />
     <ClCompile Include="src\SLRender.cpp" />
+    <ClCompile Include="src\FNaFWorldGame.cpp" />
+    <ClCompile Include="src\FNaFWorldRender.cpp" />
+    <ClCompile Include="src\FNaFWorldModule.cpp" />
     <ClCompile Include="src\SpriteBatch.cpp" />
     <ClCompile Include="src\TextRenderer.cpp" />
   </ItemGroup>
