@@ -771,7 +771,7 @@ void FNaFWorldGame::GetChest(i32 i, f32& tx, f32& ty, bool& big, bool& opened) c
 void FNaFWorldGame::ApplyProgress(const Progress::GameProgressFW& p) {
     m_zoneLevel = p.zoneLevel;
     m_fazTokens = (u16)p.fazTokens;
-    m_lastX = p.lastX;  m_lastY = p.lastY;
+    m_lastX = (f32)p.lastX;  m_lastY = (f32)p.lastY;
     m_lastZone = p.lastFrame;
     // v2.91 blob v2: the party/inventory (v1 files keep the classic four)
     for (int i = 0; i < 4; ++i) m_party[i] = p.party[i];
@@ -788,10 +788,11 @@ void FNaFWorldGame::FillProgress(Progress::GameProgressFW& p) const {
     p.zoneLevel = m_zoneLevel;
     p.fazTokens = m_fazTokens;
     // World.c SaveButtonPress/WriteSave: the save stores the FREDDY CENTRE
-    // (position + size/2). Round-trip through ApplyProgress drifts the
-    // hitbox by +0.5 tile (their quirk) — mirrored verbatim, not "fixed".
-    p.lastX = m_freddyX + kFreddyW * 0.5f;
-    p.lastY = m_freddyY + kFreddyH * 0.5f;
+    // (position + size/2) as the TILE. The blob is integer, so the store
+    // truncates — which makes the ApplyProgress round-trip exact (the
+    // C-Edition float store drifted +0.5 tile per save; noted).
+    p.lastX = (i32)(m_freddyX + kFreddyW * 0.5f);
+    p.lastY = (i32)(m_freddyY + kFreddyH * 0.5f);
     p.lastFrame = (i32)m_screen;
     for (int i = 0; i < 4; ++i) p.party[i] = m_party[i];
     p.chipsOwned = m_chipsOwned;

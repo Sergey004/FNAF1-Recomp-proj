@@ -1092,8 +1092,8 @@ bool Progress::LoadFW(GameProgressFW& p) {
     if (b.zoneLevel < 1 || b.zoneLevel > 3) b.zoneLevel = 1; // Save.c cap 3
     p.zoneLevel = b.zoneLevel;
     p.fazTokens = b.fazTokens;
-    p.lastX     = (f32)b.lastX;
-    p.lastY     = (f32)b.lastY;
+    p.lastX     = b.lastX;
+    p.lastY     = b.lastY;
     p.lastFrame = b.lastFrame;
     if (rd != kV1Bytes) {
         for (int i = 0; i < 4; ++i) {

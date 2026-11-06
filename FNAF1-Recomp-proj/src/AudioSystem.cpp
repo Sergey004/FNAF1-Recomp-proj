@@ -195,7 +195,15 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
     const float lVol = (pan < 0.0f) ? 1.0f : 1.0f - pan;
     const float rVol = (pan > 0.0f) ? 1.0f : 1.0f + pan;
     const float matrix[2] = { lVol, rVol };
+#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
+    // the XDK's IXAudio2Voice::SetOutputMatrix takes the DESTINATION voice
+    // explicitly (xaudio2.h: pDestinationVoice, SrcCh, DstCh, pMatrix);
+    // the PC XAudio2 2.7+ omits it (the matrix targets the mastering voice
+    // implicitly). One source channel -> stereo mastering input.
+    voice->SetOutputMatrix(reinterpret_cast<IXAudio2Voice*>(m_master), 1, 2, matrix);
+#else
     voice->SetOutputMatrix(1, 2, matrix);
+#endif
 
     VoiceSlot& s = m_slots[slot];
     s.voice = voice;
@@ -258,8 +266,12 @@ void AudioSystem::SetChannelPan(int channel, float pan) {
     const float matrix[2] = { lVol, rVol };
     for (int i = 0; i < m_slotCount; ++i) {
         if (m_slots[i].inUse && m_slots[i].channel == channel && m_slots[i].voice) {
-            reinterpret_cast<IXAudio2SourceVoice*>(m_slots[i].voice)
-                ->SetOutputMatrix(1, 2, matrix);
+            IXAudio2SourceVoice* v = reinterpret_cast<IXAudio2SourceVoice*>(m_slots[i].voice);
+#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
+            v->SetOutputMatrix(reinterpret_cast<IXAudio2Voice*>(m_master), 1, 2, matrix);
+#else
+            v->SetOutputMatrix(1, 2, matrix);
+#endif
         }
     }
 }
