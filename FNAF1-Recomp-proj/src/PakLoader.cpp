@@ -88,6 +88,7 @@ PakLoader::PakLoader()
     , m_numSounds(0)
     , m_pakData(0)
     , m_pakSize(0)
+    , m_pakVersion(1)  // default to v1 for backward compat
     , m_owned(0)
     , m_sndRiff(0)
     , m_sndSwapped(0)
@@ -223,7 +224,19 @@ static bool SndRiffParse(const u8* p, u32 size, SndRiffInfo& out) {
 // covered by the pak-wide majority vote instead of its own probe.
 //   returns  1 = looks BIG-endian,  0 = looks little-endian,
 //           -1 = abstain (silence or ambiguous)
-static int SndPcmByteOrderVote(const u8* p, u32 bytes) {
+static int SndPcmByteOrderVote(const u8* p, u32 bytes, u32 bits) {
+    if (bits == 8) {
+        // 8-bit unsigned PCM: values are 0..255, center at 128
+        // For unsigned 8-bit, silence is around 128
+        const u32 n = bytes;
+        if (n < 512) return -1;
+        u32 scan = n < 2000000u ? n : 2000000u;
+        u64 sumLE = 0, sumBE = 0;  // Same calculation for 8-bit (byte order doesn't matter for 8-bit)
+        // Actually 8-bit doesn't have byte order issues, it's just bytes
+        // But we check if it's treated as 16-bit LE vs BE
+        // For 8-bit, there's no byte order issue - return -1 (abstain)
+        return -1;
+    }
     const u32 n = bytes / 2;
     if (n < 512) return -1;                       // too short to judge
     u32 scan = n < 2000000u ? n : 2000000u;       // cap at ~4 MB of work
@@ -295,7 +308,7 @@ void PakLoader::NormalizeSounds() {
     // ---- pass 1: peel RIFF containers --------------------------------
     for (int i = 0; i < m_numSounds; ++i) {
         PakLoadedSound& s = m_sounds[i];
-        s.bits = 16;
+        // NOTE: s.bits is already set from pak v2 loader; don't overwrite with 16
         if (!s.data || s.dataSize < 64) continue;
         SndRiffInfo ri;
         if (SndRiffParse(s.data, s.dataSize, ri)) {
@@ -309,18 +322,17 @@ void PakLoader::NormalizeSounds() {
     }
 
     // ---- pass 2: pak-wide byte-order vote -----------------------------
-    // A pak written by a big-endian tool has ALL 16-bit payloads swapped;
+    // A pak written by a big-endian tool has ALL payloads of same bit-depth swapped;
     // deciding once avoids mis-flagging one unusual sound in isolation.
-    // (The probe abstains on silence and near-ties like XSCREAM2; those
-    // are covered by the majority of the remaining bank.)
+    // The probe abstains on silence and near-ties; those are covered by majority.
     int voteSwap = 0, voteNative = 0;
     for (int i = 0; i < m_numSounds; ++i) {
         const PakLoadedSound& s = m_sounds[i];
         if (s.format != 0 || !s.data) continue;
-        if (s.bits != 16) continue;
+        if (s.bits == 0) continue; // unknown depth
         if (SndIsLiteralNoise(s.name)) continue;
         if (SndIsKnown8bit(s.name, s.dataSize)) continue;
-        const int v = SndPcmByteOrderVote(s.data, s.dataSize);
+        const int v = SndPcmByteOrderVote(s.data, s.dataSize, s.bits);
         if (v > 0) ++voteSwap;
         else if (v == 0) ++voteNative;
     }
@@ -330,6 +342,13 @@ void PakLoader::NormalizeSounds() {
     for (int i = 0; i < m_numSounds; ++i) {
         PakLoadedSound& s = m_sounds[i];
         if (!s.data || s.dataSize == 0) { s.format = 1; continue; }
+
+        // Non-PCM blobs (fmt = 2, "passthrough": an mp3/ogg the packer could
+        // not decode) must NEVER reach XAudio2 as raw PCM — the 360 would
+        // mix the compressed bytes as samples (a loud burst of noise).
+        // Mark them unsupported so AudioSystem skips them in silence.
+        // (Mirrors the streaming path's NormalizeOne check.)
+        if (s.pakFmt != 0) { s.format = 1; continue; }
 
         if (s.bits == 8 || SndIsKnown8bit(s.name, s.dataSize)) {
             // expand u8 -> s16 into an owned buffer
@@ -365,26 +384,16 @@ void PakLoader::NormalizeSounds() {
     // PPC and does no conversion of its own — feeding it the PC-convention
     // little-endian PCM16 produced by passes 1-3 plays as pure noise
     // (exactly the "noise is still there" report from the console build).
-    // So the normalization TARGET is platform-dependent: LE on PC, BE on
-    // the 360. The 8-bit expansions above were written LE; they get
-    // swapped here like everything else. Not counted in m_sndSwapped
-    // (that stat tracks what the PAK had stored).
-#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
     for (int i = 0; i < m_numSounds; ++i) {
         PakLoadedSound& s = m_sounds[i];
         if (s.format != 0 || s.bits != 16) continue;
         if (!s.data || s.dataSize < 2) continue;
         SndSwap16InPlace(s.data, s.dataSize);
     }
-#endif
 
     // v2.7.4: name the normalization target in the log so the running XEX
     // is diagnosable from the console output alone
-#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
     const char* sndTarget = "BE(360)";
-#else
-    const char* sndTarget = "LE(PC)";
-#endif
     printf("PakLoader: sounds normalized (riff=%d swapped=%d 8bit=%d, vote %d/%d, target %s)\n",
            m_sndRiff, m_sndSwapped, m_snd8bit, voteSwap, voteNative, sndTarget);
 }
@@ -401,7 +410,6 @@ u32 PakLoader::LoadBE32(const u8* p)
 
 void PakLoader::Unload()
 {
-#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
     // v2.29: stop the streaming preload worker first
     if (m_thread || m_wakeEvent) {
         m_quit = true;
@@ -433,13 +441,6 @@ void PakLoader::Unload()
         m_pakData = 0;
     }
     FreeOwned();
-#else
-    if (m_textures) delete[] m_textures;
-    if (m_sounds) delete[] m_sounds;
-    if (m_pakData) delete[] m_pakData;
-    m_textures = 0; m_sounds = 0; m_pakData = 0;
-    FreeOwned();
-#endif
     m_numTextures = 0;
     m_numSounds = 0;
     m_device = 0;
@@ -554,7 +555,11 @@ bool PakLoader::Load(const char* pakPath, void* device)
     u32 numFnt = LoadBE32(p); p += 4;
     u32 stringsOffset = LoadBE32(p); p += 4;
     u32 dataOffset = LoadBE32(p); p += 4;
-    (void)version; (void)numMus; (void)numFnt;
+    (void)numMus; (void)numFnt;
+    // v2: the pak version decides the sound-table layout (v2 adds the
+    // bit-depth word per sound). Without this the v2 table would be read
+    // with a 4-byte-per-entry shift and every sound would be garbage.
+    m_pakVersion = version;
 
     m_numTextures = (int)numTex;
     m_numSounds = (int)numSnd;
@@ -587,11 +592,7 @@ bool PakLoader::Load(const char* pakPath, void* device)
         m_textures[i].dataSize = dataSize;
         m_textures[i].gpuReady = false;
 
-#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
         UploadTexture(i, m_pakData + dataOff);
-#else
-        m_textures[i].gpuReady = true;
-#endif
         (void)mip;
     }
 
@@ -603,6 +604,10 @@ bool PakLoader::Load(const char* pakPath, void* device)
         u32 fmt = LoadBE32(p); p+=4;
         u32 sr = LoadBE32(p); p+=4;
         u32 ch = LoadBE32(p); p+=4;
+        u32 bits = 16;
+        if (m_pakVersion >= 2) {
+            bits = LoadBE32(p); p+=4;  // v2: bit depth
+        }
         u32 loopS = LoadBE32(p); p+=4;
         u32 loopE = LoadBE32(p); p+=4;
         (void)loopS; (void)loopE;
@@ -614,7 +619,7 @@ bool PakLoader::Load(const char* pakPath, void* device)
         m_sounds[i].format = fmt;
         m_sounds[i].sampleRate = sr;
         m_sounds[i].channels = ch;
-        m_sounds[i].bits = 16;
+        m_sounds[i].bits = bits;  // v2: bit depth from pak
         m_sounds[i].fileOff = dataOff;   // v2.29
         m_sounds[i].resident = true;     // eager mode: blob is inside m_pakData
         m_sounds[i].pakFmt = fmt;
@@ -678,7 +683,6 @@ void PakLoader::NormalizeOne(int idx)
 {
     PakLoadedSound& s = m_sounds[idx];
     s.bits = 16;
-    bool riffOk = false;
     if (s.data && s.dataSize >= 64) {
         SndRiffInfo ri;
         if (SndRiffParse(s.data, s.dataSize, ri)) {
@@ -687,11 +691,13 @@ void PakLoader::NormalizeOne(int idx)
             s.sampleRate = ri.rate;
             s.channels   = ri.channels;
             s.bits       = ri.bits;
-            riffOk = true;
             ++m_sndRiff;
         }
     }
-    if (s.pakFmt != 0 && !riffOk) { s.format = 1; return; }   // passthrough (mp3)
+    // Non-PCM blobs (fmt = 2, "passthrough": an mp3/ogg the packer could
+    // not decode) must NEVER reach XAudio2 as raw PCM — the 360 would mix
+    // the compressed bytes as samples (a loud burst of noise).
+    if (s.pakFmt != 0) { s.format = 1; return; }
     if (!s.data || s.dataSize == 0)  { s.format = 1; return; }
 
     if (s.bits == 8 || SndIsKnown8bit(s.name, s.dataSize)) {
@@ -732,6 +738,7 @@ void PakLoader::PickVoteCandidates()
     for (int i = 0; i < m_numSounds && m_voteCount < 8; ++i) {
         const PakLoadedSound& s = m_sounds[i];
         if (s.pakFmt != 0) continue;                          // PCM only
+        if (s.bits != 16) continue;                           // vote only on 16-bit sounds
         if (SndIsLiteralNoise(s.name)) continue;              // static loops abstain
         if (SndIsKnown8bit(s.name, s.dataSize)) continue;
         if (s.dataSize < 100000 || s.dataSize > 2000000) continue;
@@ -812,6 +819,9 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
     const u32 numSnd = LoadBE32(hdr + 12);
     const u32 stringsOffset = LoadBE32(hdr + 24);
     const u32 dataOffset    = LoadBE32(hdr + 28);
+    // v2: the pak version decides the sound-table layout (v2 adds the
+    // bit-depth word per sound) — same rule as the eager loader.
+    m_pakVersion = LoadBE32(hdr + 4);
     if (numTex > 100000 || numSnd > 100000 ||
         stringsOffset >= dataOffset || dataOffset > m_pakSize) { Unload(); return false; }
 
@@ -855,6 +865,10 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
         const u32 fmt  = LoadBE32(p); p += 4;
         const u32 sr   = LoadBE32(p); p += 4;
         const u32 ch   = LoadBE32(p); p += 4;
+        u32 bits = 16;
+        if (m_pakVersion >= 2) {
+            bits = LoadBE32(p); p += 4;  // v2: bit depth
+        }
         p += 4 * 2; // loop points unused
         const char* nameStr = (const char*)(m_pakData + nameOff);
         strncpy(m_sounds[i].name, nameStr, 63);
@@ -864,7 +878,7 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
         m_sounds[i].format = 1;              // until loaded+normalized
         m_sounds[i].sampleRate = sr;
         m_sounds[i].channels = ch;
-        m_sounds[i].bits = 16;
+        m_sounds[i].bits = bits;  // v2: bit depth from pak
         m_sounds[i].fileOff = dataOff;
         m_sounds[i].resident = false;
         m_sounds[i].pakFmt = fmt;
@@ -880,7 +894,7 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
         if (win > 4096) win = 4096;
         u8* winBuf = new u8[win];
         if (ReadAt(m_sounds[i].fileOff, win, winBuf)) {
-            const int r = SndPcmByteOrderVote(winBuf, win);
+            const int r = SndPcmByteOrderVote(winBuf, win, 16); // vote sounds are 16-bit
             if (r > 0) ++voteSwap;
             else if (r == 0) ++voteNative;
         }
@@ -888,18 +902,13 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
     }
     m_swapAll = (voteSwap > voteNative) && voteSwap > 0;
 
-#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
     const char* sndTarget = "BE(360)";
-#else
-    const char* sndTarget = "LE(PC)";
-#endif
     printf("PakLoader: STREAMING '%s' (%.1f MB on disk, %d KB resident; %d tex lazy, %d snd lazy; vote %d/%d, target %s)\n",
            pakPath, (double)m_pakSize / (1024.0 * 1024.0),
            (int)(dataOffset / 1024), m_numTextures, m_numSounds,
            voteSwap, voteNative, sndTarget);
 
-    // ---- background preload worker (XDK); PC falls back to synchronous ----
-#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
+    // ---- background preload worker ----
     m_cs = new CRITICAL_SECTION;
     InitializeCriticalSection((CRITICAL_SECTION*)m_cs);
     // v2.81: the ensure serialization CS — the render thread (FindTexture/
@@ -913,7 +922,6 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
     m_thread = CreateThread(NULL, 0,
                             (LPTHREAD_START_ROUTINE)&PakLoader::PreloadThreadStatic,
                             this, 0, NULL);
-#endif
     return true;
 }
 
@@ -986,15 +994,14 @@ void PakLoader::PreloadAsync(const char* const* texNames, int count)
             }
         }
     }
-#else
     for (int n = 0; n < count; ++n) {
         if (!texNames[n]) continue;
         for (int i = 0; i < m_numTextures; ++i) {
             if (strcmp(m_textures[i].name, texNames[n]) == 0) { EnsureTextureLoaded(i); break; }
         }
     }
-#endif
 }
+#endif
 
 // v2.78: bulk preload by table position — the room-sorted SL pak's asset
 // mapping ships per-frame index lists (sisterlocation::frameImages), so the
@@ -1002,8 +1009,7 @@ void PakLoader::PreloadAsync(const char* const* texNames, int count)
 // rules as PreloadAsync (dedup happens through gpuReady at drain time).
 void PakLoader::PreloadIndices(const int* texIdx, int count)
 {
-    if (!m_streaming || !texIdx || count <= 0) return;
-#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
+if (!m_streaming || !texIdx || count <= 0) return;
     for (int n = 0; n < count; ++n) {
         const int i = texIdx[n];
         if (i < 0 || i >= m_numTextures) continue;
@@ -1016,13 +1022,11 @@ void PakLoader::PreloadIndices(const int* texIdx, int count)
         if (m_cs) LeaveCriticalSection((CRITICAL_SECTION*)m_cs);
         if (m_wakeEvent) SetEvent((HANDLE)m_wakeEvent);
     }
-#else
     for (int n = 0; n < count; ++n) {
         const int i = texIdx[n];
         if (i < 0 || i >= m_numTextures) continue;
         EnsureTextureLoaded(i);
     }
-#endif
 }
 
 // v2.81: bulk preload of SOUND blobs by table position — the room-sorted SL
@@ -1033,7 +1037,6 @@ void PakLoader::PreloadIndices(const int* texIdx, int count)
 void PakLoader::PreloadSoundIndices(const int* sndIdx, int count)
 {
     if (!m_streaming || !sndIdx || count <= 0) return;
-#if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
     for (int n = 0; n < count; ++n) {
         const int i = sndIdx[n];
         if (i < 0 || i >= m_numSounds) continue;
@@ -1046,13 +1049,11 @@ void PakLoader::PreloadSoundIndices(const int* sndIdx, int count)
         if (m_cs) LeaveCriticalSection((CRITICAL_SECTION*)m_cs);
         if (m_wakeEvent) SetEvent((HANDLE)m_wakeEvent);
     }
-#else
     for (int n = 0; n < count; ++n) {
         const int i = sndIdx[n];
         if (i < 0 || i >= m_numSounds) continue;
         EnsureSoundLoaded(i);
     }
-#endif
 }
 
 int PakLoader::GetTextureCount() const { return m_numTextures; }

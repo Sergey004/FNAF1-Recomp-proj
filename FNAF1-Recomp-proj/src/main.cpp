@@ -28,7 +28,7 @@
 #include "AppModules.h"   // v2.28: full AppModule type (banner prints Name/PakName)
 
 #include <xtl.h>
-#include <xinputdefs.h>  // XINPUT_KEYSTROKE / XINPUT_FLAG_KEYBOARD (USB-keyboard reset)
+#include <xinputdefs.h>   // XINPUT_KEYSTROKE / XINPUT_FLAG_KEYBOARD
 #include "XdkCompat.h"   // Snprintf — XDK CRT predates C99 snprintf
 #define PlatformSleepMs(ms) Sleep(ms)
 

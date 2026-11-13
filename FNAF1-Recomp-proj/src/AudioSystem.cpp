@@ -130,6 +130,11 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
         printf("AudioSystem: sound not found: %s\n", sndName);
         return false;
     }
+    if (!snd->data || snd->dataSize == 0) return false;
+
+    // The 360's XAudio2 2.x plays raw PCM16 only. Every other codec (an
+    // mp3/ogg the packer could not decode) is flagged format=1 by
+    // PakLoader::NormalizeSounds()/NormalizeOne() and skipped in silence.
     if (snd->format != 0) {
         // v2.6: PakLoader::NormalizeSounds() rewrites every entry to
         // format 0 (little-endian PCM16, RIFF headers peeled, byte order
@@ -138,7 +143,6 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
         printf("AudioSystem: %s is not playable PCM (fmt=%u)\n", sndName, snd->format);
         return false;
     }
-    if (!snd->data || snd->dataSize == 0) return false;
 
     // Find a free slot (steal the oldest non-looping slot as fallback)
     int slot = -1;

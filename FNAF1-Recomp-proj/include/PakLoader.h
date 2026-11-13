@@ -39,7 +39,7 @@ struct PakLoadedSound {
     u8*  data;       // v2.6: start of PLAYABLE PCM (data-chunk payload when the
                      //       blob is a complete RIFF/WAVE file, blob otherwise)
     u32  dataSize;
-    u32  format;     // 0 = PCM16 ready to play, 1 = unsupported codec
+    u32  format;     // 0 = PCM16 ready to play, 1 = unsupported codec (skipped)
     u32  sampleRate;
     u32  channels;
     u32  bits;       // v2.6: source bit depth (8/16); 8-bit payloads are
@@ -119,6 +119,7 @@ private:
     int m_numSounds;
     u8* m_pakData; // keep file in memory for audio
     u32 m_pakSize;
+    u32 m_pakVersion;  // v2: pak format version (1 or 2)
 
     // v2.6: owned 16-bit expansion buffers for 8-bit sounds (freed in Unload)
     struct OwnedBuf { u8* data; struct OwnedBuf* next; };

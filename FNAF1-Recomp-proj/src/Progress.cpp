@@ -20,9 +20,9 @@
 #include <cstdlib>    // atoi
 #include <cstddef>   // offsetof
 #include <ctime>      // time/localtime (v2.74: the system date)
-#include <direct.h>   // _mkdir (v2.20 local "Live Safe" backend)
 #if !defined(FNAF_LIVE_SAFE)
 #include <xtl.h>
+#include <xbox.h>
 #endif
 #include "XdkCompat.h"
 
@@ -122,7 +122,7 @@ static DWORD PickSignedInUserIndex() {
 // deliberately NOT game:\save\ — that path is both the Live Safe storage
 // AND an import candidate, so our own fallback files must not sit there
 // (otherwise boot would offer to import its own save).
-static void EnsureLocalDirFallback() { _mkdir("game:\\save_fallback"); }
+static void EnsureLocalDirFallback() { CreateDirectory("game:\\save_fallback", NULL); }
 
 static void MaybeSetThumbnail(const XCONTENT_DATA& content);
 
