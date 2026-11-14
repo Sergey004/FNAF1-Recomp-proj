@@ -11,7 +11,8 @@
  *       g6  START  4569: slide left, shift < 550 -> left 260
  *       g7  sparkle 1207 x8 every 100 ms (g8-11: wander + fade)
  *       g13 on start: sample #138 "Title screen theme - One for the road
- *           draft1" loop ch0 (pak passthrough mp3 — silent on 360, labeled)
+ *           draft1" loop ch0 (the source mp3 is decoded to PCM16 at pack
+ *           time, so the loop plays on the 360)
  *       g1  Escape -> End application;  g2 click START -> next frame
  *       fade-out 880 ms
  *   frame 5 "overworld"    — step 2 (world stub here: movement only)
@@ -308,9 +309,9 @@ void FNaFWorldGame::TickDisclaimer(f32 dt, const FNaFWorldInputs& in) {
 void FNaFWorldGame::TickTitle(f32 dt, const FNaFWorldInputs& in) {
     m_titleT += dt;
 
-    // g13: the title theme on frame entry (loop, ch0). The pak blob is a
-    // passthrough mp3 — AudioSystem rejects it; the call stays for the day
-    // the pak ships decoded audio (labeled dump deviation: silent).
+    // g13: the title theme on frame entry (loop, ch0). The pak entry is
+    // PCM16 now (the source mp3 is decoded at pack time), so the loop
+    // actually plays — the old "silent on 360" deviation is gone.
     if (!m_titleThemeStarted) {
         m_titleThemeStarted = true;
         Sfx("Title screen theme - One for the road draft1", true, 0, 100);

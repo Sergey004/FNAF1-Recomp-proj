@@ -5,6 +5,11 @@
 #include "PakLoader.h"
 #include <cstdio>
 #include <cstring>
+#include <new>          // std::nothrow — the loader NEVER throws: the project
+                        // builds without /EHsc, so a throwing new here would
+                        // take the whole process down (the v2.92 console
+                        // crash was exactly that). Every allocation below is
+                        // nothrow and checked.
 
 #if defined(_XBOX) || defined(_XBOX360) || defined(_M_PPCBE)
 #include <xtl.h>
@@ -353,14 +358,15 @@ void PakLoader::NormalizeSounds() {
         if (s.bits == 8 || SndIsKnown8bit(s.name, s.dataSize)) {
             // expand u8 -> s16 into an owned buffer
             const u32 n = s.dataSize;             // one byte per sample
-            u8* out = new u8[n * 2];
+            u8* out = new (std::nothrow) u8[n * 2];
             if (!out) { s.format = 1; continue; }
             for (u32 k = 0; k < n; ++k) {
                 const int v = ((int)s.data[k] - 128) << 8;
                 out[k * 2 + 0] = (u8)(v & 0xFF);
                 out[k * 2 + 1] = (u8)((v >> 8) & 0xFF);
             }
-            OwnedBuf* b = new OwnedBuf;
+            OwnedBuf* b = new (std::nothrow) OwnedBuf;
+            if (!b) { delete[] out; s.format = 1; continue; }
             b->data = out; b->next = m_owned; m_owned = b;
             s.data = out;
             s.dataSize = n * 2;
@@ -507,13 +513,19 @@ void PakLoader::UploadTexture(int idx, const u8* blob)
             // above ConvertDxt1Block). XGTileTextureLevel copies bytes
             // verbatim -- it does not do any endian fix-up.
             const bool isDxt5 = (d3dFmt == D3DFMT_DXT5);
-            const bool isDxt  = (d3dFmt == D3DFMT_DXT1 || isDxt5);
+            bool isDxt  = (d3dFmt == D3DFMT_DXT1 || isDxt5);
             u8* conv = 0;
             if (isDxt && dataSize > 0 && dataSize <= 64u * 1024u * 1024u) {
-                conv = new u8[dataSize];
-                memcpy(conv, src, dataSize);
-                ConvertDxtPakToGpu(conv, dataSize, isDxt5);
-                src = conv;
+                conv = new (std::nothrow) u8[dataSize];
+                if (conv) {
+                    memcpy(conv, src, dataSize);
+                    ConvertDxtPakToGpu(conv, dataSize, isDxt5);
+                    src = conv;
+                } else {
+                    // OOM: fall back to the unconverted blob (the texture
+                    // renders garbled instead of taking the process down).
+                    isDxt = false;
+                }
             }
 
             XGTileTextureLevel(alignW, alignH, 0, XGGetGpuFormat(d3dFmt), 0,
@@ -540,7 +552,7 @@ bool PakLoader::Load(const char* pakPath, void* device)
     fseek(f, 0, SEEK_SET);
     if (sz <= 0) { fclose(f); return false; }
     m_pakSize = (u32)sz;
-    m_pakData = new u8[m_pakSize];
+    m_pakData = new (std::nothrow) u8[m_pakSize];
     if (!m_pakData) { fclose(f); return false; }
     if ((long)fread(m_pakData, 1, m_pakSize, f) != sz) { fclose(f); Unload(); return false; }
     fclose(f);
@@ -563,10 +575,16 @@ bool PakLoader::Load(const char* pakPath, void* device)
 
     m_numTextures = (int)numTex;
     m_numSounds = (int)numSnd;
-    if (m_numTextures > 0) m_textures = new PakLoadedTexture[m_numTextures];
-    if (m_numSounds > 0) m_sounds = new PakLoadedSound[m_numSounds];
-    if (m_numTextures>0) memset(m_textures, 0, sizeof(PakLoadedTexture)*m_numTextures);
-    if (m_numSounds>0) memset(m_sounds, 0, sizeof(PakLoadedSound)*m_numSounds);
+    if (m_numTextures > 0) {
+        m_textures = new (std::nothrow) PakLoadedTexture[m_numTextures];
+        if (!m_textures) { Unload(); return false; }
+        memset(m_textures, 0, sizeof(PakLoadedTexture)*m_numTextures);
+    }
+    if (m_numSounds > 0) {
+        m_sounds = new (std::nothrow) PakLoadedSound[m_numSounds];
+        if (!m_sounds) { Unload(); return false; }
+        memset(m_sounds, 0, sizeof(PakLoadedSound)*m_numSounds);
+    }
 
     // Texture entries: 9 *4 =36 bytes each
     for (int i = 0; i < m_numTextures; ++i) {
@@ -702,14 +720,15 @@ void PakLoader::NormalizeOne(int idx)
 
     if (s.bits == 8 || SndIsKnown8bit(s.name, s.dataSize)) {
         const u32 n = s.dataSize;
-        u8* out = new u8[n * 2];
+        u8* out = new (std::nothrow) u8[n * 2];
         if (!out) { s.format = 1; return; }
         for (u32 k = 0; k < n; ++k) {
             const int v = ((int)s.data[k] - 128) << 8;
             out[k * 2 + 0] = (u8)(v & 0xFF);
             out[k * 2 + 1] = (u8)((v >> 8) & 0xFF);
         }
-        OwnedBuf* b = new OwnedBuf;
+        OwnedBuf* b = new (std::nothrow) OwnedBuf;
+        if (!b) { delete[] out; s.format = 1; return; }
         b->data = out; b->next = m_owned; m_owned = b;
         s.data = out;
         s.dataSize = n * 2;
@@ -758,7 +777,7 @@ void PakLoader::EnsureTextureLoaded(int idx)
     // loads, the loser re-checks and returns on the retry.
     if (m_loadCs) EnterCriticalSection((CRITICAL_SECTION*)m_loadCs);
     if (t.gpuReady) { if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
-    u8* staging = new u8[t.dataSize];
+    u8* staging = new (std::nothrow) u8[t.dataSize];
     if (!staging) { t.gpuReady = true; if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
     if (!ReadAt(t.fileOff, t.dataSize, staging)) {
         delete[] staging;
@@ -780,7 +799,7 @@ void PakLoader::EnsureSoundLoaded(int idx)
     // v2.81: the same one-blob-at-a-time serialization as the textures.
     if (m_loadCs) EnterCriticalSection((CRITICAL_SECTION*)m_loadCs);
     if (s.resident) { if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
-    u8* buf = new u8[s.dataSize];
+    u8* buf = new (std::nothrow) u8[s.dataSize];
     if (!buf) { s.resident = true; s.format = 1; if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
     if (!ReadAt(s.fileOff, s.dataSize, buf)) {
         delete[] buf;
@@ -788,7 +807,7 @@ void PakLoader::EnsureSoundLoaded(int idx)
         if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs);
         return;
     }
-    OwnedBuf* b = new OwnedBuf;
+    OwnedBuf* b = new (std::nothrow) OwnedBuf;
     b->data = buf; b->next = m_owned; m_owned = b;
     s.data = buf;
     NormalizeOne(idx);
@@ -826,14 +845,22 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
         stringsOffset >= dataOffset || dataOffset > m_pakSize) { Unload(); return false; }
 
     // ---- resident region: header + tex table + snd table + name pool ----
-    m_pakData = new u8[dataOffset];
+    m_pakData = new (std::nothrow) u8[dataOffset];
     if (!m_pakData) { Unload(); return false; }
     if (!ReadAt(0, dataOffset, m_pakData)) { Unload(); return false; }
 
     m_numTextures = (int)numTex;
     m_numSounds = (int)numSnd;
-    if (m_numTextures > 0) { m_textures = new PakLoadedTexture[m_numTextures]; memset(m_textures, 0, sizeof(PakLoadedTexture) * m_numTextures); }
-    if (m_numSounds   > 0) { m_sounds   = new PakLoadedSound[m_numSounds];   memset(m_sounds,   0, sizeof(PakLoadedSound)   * m_numSounds);   }
+    if (m_numTextures > 0) {
+        m_textures = new (std::nothrow) PakLoadedTexture[m_numTextures];
+        if (!m_textures) { Unload(); return false; }
+        memset(m_textures, 0, sizeof(PakLoadedTexture) * m_numTextures);
+    }
+    if (m_numSounds   > 0) {
+        m_sounds   = new (std::nothrow) PakLoadedSound[m_numSounds];
+        if (!m_sounds) { Unload(); return false; }
+        memset(m_sounds,   0, sizeof(PakLoadedSound)   * m_numSounds);
+    }
 
     const u8* p = m_pakData + 32;
     for (int i = 0; i < m_numTextures; ++i) {
@@ -892,8 +919,8 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
         const int i = m_voteIdx[v];
         u32 win = m_sounds[i].dataSize;
         if (win > 4096) win = 4096;
-        u8* winBuf = new u8[win];
-        if (ReadAt(m_sounds[i].fileOff, win, winBuf)) {
+        u8* winBuf = new (std::nothrow) u8[win];
+        if (winBuf && ReadAt(m_sounds[i].fileOff, win, winBuf)) {
             const int r = SndPcmByteOrderVote(winBuf, win, 16); // vote sounds are 16-bit
             if (r > 0) ++voteSwap;
             else if (r == 0) ++voteNative;
@@ -909,11 +936,11 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
            voteSwap, voteNative, sndTarget);
 
     // ---- background preload worker ----
-    m_cs = new CRITICAL_SECTION;
+    m_cs = new (std::nothrow) CRITICAL_SECTION;
     InitializeCriticalSection((CRITICAL_SECTION*)m_cs);
     // v2.81: the ensure serialization CS — the render thread (FindTexture/
     // FindSound) and the worker must never load the SAME blob concurrently.
-    m_loadCs = new CRITICAL_SECTION;
+    m_loadCs = new (std::nothrow) CRITICAL_SECTION;
     InitializeCriticalSection((CRITICAL_SECTION*)m_loadCs);
     m_wakeEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     m_qHead = m_qTail = 0;

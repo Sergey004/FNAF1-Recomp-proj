@@ -1202,8 +1202,15 @@ int main(int argc, char* argv[]){
     // like FSD or Aurora — re-enable those variants when needed)
     char pakPath[128];
     Snprintf(pakPath, sizeof(pakPath), "game:\\%s", AppRegistry_Active()->PakName());
-    // v2.32: the module picks its loader — eager fits FNAF1-3 in the
-    // 512 MB UMA pool, FNAF4/SL must stream (real-HW OOM otherwise).
+    // v2.32: the module picks its loader — v2.92: every game but FNAF1
+    // streams now. The eager paks crossed the 512 MB UMA pool once the
+    // 8-bit sounds were expanded to 16-bit at pack time (FNAF2 died with
+    // std::bad_alloc at module load on real HW); FNAF1's untouched v1 pak
+    // still fits eager.
+    // v2.92: the loader does NOT throw (this project builds without /EHsc,
+    // so a catch here would be unreliable): every allocation inside is
+    // nothrow and checked, and an OOM simply makes Load return false —
+    // the error screen below handles it.
     const bool pakOk = AppRegistry_Active()->PrefersStreaming()
         ? g_pak.LoadStreaming(pakPath, g_pd3dDevice)
         : g_pak.Load(pakPath, g_pd3dDevice);

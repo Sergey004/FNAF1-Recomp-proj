@@ -3,6 +3,58 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.92 — every bank sound actually plays: pak v2 (bit depth) + MP3/OGG decoded at pack time
+
+- **FNaF 2's phone calls decode correctly now.** The "wrong audio on
+  calls" was the pak losing the bit depth: every shipped pak was v1 (no
+  `bits` word), so the loader played the 8-bit 8000 Hz call WAVs
+  (`call 1b..6b`, `buzzlight`, `elec garble`, `metalwalk1-3`,
+  `ventwalk1`, `walk1-5`, `windup2`) as 16-bit — pure noise. Two bugs
+  stacked: the packer wrote v2 headers but computed the name-pool offset
+  with the v1 entry size (the pool shifted, every name garbage), and the
+  loader never stored the version it read (`(void)version`), so even a
+  correct v2 pak parsed with a shifted table. Both fixed; paks rebuilt
+  as real v2 and `tools/verify_pak.py` parses the table the way the
+  loader does (it caught both). fnaf1.pak stays v1 on purpose — its one
+  8-bit sound is caught by the name+size fallback.
+- **Every MP3 in the other games' banks is decoded at pack time.** The
+  360's XAudio2 2.x has no MP3 decoder, so 214 SL + 83 FNaF World + 186
+  FFPS + 250 UCN sounds used to ship as `fmt=2` passthrough and stay
+  silent — and 184 of SL's "wav" files were headerless MP3s the
+  extension sniffer misnamed. New `ctfak-cpp/src/util/AudioDecoder.*`:
+  the sniffer detects MP3 by ID3 OR a raw MPEG frame sync; WAV is parsed
+  in-process (8-bit expanded to 16-bit); MP3/OGG are decoded through the
+  platform's own media tool (ffmpeg, then sox) invoked as a separate
+  process — **no third-party decoder code in the repository**, and the
+  PCM is the reference decoder's own output. **Nothing is resampled**:
+  the 8000 Hz calls keep their original rate (resampling would only add
+  artefacts). Whatever cannot be decoded stays a passthrough and is
+  skipped in silence.
+- **The runtime refuses non-PCM instead of mixing it.** Both
+  `NormalizeSounds()` (eager) and `NormalizeOne()` (streaming) now mark
+  every `pakFmt != 0` blob `format = 1` — in a v1 pak a passthrough blob
+  used to fall through to XAudio2 as raw PCM (a loud burst of noise, not
+  silence). The broken XMA playback branch is deleted (no encoder exists
+  for it and its WAVEFORMATEX was never a valid `XMA2WAVEFORMAT`).
+- All seven rebuilt paks pass `tools/verify_pak.py` (every sound PCM16,
+  1-2 ch, 3-96 kHz; per-sound payload compared against the source WAV
+  data chunk or a fresh ffmpeg decode of the source MP3 — bit-identical).
+  Passthrough left: **0** everywhere. Pak sizes grew where MP3s lived
+  (SL 1773 MB, FFPS 1090, UCN 834, FNaF World 716) — the price of the
+  console having no MP3 decoder. Details: `docs/AUDIO.md` §v2.91,
+  `docs/pak_format.md` (v2 layout + fmt values).
+- **FNAF2/FNAF3 stream now (the real-HW OOM the first console test
+  hit).** Eager FNAF2 held a 245.8 MB resident pak blob plus 804 D3D
+  textures (208 MB) in the same 512 MB UMA pool — ~454 MB, and the old
+  241.8 MB pak had already fit at ~450; the +4.8 MB of expanded 8-bit
+  sounds tipped it into `std::bad_alloc` at module load (the console
+  log's Illegal Instruction storm was the uncaught throw afterwards).
+  FNAF2 and FNAF3 now set `PrefersStreaming()` like FNAF4/SL: only the
+  tables stay resident (~38 KB), blobs are read on first
+  FindTexture/FindSound. FNAF1 keeps its eager v1 pak (untouched). An
+  OOM inside the loader is also caught now — it shows the pak error
+  screen instead of taking the process down.
+
 ## v2.91 — full-gameplay wave: SL finale + FNAF World overworld/battle + F3/F4 dump fixes
 
 - **SL is finishable.** The save no longer self-destructs at module load

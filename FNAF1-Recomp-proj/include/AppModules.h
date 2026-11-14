@@ -74,6 +74,14 @@ public:
     virtual void Tick(f32 dt);
     virtual void Render();
     virtual bool WantsExit() const { return m_wantsExit; }
+    // v2.92: the pak grew past the eager ceiling. 804 DXT textures (208 MB
+    // of D3D) plus a 245.8 MB resident pak blob = ~454 MB of the 512 MB UMA
+    // pool — the old 241.8 MB pak fit, the v2 pak (the 8-bit sounds were
+    // expanded to 16-bit at pack time) tipped it over and FNAF2 died with
+    // std::bad_alloc at module load on the console. Streaming drops the
+    // resident blob: only the tables stay resident (~38 KB), blobs are read
+    // on first FindTexture/FindSound — the same pattern FNAF4/SL already run.
+    virtual bool PrefersStreaming() const { return true; }
 
 private:
     AppServices m_services;
@@ -110,6 +118,11 @@ public:
     virtual void Tick(f32 dt);
     virtual void Render();
     virtual bool WantsExit() const { return m_wantsExit; }
+    // v2.92: same math as FNAF2 — the pak grew to 222.6 MB (FNaF3's own
+    // 8-bit sounds expanded at pack time) and eager would sit at ~409 MB
+    // of the pool with the 186 MB of D3D textures. It fit before at 404;
+    // streaming removes the risk entirely at no functional cost.
+    virtual bool PrefersStreaming() const { return true; }
 
 private:
     AppServices m_services;

@@ -16,7 +16,7 @@ sound, and repacks them GPU-ready. No intermediate files are required.
 ```
 header (32 bytes)
   u32 magic        = 'FNAF' (0x464E4146)
-  u32 version      = 1
+  u32 version      = 2     ; v1 kept for the untouched fnaf1.pak
   u32 numTex
   u32 numSnd
   u32 numMus       = 0
@@ -33,14 +33,38 @@ texture entry (36 bytes, numTex times)
   u32 alignW, alignH  ; data size basis (both rounded up to 32)
   u32 mip             ; 1
 
-sound entry (32 bytes, numSnd times)
-  u32 nameOffset, dataOffset, dataSize
-  u32 format          ; 0 = raw PCM, 2 = passthrough
-  u32 sampleRate, channels, loopStart, loopEnd
+sound entry
+  v1 (32 bytes): u32 nameOffset, dataOffset, dataSize, format,
+                 sampleRate, channels, loopStart, loopEnd
+  v2 (36 bytes): the SAME eight u32 plus a u32 `bits` inserted AFTER
+                 `channels` — nameOffset, dataOffset, dataSize, format,
+                 sampleRate, channels, bits, loopStart, loopEnd
 
 name pool             ; every name, NUL-terminated, packed in entry order
 data blobs            ; textures then sounds, each 16-byte aligned
 ```
+
+**v2 exists because the bit depth was being lost.** The loader used to
+assume 16-bit, and FNaF 2's phone calls (`call 1b`..`call 6b`) are 8-bit
+8000 Hz PCM — played as 16-bit they are pure noise. In a v2 pak the
+loader reads `bits` and expands 8-bit payloads to 16-bit at load.
+
+The name-pool offset MUST be computed from the v2 entry size
+(`numSnd * 9 * 4`): computing it with the v1 size shifts the pool and
+every name in the pak (that bug shipped once; `verify_pak.py` now
+parses the table the way the loader does and would catch it).
+
+## Sound format values
+
+| value | meaning | playback |
+|-------|---------|----------|
+| 0 | raw PCM16 (headerless; 8-bit sources were expanded to 16 at pack time) | plays |
+| 1 | runtime-only flag: unsupported codec | skipped in silence |
+| 2 | passthrough — compressed bytes the packer could not decode | skipped in silence |
+
+The console's XAudio2 2.x decodes raw PCM only (plus XMA2/WMA through
+the XDK's own paths, which this port does not use), so a rebuilt pak
+must contain nothing but `format = 0`; `tools/verify_pak.py` asserts it.
 
 ## Texture encoding
 
@@ -70,7 +94,23 @@ data blobs            ; textures then sounds, each 16-byte aligned
 
 * FNaF 1's 52 bank sounds are all RIFF/WAVE PCM; the loader strips the WAV
   header and stores raw PCM with `format = 0` plus the sample rate and
-  channel count from the `fmt ` chunk.
+  channel count from the `fmt ` chunk. **fnaf1.pak stays v1** — its one
+  8-bit sound (`XSCREAM`) is caught by the loader's name+size fallback, so
+  the file does not need a rebuild.
+* Every other game's bank carries sources the console cannot play:
+  - 8-bit PCM WAVs (FNaF 2's phone calls and footsteps) — expanded to
+    16-bit at pack time, the source's 8000 Hz sample rate is kept as is
+    (it is the ORIGINAL rate; resampling would only add artefacts);
+  - MP3s — Sister Location, FNaF World, FFPS and UCN ship them both with
+    and without an ID3 tag (the headerless ones used to be misnamed
+    `.wav` by the extension sniffer). They are decoded to PCM16 at pack
+    time through the platform's own media tool (ffmpeg, then sox), so no
+    third-party decoder code lives in this repository and the result is
+    bit-exact against the reference decoder.
+* Nothing is resampled: a sound keeps the sample rate and channel count
+  of its source, so the conversion itself adds no artefacts. The pak
+  therefore grows (MP3 47.6 MB -> ~176 MB of PCM across the four games)
+  — the price of the console having no MP3 decoder.
 * Sound names are `snd_<internal name without extension>`,
   e.g. `snd_Buzz_Fan_Florescent2`.
 

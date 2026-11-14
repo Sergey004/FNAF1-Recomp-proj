@@ -39,6 +39,71 @@ variant into plain little-endian PCM16:
 per-sound report and `--force-swap/--force-native/--sounds-dir` overrides)
 — the runtime fix makes it optional.
 
+## v2.91 — the other games' banks are NOT all PCM (MP3/OGG at pack time)
+
+Everything above describes FNaF 1, whose bank is pure PCM. The other
+games' banks are not:
+
+| game | bank | what the console could play |
+|---|---|---|
+| FNaF 1 | 52 wav, all PCM (one 8-bit) | everything (after the 8-bit fix) |
+| FNaF 2 | 66 wav — **18 are 8-bit 8000 Hz** (`call 1b..6b` phone calls, `buzzlight`, `elec garble`, `metalwalk1-3`, `ventwalk1`, `walk1-5`, `windup2`) | everything **after the bit depth reaches the loader** |
+| FNaF 3 / 4 | 70 / 72 wav, all PCM | everything |
+| Sister Location | 362 wav + 30 mp3 — and 184 of those "wav" files are **headerless MP3s misnamed by the extension sniffer** | 178 of 392 |
+| FNaF World | 270 wav + 24 mp3 (same misnamed-wav pattern) | 211 of 294 |
+| FFPS / UCN | 212/277 wav + 51/31 mp3 | the wav half |
+
+Two independent defects made the "wrong" sounds silent or noisy:
+
+1. **The bit depth was lost.** Every shipped pak was v1 (no `bits`
+   field), so the loader assumed 16-bit — the 8-bit phone calls became
+   pure noise ("неправильный декод аудио при звонках"). The fix is pak
+   **v2** (a `bits` word per sound entry) plus the loader actually
+   READING the version — see `pak_format.md`; both bugs (the writer
+   never emitted the version, the reader never stored it) are fixed.
+2. **The console has no MP3 decoder.** XAudio2 2.x on the 360 plays raw
+   PCM only (XMA2/WMA exist but need XDK encoder paths this port does
+   not use). Every MP3 — 214 in SL, 83 in FNaF World, 186 in FFPS, 250
+   in UCN — used to be packed as a `fmt = 2` passthrough blob and was
+   skipped in silence.
+
+The fix happens at PACK time, in ctfak-cpp (`src/util/AudioDecoder.*`):
+
+* the sniffer recognises MP3 by the ID3 tag OR by a raw MPEG frame sync
+  (`0xFF` + `(b1 & 0xE0) == 0xE0`), so the headerless files are no
+  longer misnamed `.wav`;
+* a WAV is parsed in-process (PCM; 8-bit expanded to 16-bit);
+* MP3/OGG are decoded through the platform's own media tool (ffmpeg,
+  then sox) invoked as a separate process — **no third-party decoder
+  code enters this repository**, and the PCM is the reference decoder's
+  own output, so the conversion adds no artefacts of its own;
+* **nothing is resampled** — a sound keeps the sample rate and channel
+  count of its source (the 8000 Hz phone calls stay 8000 Hz: that is
+  the ORIGINAL rate, and resampling would only add artefacts);
+* whatever cannot be decoded stays a `fmt = 2` passthrough and the
+  runtime skips it in silence — much better than handing compressed
+  bytes to XAudio2 as PCM (a loud burst of noise).
+
+`PakLoader` mirrors that rule: both the eager `NormalizeSounds()` and
+the streaming `NormalizeOne()` mark every `pakFmt != 0` blob as
+`format = 1` (unsupported), and `AudioSystem::PlayInternal` refuses
+anything that is not `format = 0`. The broken XMA playback branch
+(there is no encoder for it and its `WAVEFORMATEX` was never a valid
+`XMA2WAVEFORMATEX`) is gone.
+
+Per-pak result after the rebuild (all `tools/verify_pak.py` PASSED,
+every sound PCM16):
+
+| pak | sounds | converted from MP3 | passthrough left |
+|---|---|---|---|
+| fnaf2.pak | 66 | 0 (all were WAV) | 0 |
+| fnaf3.pak | 70 | 0 | 0 |
+| fnaf4.pak | 72 | 0 | 0 |
+| sisterlocation.pak | 392 | 214 | 0 |
+| fnafworld.pak | 294 | 83 | 0 |
+| ffps.pak | 263 | 186 | 0 |
+| ucn.pak | 308 | 250 | 0 |
+
 ## v2.7 — Xbox 360 PCM byte order (the "noise is STILL there" bug)
 
 v2.6 normalized every sound to **little-endian** PCM16 — correct on PC,
