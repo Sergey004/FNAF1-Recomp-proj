@@ -778,12 +778,29 @@ void PakLoader::EnsureTextureLoaded(int idx)
     if (m_loadCs) EnterCriticalSection((CRITICAL_SECTION*)m_loadCs);
     if (t.gpuReady) { if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
     u8* staging = new (std::nothrow) u8[t.dataSize];
-    if (!staging) { t.gpuReady = true; if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs); return; }
+    if (!staging) {
+        t.gpuReady = true;                    // OOM: texture stays 0, draw skips
+        printf("PakLoader: tex[%d] '%s' OOM (%u bytes)\n", idx, t.name, t.dataSize);
+        if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs);
+        return;
+    }
     if (!ReadAt(t.fileOff, t.dataSize, staging)) {
         delete[] staging;
         t.gpuReady = true;                    // failed: mark done, texture stays 0
+        printf("PakLoader: tex[%d] '%s' READ FAILED (off=%u size=%u)\n",
+               idx, t.name, t.fileOff, t.dataSize);
         if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs);
         return;
+    }
+    // v2.92: boot timeline — log the first lazy uploads (the streaming hang
+    // suspect). Cap the spam: after 12 textures the loader goes quiet.
+    {
+        static int s_texLogged = 0;
+        if (s_texLogged < 12) {
+            printf("PakLoader: tex[%d] '%s' %u bytes uploaded\n",
+                   idx, t.name, t.dataSize);
+            ++s_texLogged;
+        }
     }
     UploadTexture(idx, staging);
     delete[] staging;                         // UMA: it is inside the D3D texture now

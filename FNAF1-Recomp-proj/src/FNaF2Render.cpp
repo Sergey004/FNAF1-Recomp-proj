@@ -30,7 +30,16 @@ void FNaF2Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
-    if (!t || !t->texture || !m_batch) return;
+    if (!t || !t->texture || !m_batch) {
+        // v2.92: boot timeline — a draw that finds no texture means the
+        // lazy load failed or the name missed; print the first few.
+        static int s_drawMiss = 0;
+        if (s_drawMiss < 8) {
+            printf("F2 draw miss: img_%d (t=%p tex=%p)\n", handle, (void*)t, t ? (void*)t->texture : 0);
+            ++s_drawMiss;
+        }
+        return;
+    }
     // v2.72: clamp UVs to the ORIGINAL size — textures are GPU-padded out to
     // 32px-aligned dims and the padding rows hold junk (white stripes on the
     // title glyphs); plain 0..1 sampling stretched that junk into the quad.

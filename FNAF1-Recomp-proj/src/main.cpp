@@ -1249,20 +1249,28 @@ int main(int argc, char* argv[]){
         if(!cont){ ShutdownD3D(); return 0; }
     }
 
+    // v2.92: boot timeline — the FNAF2 streaming test hung after the pak
+    // load with a black screen; these step prints pin the exact stage.
+    printf("BOOT: audio init\n");
     g_audio.Init();
+    printf("BOOT: audio ok\n");
     g_render.Init(&g_batch,&g_text,&g_pak);
+    printf("BOOT: render init ok\n");
 
     MenuSystem menu;
     // v2.34: present one frame first — at boot the XAM message box can
     // "sound without showing" if nothing has been presented yet
     FrameBegin(D3DCOLOR_XRGB(0,0,0));
     FrameEnd();
+    printf("BOOT: black frame presented\n");
     // v2.50: pick the storage device up front — before ANY message box. On a
     // single-device console (Slim + HDD, no MU slots) the selector answers
     // silently with the HDD and never shows UI; later saves/mounts (incl. the
     // import below) then never invoke XAM's UI pipeline mid-flow — that was
     // the ACCESS_DENIED storm source.
+    printf("BOOT: storage pick\n");
     Progress::PrimeStorage();
+    printf("BOOT: storage ok\n");
     // v2.23: if a loose "freddy" save is found next to the game, ask before
     // importing it into the save storage.
     // v2.43: NO second box and NO dashboard exit — the import runs BEFORE
@@ -1318,6 +1326,16 @@ int main(int argc, char* argv[]){
     while(true){
         GameInput gi; UpdateInput(gi);
         bool devToggled = false;   // v2.17: Start+B fired this frame (swallow it)
+        // v2.92: boot timeline — the first module frame and the first lazy
+        // texture load are the new suspects in the streaming hang.
+        {
+            static i32 s_bootFrames = 0;
+            if (s_bootFrames < 3) {
+                printf("BOOT: frame %d (module %s)\n", (int)s_bootFrames,
+                       AppRegistry_Active()->Name());
+                ++s_bootFrames;
+            }
+        }
 
         // v2.77: the GUIDE button (the big X) leaves the game — the
         // console's normal "close this title" key, and the ONLY way out of
