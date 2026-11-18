@@ -12,6 +12,9 @@
     <Filter Include="achievements_pics">
       <UniqueIdentifier>{3bbf909d-ff11-4b3d-9cd0-81b491ee9898}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\third_party">
+      <UniqueIdentifier>{8c5611c1-5962-4e00-af0f-84949ce820ef}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="achievements.xml" />
@@ -46,6 +49,11 @@
       <Filter>achievements_pics</Filter>
     </None>
     <None Include="FNAF1-Recomp-proj.spa" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files\assets">
+      <UniqueIdentifier>{fac29d42-52c3-418e-a155-0c4ce95f59d0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\assets\asset_mapping_fnaf1.hpp">
@@ -171,6 +179,9 @@
     <ClInclude Include="include\Room.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\ScreenFade.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="include\SLGame.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -178,6 +189,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\SpriteBatch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SystemDate.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="include\TextRenderer.h">
@@ -189,11 +203,27 @@
     <ClInclude Include="include\XdkCompat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <Filter Include="Header Files\assets">
-      <UniqueIdentifier>{fac29d42-52c3-418e-a155-0c4ce95f59d0}</UniqueIdentifier>
-    </Filter>
+    <ClInclude Include="include\FNaFWorldGame.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNaFWorldModule.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNaFWorldRender.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FNaFWorldMap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\third_party\dr_mp3.h">
+      <Filter>Header Files\third_party</Filter>
+    </ClInclude>
+    <ClInclude Include="include\third_party\dr_wav.h">
+      <Filter>Header Files\third_party</Filter>
+    </ClInclude>
+    <ClInclude Include="include\AudioDecoders.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Achievements.cpp">
@@ -284,6 +314,18 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\TextRenderer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FNaFWorldGame.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FNaFWorldModule.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FNaFWorldRender.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\AudioDecoders.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

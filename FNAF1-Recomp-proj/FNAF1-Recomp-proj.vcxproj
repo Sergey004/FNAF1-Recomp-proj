@@ -340,6 +340,10 @@
     <ClInclude Include="include\FNaF3Render.h" />
     <ClInclude Include="include\FNaF4Game.h" />
     <ClInclude Include="include\FNaF4Render.h" />
+    <ClInclude Include="include\FNaFWorldGame.h" />
+    <ClInclude Include="include\FNaFWorldMap.h" />
+    <ClInclude Include="include\FNaFWorldModule.h" />
+    <ClInclude Include="include\FNaFWorldRender.h" />
     <ClInclude Include="include\font_atlas.h" />
     <ClInclude Include="include\Game.h" />
     <ClInclude Include="include\GameRender.h" />
@@ -352,13 +356,14 @@
     <ClInclude Include="include\PowerSystem.h" />
     <ClInclude Include="include\Progress.h" />
     <ClInclude Include="include\Room.h" />
+    <ClInclude Include="include\ScreenFade.h" />
     <ClInclude Include="include\SLGame.h" />
-    <ClInclude Include="include\FNaFWorldGame.h" />
-    <ClInclude Include="include\FNaFWorldRender.h" />
-    <ClInclude Include="include\FNaFWorldModule.h" />
     <ClInclude Include="include\SLRender.h" />
     <ClInclude Include="include\SpriteBatch.h" />
+    <ClInclude Include="include\SystemDate.h" />
     <ClInclude Include="include\TextRenderer.h" />
+    <ClInclude Include="include\third_party\dr_mp3.h" />
+    <ClInclude Include="include\third_party\dr_wav.h" />
     <ClInclude Include="include\Types.h" />
     <ClInclude Include="include\XdkCompat.h" />
   </ItemGroup>
@@ -378,6 +383,9 @@
     <ClCompile Include="src\FNaF3Render.cpp" />
     <ClCompile Include="src\FNaF4Game.cpp" />
     <ClCompile Include="src\FNaF4Render.cpp" />
+    <ClCompile Include="src\FNaFWorldGame.cpp" />
+    <ClCompile Include="src\FNaFWorldModule.cpp" />
+    <ClCompile Include="src\FNaFWorldRender.cpp" />
     <ClCompile Include="src\Game.cpp" />
     <ClCompile Include="src\GameRender.cpp" />
     <ClCompile Include="src\GameTimer.cpp" />
@@ -391,9 +399,6 @@
     <ClCompile Include="src\Room.cpp" />
     <ClCompile Include="src\SLGame.cpp" />
     <ClCompile Include="src\SLRender.cpp" />
-    <ClCompile Include="src\FNaFWorldGame.cpp" />
-    <ClCompile Include="src\FNaFWorldRender.cpp" />
-    <ClCompile Include="src\FNaFWorldModule.cpp" />
     <ClCompile Include="src\SpriteBatch.cpp" />
     <ClCompile Include="src\TextRenderer.cpp" />
   </ItemGroup>
