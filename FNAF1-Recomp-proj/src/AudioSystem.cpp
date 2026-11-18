@@ -1,12 +1,11 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
- * AudioSystem.cpp: XAudio2 playback of fnaf1.pak PCM sounds
+ * AudioSystem.cpp: XAudio2 playback of pak sounds
  *
- * Xbox 360 XDK ships XAudio2 2.x; the same code path also exists in the
- * PC DirectX SDK end-user runtime, guarded by the _XBOX define already used
- * across the project. v2.6: sounds arrive normalized from PakLoader
- * (RIFF headers peeled, byte order fixed, 8-bit expanded to 16-bit) —
- * playback needs only a WAVEFORMATEX + a source voice per stream.
+ * Ordinary sounds arrive normalized from PakLoader (RIFF headers peeled,
+ * byte order fixed, 8-bit expanded to 16-bit). A compressed fmt=2 blob is
+ * decoded from memory by AudioDecoders.cpp and its PCM16 allocation stays
+ * alive for exactly as long as the source voice uses it.
  */
 
 #include "AudioSystem.h"
@@ -35,6 +34,22 @@ static const int MAX_VOICES = 16;
 static const u16 PCM_FORMAT_TAG = 0x0001;
 static const u32 PCM_BITS_PER_SAMPLE = 16;
 
+static void ApplyOutputPan(IXAudio2SourceVoice* voice,
+                           IXAudio2MasteringVoice* master,
+                           u32 sourceChannels, float pan) {
+    if (pan < -1.0f) pan = -1.0f;
+    if (pan >  1.0f) pan =  1.0f;
+    const float left  = (pan < 0.0f) ? 1.0f : 1.0f - pan;
+    const float right = (pan > 0.0f) ? 1.0f : 1.0f + pan;
+    float matrix[4] = { left, right, 0.0f, 0.0f };
+    if (sourceChannels == 2) {
+        matrix[0] = left;  matrix[1] = 0.0f;
+        matrix[2] = 0.0f;  matrix[3] = right;
+    }
+    voice->SetOutputMatrix(reinterpret_cast<IXAudio2Voice*>(master),
+                           sourceChannels, 2, matrix);
+}
+
 AudioSystem::AudioSystem()
     : m_xaudio(0)
     , m_master(0)
@@ -48,6 +63,8 @@ AudioSystem::AudioSystem()
         m_slots[i].name[0] = '\0';
         m_slots[i].channel = -1;
         m_slots[i].pan = 0.0f;
+        m_slots[i].sourceChannels = 1;
+        ResetDecodedAudio(m_slots[i].decoded);
         m_slots[i].inUse = false;
     }
 }
@@ -90,6 +107,8 @@ void AudioSystem::FreeSlot(int idx) {
     s.name[0] = '\0';
     s.channel = -1;
     s.pan = 0.0f;
+    s.sourceChannels = 1;
+    FreeDecodedAudio(s.decoded);
     s.inUse = false;
 }
 
@@ -132,16 +151,32 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
     }
     if (!snd->data || snd->dataSize == 0) return false;
 
-    // The 360's XAudio2 2.x plays raw PCM16 only. Every other codec (an
-    // mp3/ogg the packer could not decode) is flagged format=1 by
-    // PakLoader::NormalizeSounds()/NormalizeOne() and skipped in silence.
-    if (snd->format != 0) {
-        // v2.6: PakLoader::NormalizeSounds() rewrites every entry to
-        // format 0 (little-endian PCM16, RIFF headers peeled, byte order
-        // fixed, 8-bit expanded). Anything left at format 1 is a codec
-        // the 360 build cannot play.
-        printf("AudioSystem: %s is not playable PCM (fmt=%u)\n", sndName, snd->format);
+    const u8* audioData = snd->data;
+    u32 audioSize = snd->dataSize;
+    u32 audioSampleRate = snd->sampleRate ? snd->sampleRate : 22050;
+    u32 audioChannels = snd->channels ? snd->channels : 1;
+    DecodedAudio decoded;
+    ResetDecodedAudio(decoded);
+
+    // Normalized FNAF1/PCM blobs keep their existing zero-decode path.
+    // A PCM entry rejected by normalization (OOM, unsupported bit depth)
+    // must fail closed, not be misdetected as an arbitrary MPEG stream.
+    if (snd->format != 0 && snd->pakFmt == 0) {
+        printf("AudioSystem: %s is not playable PCM\n", sndName);
         return false;
+    }
+
+    // Passthrough blobs are decoded here and owned by the voice slot until
+    // XAudio2 has stopped and destroyed the voice.
+    if (snd->format != 0) {
+        if (!DecodeAudioMemory(snd->data, snd->dataSize, decoded)) {
+            printf("AudioSystem: cannot decode %s (pak fmt=%u)\n", sndName, snd->pakFmt);
+            return false;
+        }
+        audioData = decoded.data;
+        audioSize = decoded.dataSize;
+        audioSampleRate = decoded.sampleRate;
+        audioChannels = decoded.channels;
     }
 
     // Find a free slot (steal the oldest non-looping slot as fallback)
@@ -157,8 +192,8 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
     WAVEFORMATEX wfx;
     memset(&wfx, 0, sizeof(wfx));
     wfx.wFormatTag      = PCM_FORMAT_TAG;
-    wfx.nChannels       = (WORD)(snd->channels ? snd->channels : 1);
-    wfx.nSamplesPerSec  = snd->sampleRate ? snd->sampleRate : 22050;
+    wfx.nChannels       = (WORD)audioChannels;
+    wfx.nSamplesPerSec  = audioSampleRate;
     wfx.wBitsPerSample  = (WORD)PCM_BITS_PER_SAMPLE;
     wfx.nBlockAlign     = (WORD)(wfx.nChannels * wfx.wBitsPerSample / 8);
     wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
@@ -168,14 +203,15 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
         &voice, &wfx, 0, XAUDIO2_DEFAULT_FILTER_FREQUENCY);
     if (FAILED(hr) || !voice) {
         printf("AudioSystem: CreateSourceVoice failed for %s (0x%08X)\n", sndName, hr);
+        FreeDecodedAudio(decoded);
         return false;
     }
     voice->SetVolume(volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume));
 
     XAUDIO2_BUFFER buf;
     memset(&buf, 0, sizeof(buf));
-    buf.AudioBytes = snd->dataSize;
-    buf.pAudioData = snd->data;
+    buf.AudioBytes = audioSize;
+    buf.pAudioData = audioData;
     buf.Flags      = XAUDIO2_END_OFSTREAM;
     buf.LoopCount  = loop ? XAUDIO2_LOOP_INFINITE : 0;
 
@@ -183,31 +219,30 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
     if (FAILED(hr)) {
         printf("AudioSystem: SubmitSourceBuffer failed for %s (0x%08X)\n", sndName, hr);
         voice->DestroyVoice();
+        FreeDecodedAudio(decoded);
         return false;
     }
     hr = voice->Start(0);
     if (FAILED(hr)) {
         voice->DestroyVoice();
+        FreeDecodedAudio(decoded);
         return false;
     }
 
     // v2.91: bind the channel's current pan to this voice through its
-    // output matrix (Stereo out: [L, R] gains from pan -1..1).
+    // output matrix, using the actual mono/stereo source channel count.
     float pan = (channel >= 0 && channel < 32) ? m_channelPan[channel] : 0.0f;
-    if (pan < -1.0f) pan = -1.0f;
-    if (pan >  1.0f) pan =  1.0f;
-    const float lVol = (pan < 0.0f) ? 1.0f : 1.0f - pan;
-    const float rVol = (pan > 0.0f) ? 1.0f : 1.0f + pan;
-    const float matrix[2] = { lVol, rVol };
-    // XDK IXAudio2Voice::SetOutputMatrix (xaudio2.h): the destination voice
-    // comes first; one source channel -> the stereo mastering input.
-    voice->SetOutputMatrix(reinterpret_cast<IXAudio2Voice*>(m_master), 1, 2, matrix);
+    ApplyOutputPan(voice, reinterpret_cast<IXAudio2MasteringVoice*>(m_master),
+                   audioChannels, pan);
 
     VoiceSlot& s = m_slots[slot];
     s.voice = voice;
     s.inUse = true;
     s.channel = channel;
     s.pan = pan;
+    s.sourceChannels = audioChannels;
+    s.decoded = decoded;             // transfer ownership to the live voice
+    ResetDecodedAudio(decoded);
     strncpy(s.name, sndName, sizeof(s.name) - 1);
     s.name[sizeof(s.name) - 1] = '\0';
     return true;
@@ -259,13 +294,11 @@ void AudioSystem::SetChannelPan(int channel, float pan) {
     if (pan >  1.0f) pan =  1.0f;
     m_channelPan[channel] = pan;
     // Re-apply live to every voice bound to this channel.
-    const float lVol = (pan < 0.0f) ? 1.0f : 1.0f - pan;
-    const float rVol = (pan > 0.0f) ? 1.0f : 1.0f + pan;
-    const float matrix[2] = { lVol, rVol };
     for (int i = 0; i < m_slotCount; ++i) {
         if (m_slots[i].inUse && m_slots[i].channel == channel && m_slots[i].voice) {
-            reinterpret_cast<IXAudio2SourceVoice*>(m_slots[i].voice)
-                ->SetOutputMatrix(reinterpret_cast<IXAudio2Voice*>(m_master), 1, 2, matrix);
+            ApplyOutputPan(reinterpret_cast<IXAudio2SourceVoice*>(m_slots[i].voice),
+                           reinterpret_cast<IXAudio2MasteringVoice*>(m_master),
+                           m_slots[i].sourceChannels, pan);
         }
     }
 }

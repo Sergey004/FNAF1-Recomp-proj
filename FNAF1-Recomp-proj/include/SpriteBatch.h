@@ -99,6 +99,10 @@ public:
     void EndSceneCapture();
     void DrawPerspective(float zoom, float centerY, float curve);
 
+    // Scott Vision (Experimental): resolve the COMPLETE back buffer and draw
+    // it through the Deuteranomaly matrix. 0 bypasses the pass; 100 is full.
+    void ApplyDeuteranomaly(int percent);
+
     void End();
 
 private:
@@ -115,6 +119,7 @@ private:
     void* m_panRT;                    // D3DSurface*     (1280x720 EDRAM capture RT)
     void* m_panTex;                   // D3DTexture*     (resolve destination, sampleable)
     void* m_panPS;                    // D3DPixelShader* (parabola panorama)
+    void* m_deuteranomalyPS;           // D3DPixelShader* (Scott Vision)
     void* m_backRT;                   // D3DSurface*     (saved back-buffer RT0)
     void* m_whiteTex;                 // D3DTexture*     (1x1 opaque white, v2.76)
     bool  m_panReady;

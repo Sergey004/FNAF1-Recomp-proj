@@ -39,70 +39,62 @@ variant into plain little-endian PCM16:
 per-sound report and `--force-swap/--force-native/--sounds-dir` overrides)
 — the runtime fix makes it optional.
 
-## v2.91 — the other games' banks are NOT all PCM (MP3/OGG at pack time)
+## v2.93 — the other games' banks: in-game dr_mp3/dr_wav decoding
 
-Everything above describes FNaF 1, whose bank is pure PCM. The other
-games' banks are not:
+Everything above describes FNaF 1, whose bank is pure PCM and whose eager
+`fmt=0` path is unchanged. The other banks also contain MPEG Layer III,
+including headerless MP3s that older dumpers misnamed `.wav`:
 
-| game | bank | what the console could play |
-|---|---|---|
-| FNaF 1 | 52 wav, all PCM (one 8-bit) | everything (after the 8-bit fix) |
-| FNaF 2 | 66 wav — **18 are 8-bit 8000 Hz** (`call 1b..6b` phone calls, `buzzlight`, `elec garble`, `metalwalk1-3`, `ventwalk1`, `walk1-5`, `windup2`) | everything **after the bit depth reaches the loader** |
-| FNaF 3 / 4 | 70 / 72 wav, all PCM | everything |
-| Sister Location | 362 wav + 30 mp3 — and 184 of those "wav" files are **headerless MP3s misnamed by the extension sniffer** | 178 of 392 |
-| FNaF World | 270 wav + 24 mp3 (same misnamed-wav pattern) | 211 of 294 |
-| FFPS / UCN | 212/277 wav + 51/31 mp3 | the wav half |
+| game | sounds in pak | original MP3 for runtime decode |
+|---|---:|---:|
+| FNaF 1 | 52 | 0 |
+| FNaF 2 | 66 | 0 (18 WAVs are 8-bit, 8000 Hz) |
+| FNaF 3 / 4 | 70 / 72 | 0 |
+| Sister Location | 392 | 214 |
+| FNaF World | 294 | 83 |
+| FFPS | 263 | 186 |
+| UCN | 308 | 250 |
 
-Two independent defects made the "wrong" sounds silent or noisy:
+XAudio2 itself still receives PCM16 only. The decoder now lives in the
+**game**, not in ctfak-cpp:
 
-1. **The bit depth was lost.** Every shipped pak was v1 (no `bits`
-   field), so the loader assumed 16-bit — the 8-bit phone calls became
-   pure noise ("неправильный декод аудио при звонках"). The fix is pak
-   **v2** (a `bits` word per sound entry) plus the loader actually
-   READING the version — see `pak_format.md`; both bugs (the writer
-   never emitted the version, the reader never stored it) are fixed.
-2. **The console has no MP3 decoder.** XAudio2 2.x on the 360 plays raw
-   PCM only (XMA2/WMA exist but need XDK encoder paths this port does
-   not use). Every MP3 — 214 in SL, 83 in FNaF World, 186 in FFPS, 250
-   in UCN — used to be packed as a `fmt = 2` passthrough blob and was
-   skipped in silence.
+* `include/third_party/dr_mp3.h` and `dr_wav.h` are the upstream
+  single-header dr_libs decoders (public domain / MIT-0);
+* `src/AudioDecoders.cpp` compiles each implementation exactly once, with
+  stdio/wchar file APIs disabled. It decodes a pak blob from memory and
+  returns interleaved native-endian PCM16 plus its real rate/channels;
+* `AudioSystem::PlayInternal()` keeps normalized `fmt=0` sounds on the old
+  path. A `fmt=2` blob goes to dr_mp3 (or dr_wav for a RIFF container),
+  and the decoded allocation is owned by that voice slot. It is freed only
+  after the voice is stopped/flushed/destroyed, including error paths;
+* mono and stereo sources submit the correct output-matrix dimensions;
+* on the big-endian Xbox 360 the decoder writes native `int16_t` samples,
+  which is the byte order XAudio2 expects. No extra swap is applied to a
+  freshly decoded buffer.
 
-The fix happens at PACK time, in ctfak-cpp (`src/util/AudioDecoder.*`):
+The packer keeps each MP3 **byte-for-byte** as `fmt=2`; the table's
+rate/channel fields are zero because those values come from dr_mp3.
+Ordinary PCM WAVs remain complete RIFF/WAVE blobs at `fmt=0`, so the
+loader reads their original rate/channels/bit depth from the header.
+FNaF 2's 8000 Hz calls stay 8000 Hz and are expanded from 8-bit to PCM16
+by the existing loader path. Ogg/Vorbis, if present, is still converted
+at pack time because no runtime Vorbis decoder is included.
 
-* the sniffer recognises MP3 by the ID3 tag OR by a raw MPEG frame sync
-  (`0xFF` + `(b1 & 0xE0) == 0xE0`), so the headerless files are no
-  longer misnamed `.wav`;
-* a WAV is parsed in-process (PCM; 8-bit expanded to 16-bit);
-* MP3/OGG are decoded through the platform's own media tool (ffmpeg,
-  then sox) invoked as a separate process — **no third-party decoder
-  code enters this repository**, and the PCM is the reference decoder's
-  own output, so the conversion adds no artefacts of its own;
-* **nothing is resampled** — a sound keeps the sample rate and channel
-  count of its source (the 8000 Hz phone calls stay 8000 Hz: that is
-  the ORIGINAL rate, and resampling would only add artefacts);
-* whatever cannot be decoded stays a `fmt = 2` passthrough and the
-  runtime skips it in silence — much better than handing compressed
-  bytes to XAudio2 as PCM (a loud burst of noise).
+Current paks are all **v1**; the short-lived v2 `bits` experiment is not
+needed because the RIFF header already carries that information.
+`tools/verify_pak.py` checks the RIFF chunks and requires every retained
+MP3 to match its dumped source exactly. All four rebuilt MP3-bearing paks
+passed (1257/1257 sounds). All 733 retained MP3 blobs decoded successfully
+through the exact in-game adapter, as did all 863 MP3 source files present
+in those dump folders (including duplicate/alternate dumps). FNaF 1 was
+not rebuilt.
 
-`PakLoader` mirrors that rule: both the eager `NormalizeSounds()` and
-the streaming `NormalizeOne()` mark every `pakFmt != 0` blob as
-`format = 1` (unsupported), and `AudioSystem::PlayInternal` refuses
-anything that is not `format = 0`. The broken XMA playback branch
-(there is no encoder for it and its `WAVEFORMATEX` was never a valid
-`XMA2WAVEFORMATEX`) is gone.
-
-Per-pak result after the rebuild (all `tools/verify_pak.py` PASSED,
-every sound PCM16):
-
-| pak | sounds | converted from MP3 | passthrough left |
-|---|---|---|---|
-| fnaf2.pak | 66 | 0 (all were WAV) | 0 |
-| fnaf3.pak | 70 | 0 | 0 |
-| fnaf4.pak | 72 | 0 | 0 |
-| sisterlocation.pak | 392 | 214 | 0 |
-| fnafworld.pak | 294 | 83 | 0 |
-| ffps.pak | 263 | 186 | 0 |
-| ucn.pak | 308 | 250 | 0 |
+| pak | WAV/PCM | runtime MP3 | unsupported left | size |
+|---|---:|---:|---:|---:|
+| sisterlocation.pak | 178 | 214 | 0 | 1450.6 MiB |
+| fnafworld.pak | 211 | 83 | 0 | 416.4 MiB |
+| ffps.pak | 77 | 186 | 0 | 844.9 MiB |
+| ucn.pak | 58 | 250 | 0 | 468.1 MiB |
 
 ## v2.7 — Xbox 360 PCM byte order (the "noise is STILL there" bug)
 

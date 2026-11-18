@@ -169,7 +169,11 @@ struct SndRiffInfo {
 // Walk a RIFF/WAVE chunk list. Tolerates byte-swapped (BE) size fields:
 // the first size that fits inside the blob wins.
 static bool SndRiffParse(const u8* p, u32 size, SndRiffInfo& out) {
-    if (size < 64) return false;
+    // A canonical RIFF/WAVE is 44 bytes of header + the payload, and the
+    // FNAF paks now carry the COMPLETE WAV blob (the header holds the
+    // original rate/channels/bit depth — the same parameters FNAF1 always
+    // read from the fmt chunk). 64 used to reject tiny-but-valid sounds.
+    if (size < 44) return false;
     if (p[0] != 'R' || p[1] != 'I' || p[2] != 'F' || p[3] != 'F') return false;
     if (p[8] != 'W' || p[9] != 'A' || p[10] != 'V' || p[11] != 'E') return false;
 
@@ -314,7 +318,8 @@ void PakLoader::NormalizeSounds() {
     for (int i = 0; i < m_numSounds; ++i) {
         PakLoadedSound& s = m_sounds[i];
         // NOTE: s.bits is already set from pak v2 loader; don't overwrite with 16
-        if (!s.data || s.dataSize < 64) continue;
+        if (s.pakFmt != 0) continue; // keep compressed/RIFF input whole for dr_libs
+        if (!s.data || s.dataSize < 44) continue;
         SndRiffInfo ri;
         if (SndRiffParse(s.data, s.dataSize, ri)) {
             s.data      += ri.dataOff;
@@ -333,6 +338,7 @@ void PakLoader::NormalizeSounds() {
     int voteSwap = 0, voteNative = 0;
     for (int i = 0; i < m_numSounds; ++i) {
         const PakLoadedSound& s = m_sounds[i];
+        if (s.pakFmt != 0) continue; // compressed bytes are not PCM vote samples
         if (s.format != 0 || !s.data) continue;
         if (s.bits == 0) continue; // unknown depth
         if (SndIsLiteralNoise(s.name)) continue;
@@ -348,10 +354,8 @@ void PakLoader::NormalizeSounds() {
         PakLoadedSound& s = m_sounds[i];
         if (!s.data || s.dataSize == 0) { s.format = 1; continue; }
 
-        // Non-PCM blobs (fmt = 2, "passthrough": an mp3/ogg the packer could
-        // not decode) must NEVER reach XAudio2 as raw PCM — the 360 would
-        // mix the compressed bytes as samples (a loud burst of noise).
-        // Mark them unsupported so AudioSystem skips them in silence.
+        // fmt = 2 keeps its complete blob and is decoded by AudioSystem;
+        // compressed bytes must never reach XAudio2 as raw PCM.
         // (Mirrors the streaming path's NormalizeOne check.)
         if (s.pakFmt != 0) { s.format = 1; continue; }
 
@@ -694,14 +698,16 @@ bool PakLoader::ReadAt(u32 off, u32 size, u8* dst)
 }
 
 // Per-sound normalization after its blob lands in RAM. Same pipeline as
-// the eager NormalizeSounds() passes 1/3/4, but per entry, plus: the raw
-// pak format is respected (passthrough blobs like SL's mp3s stay
-// unplayable instead of being submitted as garbage PCM).
+// the eager NormalizeSounds() passes 1/3/4, but per entry, plus: a raw
+// passthrough blob stays whole for AudioSystem's dr_mp3/dr_wav adapter.
 void PakLoader::NormalizeOne(int idx)
 {
     PakLoadedSound& s = m_sounds[idx];
     s.bits = 16;
-    if (s.data && s.dataSize >= 64) {
+    // Passthrough input must remain a complete blob: AudioSystem gives MP3
+    // to dr_mp3 and RIFF/WAVE to dr_wav. It is never raw PCM for the vote.
+    if (s.pakFmt != 0) { s.format = 1; return; }
+    if (s.data && s.dataSize >= 44) {
         SndRiffInfo ri;
         if (SndRiffParse(s.data, s.dataSize, ri)) {
             s.data      += ri.dataOff;
@@ -712,10 +718,8 @@ void PakLoader::NormalizeOne(int idx)
             ++m_sndRiff;
         }
     }
-    // Non-PCM blobs (fmt = 2, "passthrough": an mp3/ogg the packer could
-    // not decode) must NEVER reach XAudio2 as raw PCM — the 360 would mix
-    // the compressed bytes as samples (a loud burst of noise).
-    if (s.pakFmt != 0) { s.format = 1; return; }
+    // fmt = 2 was returned above with its complete blob preserved for the
+    // in-game decoder. Only normalized PCM reaches the byte-order path.
     if (!s.data || s.dataSize == 0)  { s.format = 1; return; }
 
     if (s.bits == 8 || SndIsKnown8bit(s.name, s.dataSize)) {

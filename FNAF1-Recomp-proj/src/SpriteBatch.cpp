@@ -83,6 +83,23 @@ static const char* kSpritePS_HLSL =
     "    return tex2D(tex0, i.uv) * i.color;\n"
     "}\n";
 
+// Scott Vision (Experimental): Deuteranomaly simulation on the COMPLETE
+// composed frame. The strength is a scalar register rather than a matrix
+// constant, so HLSL row/column packing cannot change the transform.
+static const char* kDeuteranomalyPS_HLSL =
+    "sampler2D tex0 : register(s0);\n"
+    "struct PS_IN { float4 color : COLOR0; float2 uv : TEXCOORD0; };\n"
+    "float4 gVision : register(c0);\n"   // x = 0..1 strength
+    "float4 main(PS_IN i) : COLOR0\n"
+    "{\n"
+    "    float4 src = tex2D(tex0, i.uv) * i.color;\n"
+    "    float3 filtered = float3(\n"
+    "        dot(src.rgb, float3(0.367322, 0.860646, -0.227968)),\n"
+    "        dot(src.rgb, float3(0.280085, 0.672501, 0.047413)),\n"
+    "        dot(src.rgb, float3(-0.011820, 0.042940, 0.968881)));\n"
+    "    return float4(lerp(src.rgb, filtered, gVision.x), src.a);\n"
+    "}\n";
+
 // v2.8 clean-room Panorama pixel shader. Re-implements the HWA version of
 // Andos' Perspective extension (RPanorama.fx) from its documented math:
 // for the HORIZONTAL direction, each output column reads a vertically
@@ -209,6 +226,7 @@ SpriteBatch::SpriteBatch()
     , m_panRT(0)
     , m_panTex(0)
     , m_panPS(0)
+    , m_deuteranomalyPS(0)
     , m_backRT(0)
     , m_panReady(false)
     , m_perspGeom()      // v2.66: defaults set in Init (FNAF1's office)
@@ -274,6 +292,14 @@ bool SpriteBatch::Init(void* device)
         return false;
     }
 
+    // --- Scott Vision (Experimental) fullscreen colour filter ---
+    if (!CompileShaderFromMemory(dev, kDeuteranomalyPS_HLSL, "ps_3_0", false,
+                                 &m_deuteranomalyPS, err, sizeof(err))) {
+        _snprintf(m_initError, sizeof(m_initError) - 1, "Deuteranomaly PS: %s", err);
+        m_initError[sizeof(m_initError) - 1] = '\0';
+        return false;
+    }
+
     // --- v2.8 capture render target + resolve texture ---
     // The capture lives in EDRAM (render targets are EDRAM-only on 360);
     // Resolve() copies it into m_panTex so it can be sampled as a texture.
@@ -335,6 +361,7 @@ void SpriteBatch::Shutdown()
     if (m_vertexShader) { ((IDirect3DVertexShader9*)m_vertexShader)->Release(); m_vertexShader = 0; }
     if (m_pixelShader)  { ((IDirect3DPixelShader9*)m_pixelShader)->Release();   m_pixelShader = 0; }
     if (m_panPS)        { ((IDirect3DPixelShader9*)m_panPS)->Release();         m_panPS = 0; }
+    if (m_deuteranomalyPS) { ((IDirect3DPixelShader9*)m_deuteranomalyPS)->Release(); m_deuteranomalyPS = 0; }
     if (m_vertexDecl)   { ((IDirect3DVertexDeclaration9*)m_vertexDecl)->Release(); m_vertexDecl = 0; }
     if (m_panRT)        { ((IDirect3DSurface9*)m_panRT)->Release();  m_panRT = 0; }
     if (m_panTex)       { ((IDirect3DTexture9*)m_panTex)->Release(); m_panTex = 0; }
@@ -499,6 +526,55 @@ void SpriteBatch::DrawPerspective(float zoom, float centerY, float curve)
     q[3].x = 1280.0f; q[3].y = 720.0f;  q[3].z = 0.0f; q[3].w = 1.0f; q[3].u = u1; q[3].v = v1; q[3].color = white;
 
     dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, q, sizeof(SpriteVertex));
+}
+
+void SpriteBatch::ApplyDeuteranomaly(int percent)
+{
+    if (percent <= 0 || !m_ready || !m_panReady || !m_panTex || !m_deuteranomalyPS)
+        return;
+    if (percent > 100) percent = 100;
+    if (m_vertexCount > 0) Flush();
+
+    D3DDeviceX* dev = (D3DDeviceX*)m_device;
+    // Resolve the FINISHED back buffer into the same scratch texture used by
+    // Perspective. EndSceneCapture() has already restored RT0 by this point,
+    // so there is no nested capture and no second 1280x720 render target.
+    dev->SetTexture(0, NULL);
+    const HRESULT hr = dev->Resolve(D3DRESOLVE_RENDERTARGET0, NULL,
+                                    (D3DBaseTexture*)m_panTex,
+                                    NULL, 0, 0, NULL, 0.0f, 0, NULL);
+    if (FAILED(hr)) return;   // keep the original, unfiltered frame
+
+    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    dev->SetRenderState(D3DRS_ZENABLE, D3DZB_FALSE);
+    dev->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+    dev->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    dev->SetSamplerState(0, D3DSAMP_MINFILTER, D3DTEXF_LINEAR);
+    dev->SetSamplerState(0, D3DSAMP_MAGFILTER, D3DTEXF_LINEAR);
+    dev->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+    dev->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+    dev->SetTexture(0, (D3DTextureX*)m_panTex);
+    dev->SetVertexDeclaration((IDirect3DVertexDeclaration9*)m_vertexDecl);
+    dev->SetVertexShader((IDirect3DVertexShader9*)m_vertexShader);
+    dev->SetPixelShader((IDirect3DPixelShader9*)m_deuteranomalyPS);
+    dev->SetVertexShaderConstantF(0, kVSScaleConst, 1);
+    dev->SetVertexShaderConstantF(1, kVSOffsetConst, 1);
+
+    const float strength[4] = { (float)percent * 0.01f, 0.0f, 0.0f, 0.0f };
+    dev->SetPixelShaderConstantF(0, strength, 1);
+
+    SpriteVertex q[4];
+    const u32 white = 0xFFFFFFFFu;
+    q[0].x = 0.0f;    q[0].y = 0.0f;    q[0].z = 0.0f; q[0].w = 1.0f; q[0].u = 0.0f; q[0].v = 0.0f; q[0].color = white;
+    q[1].x = 1280.0f; q[1].y = 0.0f;    q[1].z = 0.0f; q[1].w = 1.0f; q[1].u = 1.0f; q[1].v = 0.0f; q[1].color = white;
+    q[2].x = 0.0f;    q[2].y = 720.0f;  q[2].z = 0.0f; q[2].w = 1.0f; q[2].u = 0.0f; q[2].v = 1.0f; q[2].color = white;
+    q[3].x = 1280.0f; q[3].y = 720.0f;  q[3].z = 0.0f; q[3].w = 1.0f; q[3].u = 1.0f; q[3].v = 1.0f; q[3].color = white;
+    dev->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, q, sizeof(SpriteVertex));
+
+    // Do not leave the resolve destination bound as a sampler for the next
+    // capture/filter pass. Ordinary Draw calls restore their own state.
+    dev->SetTexture(0, NULL);
+    dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
 }
 
 void SpriteBatch::SetPerspectiveGeometry(const PerspGeom& g) {

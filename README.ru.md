@@ -246,6 +246,17 @@ ReadFileScatter, physical sort keys) не применим.
 `Events/*.txt`, а не вики; отклонение от дампа = отдельная запись
 «deliberate deviation».
 
+## Сторонние аудиодекодеры — авторство
+
+В игре используются без изменений однофайловые
+[`dr_wav.h` и `dr_mp3.h`](https://github.com/mackron/dr_libs) автора
+**David Reid (mackron)**. `dr_mp3` основан на
+[**minimp3 от Lieff**](https://github.com/lieff/minimp3). Оба заголовка
+dr_libs распространяются на выбор под public domain / MIT-0; оригинальные
+уведомления об авторстве и лицензии сохранены без изменений. Ссылки на
+источники, сведения об авторах и SHA-256 файлов записаны в
+[`FNAF1-Recomp-proj/include/third_party/README.md`](FNAF1-Recomp-proj/include/third_party/README.md).
+
 ## Дисклеймер
 
 Фанатская реимплементация для собственной консоли. Требуется легально

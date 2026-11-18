@@ -1,9 +1,9 @@
 /**
  * Five Nights at Freddy's 1 — Recompilation
- * AudioSystem.h: XAudio2 sound playback for fnaf1.pak PCM sounds
+ * AudioSystem.h: XAudio2 sound playback for pak sounds
  *
  * Xbox 360: XAudio2 (XDK) — up to 16 concurrent source voices.
- * Sounds are raw 16-bit PCM blobs loaded by PakLoader ("snd_*" entries).
+ * Normalized PCM and runtime-decoded MP3/WAV both submit PCM16 buffers.
  *
  * Wire-up is data-driven: every sound listed below is referenced by the
  * original game's event program (ctfak-cpp "Events Listing" dump):
@@ -20,6 +20,7 @@
 #define FNAF_AUDIO_SYSTEM_H
 
 #include "Types.h"
+#include "AudioDecoders.h"
 #include <math.h>
 
 namespace fnaf {
@@ -170,6 +171,8 @@ private:
         char   name[64];
         int    channel;      // v2.16: mixer channel this voice is bound to (-1 = none)
         float  pan;          // v2.91: channel pan at play time (-1..1)
+        u32    sourceChannels;
+        DecodedAudio decoded; // owned only for a compressed passthrough blob
         bool   inUse;
     };
 

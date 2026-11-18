@@ -324,7 +324,10 @@
     <ClInclude Include="include\assets\asset_mapping_sisterlocation.hpp" />
     <ClInclude Include="include\asset_mapping.h" />
     <ClInclude Include="include\asset_mapping.hpp" />
+    <ClInclude Include="include\AudioDecoders.h" />
     <ClInclude Include="include\AudioSystem.h" />
+    <ClInclude Include="include\third_party\dr_mp3.h" />
+    <ClInclude Include="include\third_party\dr_wav.h" />
     <ClInclude Include="include\CameraSystem.h" />
     <ClInclude Include="include\CfAnimTimer.h" />
     <ClInclude Include="include\DebugConsole.h" />
@@ -364,6 +367,7 @@
     <ClCompile Include="src\AnimatronicAI.cpp" />
     <ClCompile Include="src\AppModules.cpp" />
     <ClCompile Include="src\AppRegistry.cpp" />
+    <ClCompile Include="src\AudioDecoders.cpp" />
     <ClCompile Include="src\AudioSystem.cpp" />
     <ClCompile Include="src\CameraSystem.cpp" />
     <ClCompile Include="src\DebugConsole.cpp" />

@@ -52,20 +52,69 @@ for i in range(numSnd):
 assert p <= strOff, "entries overlap string pool"
 print(f"entries parsed: {len(tex)} tex, {len(snd)} snd; entry tables end at {p} <= strings {strOff}")
 
-# ---- every sound must be playable PCM16 on the Xbox 360
-# The console's XAudio2 2.x plays raw PCM16 only, so a sound that is not
-# fmt=0 would be skipped in silence. A rebuilt pak must have none.
-notpcm = [s for s in snd if s["fmt"] != 0]
-assert not notpcm, "sounds that are not PCM (would stay silent): " + \
-                    ", ".join(s["name"] for s in notpcm[:8])
-baddepth = [s for s in snd if s["bits"] != 16]
-assert not baddepth, "sounds with a bit depth other than 16: " + \
-                      ", ".join(s["name"] for s in baddepth[:8])
+# ---- sound payloads: complete RIFF/WAVE or intentional runtime MP3
+def wav_info(blob):
+    if len(blob) < 12 or blob[:4] != b"RIFF" or blob[8:12] != b"WAVE":
+        return None
+    pos, fmt, payload = 12, None, None
+    while pos + 8 <= len(blob):
+        size = struct.unpack_from("<I", blob, pos + 4)[0]
+        body = pos + 8
+        if body + size > len(blob):
+            raise AssertionError("truncated RIFF chunk")
+        kind = blob[pos:pos+4]
+        if kind == b"fmt ":
+            assert size >= 16, "short WAV fmt chunk"
+            tag, ch, sr = struct.unpack_from("<HHI", blob, body)
+            bits = struct.unpack_from("<H", blob, body + 14)[0]
+            fmt = (tag, ch, sr, bits)
+        elif kind == b"data" and payload is None:
+            payload = (body, size)
+        if fmt is not None and payload is not None:
+            break  # some Clickteam WAVs have a non-chunk trailing garbage tail
+        pos = body + size + (size & 1)
+    assert fmt is not None and payload is not None, "WAV lacks fmt/data"
+    return dict(tag=fmt[0], ch=fmt[1], sr=fmt[2], bits=fmt[3],
+                dataOff=payload[0], dataSize=payload[1])
+
+def looks_mp3(blob):
+    if blob[:3] == b"ID3":
+        return True
+    for i in range(min(len(blob) - 3, 4096)):
+        if blob[i] != 0xFF or (blob[i+1] & 0xE0) != 0xE0:
+            continue
+        version = (blob[i+1] >> 3) & 3
+        layer = (blob[i+1] >> 1) & 3
+        rate = (blob[i+2] >> 2) & 3
+        if version != 1 and layer == 1 and rate != 3:
+            return True
+    return False
+
+runtimeMp3 = 0
 for s in snd:
-    assert s["ch"] in (1, 2), s
-    assert 3000 <= s["sr"] <= 96000, s
-    assert s["size"] % (2 * s["ch"]) == 0, s
-print(f"all {len(snd)} sounds are PCM16 (1-2 ch, 3-96 kHz, whole frames)")
+    blob = data[s["off"]:s["off"]+s["size"]]
+    if s["fmt"] == 2:
+        assert looks_mp3(blob), f"non-MP3 passthrough: {s['name']}"
+        runtimeMp3 += 1
+        continue
+    assert s["fmt"] == 0, (s["name"], s["fmt"])
+    try:
+        wi = wav_info(blob)
+    except AssertionError as exc:
+        raise AssertionError(f"{s['name']}: {exc}")
+    if wi:
+        assert wi["tag"] == 1, (s["name"], wi)
+        assert wi["ch"] in (1, 2), (s["name"], wi)
+        assert 3000 <= wi["sr"] <= 96000, (s["name"], wi)
+        assert wi["bits"] in (8, 16), (s["name"], wi)
+        assert wi["dataSize"] % (wi["ch"] * (wi["bits"] // 8)) == 0, s["name"]
+    else:
+        # Legacy headerless FNAF1 sounds use the v1 table metadata.
+        assert s["ch"] in (1, 2), s
+        assert 3000 <= s["sr"] <= 96000, s
+        assert s["size"] % (2 * s["ch"]) == 0, s
+print(f"sound table ok: {len(snd)-runtimeMp3} WAV/PCM blobs, "
+      f"{runtimeMp3} original MP3 blobs for in-game dr_mp3")
 
 # every data blob must lie inside the file, sizes consistent with format+align
 for t in tex:
@@ -199,64 +248,70 @@ def dxt_decode(t):
                 rgba[o:o+4] = bytes((cc[0], cc[1], cc[2], a))
     return aw, ah, bytes(rgba)
 
-for handle in (39, 431, 129, 103):   # office bg, menu bg, button, left door
-    t = next(x for x in tex if x["name"] == f"img_{handle}")
-    w, h, pngpx = png_pixels(f"{DUMP}/{handle}.png")
-    dw, dh, dpx = dxt_decode(t)
-    tot = n = 0
-    for i in range(0, w*h*4, 4):
-        for c in range(3):
-            tot += abs(pngpx[i+c] - dpx[i+c]); n += 1
-    print(f"img_{handle}: {w}x{h} fmt={t['fmt']} avg RGB error vs source: {tot/n:.2f}")
+keyTextures = (39, 431, 129, 103)  # FNAF1 office/menu/button/door
+if all(any(x["name"] == f"img_{h}" for x in tex) and
+       os.path.exists(f"{DUMP}/{h}.png") for h in keyTextures):
+    for handle in keyTextures:
+        t = next(x for x in tex if x["name"] == f"img_{handle}")
+        w, h, pngpx = png_pixels(f"{DUMP}/{handle}.png")
+        dw, dh, dpx = dxt_decode(t)
+        tot = n = 0
+        for i in range(0, w*h*4, 4):
+            for c in range(3):
+                tot += abs(pngpx[i+c] - dpx[i+c]); n += 1
+        print(f"img_{handle}: {w}x{h} fmt={t['fmt']} avg RGB error vs source: {tot/n:.2f}")
+else:
+    print("FNAF1 key-texture pixel check skipped for this game")
 
-# ---- sounds: PCM payload must byte-match the decoded source
-# (needs the ctfak Sounds dump next to the Images dump; skipped otherwise)
-# A WAV source is compared against its data chunk; an MP3/OGG source is
-# decoded with the same tool the repacker used and compared byte for byte.
+# ---- every sound must byte-match its source (or its pack-time PCM decode)
 sndDump = os.path.join(os.path.dirname(DUMP.rstrip("/")) or ".", "Sounds")
 if not os.path.isdir(sndDump):
     print("sound cross-check skipped (no Sounds dump next to image dump)")
     print("PAK VERIFICATION PASSED")
     sys.exit(0)
-pcm = [s for s in snd if s["fmt"] == 0]
-skipped = len(snd) - len(pcm)
-sample = (pcm[:3] + pcm[-3:]) if pcm else []
-for s in sample:
+
+exact = decoded = 0
+for s in snd:
     h = s["name"][4:]
     got = data[s["off"]:s["off"]+s["size"]]
-    wavPath = f"{sndDump}/{h}.wav"
-    mp3Path = f"{sndDump}/{h}.mp3"
-    oggPath = f"{sndDump}/{h}.ogg"
-    if os.path.exists(wavPath) and open(wavPath, "rb").read(4) == b"RIFF":
-        wav = open(wavPath, "rb").read()
-        # the fmt chunk body starts after the 4-char id and the 4-byte size
-        fpos = wav.index(b"fmt ") + 8
-        ch = struct.unpack_from("<H", wav, fpos + 2)[0]
-        bits = struct.unpack_from("<H", wav, fpos + 14)[0]
-        dpos = wav.index(b"data") + 4
-        dsize = struct.unpack_from("<I", wav, dpos)[0]
-        dpos += 4
-        ref = wav[dpos:dpos+dsize]
-        if bits == 8:
-            # the runtime expands unsigned 8-bit PCM to signed 16-bit
-            # (XAudio2 2.x has no 8-bit format) — compare against that.
-            ref = b"".join(struct.pack("<h", (b - 128) << 8) for b in ref)
-        origin = f"WAV data chunk ({bits}-bit)"
-    elif os.path.exists(mp3Path) or os.path.exists(oggPath):
-        src = mp3Path if os.path.exists(mp3Path) else oggPath
-        ref = subprocess.run(["ffmpeg", "-v", "quiet", "-i", src, "-f", "s16le", "-"],
-                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                             check=True).stdout
-        origin = os.path.basename(src)
-    else:
-        print(f"sound {s['name']}: no source file next to the image dump — skipped")
+    candidates = [h + ext for ext in (".wav", ".mp3", ".ogg")]
+    # SoundExt disambiguates duplicate basenames as name.<id>_<id>.mp3.
+    candidates += [n for n in os.listdir(sndDump)
+                   if n.startswith(h + ".") and n.lower().endswith((".wav", ".mp3", ".ogg"))]
+    sources = [(os.path.join(sndDump, n), open(os.path.join(sndDump, n), "rb").read())
+               for n in sorted(set(candidates)) if os.path.exists(os.path.join(sndDump, n))]
+    assert sources, f"no dumped source for {s['name']}"
+
+    if any(blob == got for _, blob in sources):
+        exact += 1
         continue
-    ok = ref == got
-    print(f"sound {s['name']}: {s['sr']} Hz, {s['ch']} ch, fmt {s['fmt']}, "
-          f"bits {s['bits']}, match vs {origin}: {ok}")
-    assert ok, f"payload of {s['name']} differs from {origin}"
-if skipped:
-    print(f"sound passthrough blobs skipped (no PCM to compare): {skipped}")
+
+    assert s["fmt"] == 0, f"retained MP3 differs from source: {s['name']}"
+    wi = wav_info(got)
+    assert wi is not None, f"unrecognized sound payload: {s['name']}"
+    payload = got[wi["dataOff"]:wi["dataOff"]+wi["dataSize"]]
+    matched = False
+    for path, blob in sources:
+        sourceWav = wav_info(blob) if blob[:4] == b"RIFF" else None
+        if sourceWav:
+            # Compatibility with legacy headerless paks.
+            ref = blob[sourceWav["dataOff"]:sourceWav["dataOff"]+sourceWav["dataSize"]]
+            if sourceWav["bits"] == 8 and wi["bits"] == 16:
+                ref = b"".join(struct.pack("<h", (v - 128) << 8) for v in ref)
+            if ref == payload:
+                matched = True
+                break
+        elif path.endswith((".mp3", ".ogg")):
+            ref = subprocess.run(["ffmpeg", "-v", "quiet", "-i", path,
+                                  "-f", "s16le", "-"], stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL, check=True).stdout
+            if ref == payload:
+                matched = True
+                break
+    assert matched, f"payload of {s['name']} differs from every dumped source"
+    decoded += 1
+print(f"all {len(snd)} sound payloads verified: {exact} byte-exact sources, "
+      f"{decoded} pack-time decodes")
 
 names = {t["name"] for t in tex}
 # The key-asset list is FNAF1-specific — other games have their own set, so

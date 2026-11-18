@@ -49,7 +49,7 @@ struct PakLoadedSound {
     // until the first FindSound/Play reads it into an owned buffer.
     u32  fileOff;
     bool resident;
-    u32  pakFmt;     // raw pak table format (0 PCM, 2 passthrough e.g. mp3)
+    u32  pakFmt;     // raw pak table format (0 WAV/PCM, 2 runtime-decoded MP3/WAV)
 };
 
 class PakLoader {
@@ -69,8 +69,8 @@ public:
     //     blob freed right after (UMA: once it is in the D3D texture it
     //     lives in the same 512 MB pool the GPU reads);
     //   * sounds — read + normalized (RIFF peel / byte order / 8-bit
-    //     expand; passthrough blobs like SL's mp3s stay unplayable) on
-    //     the first FindSound into an owned buffer;
+    //     expand) on the first FindSound; fmt=2 keeps the complete blob so
+    //     AudioSystem can decode it with dr_mp3/dr_wav on playback;
     //   * PreloadAsync() pushes a set of texture names to a background
     //     thread (XDK) so a room-to-room transition pulls the next
     //     room's assets while the frame renders. PC builds fall back to

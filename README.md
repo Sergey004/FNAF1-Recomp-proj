@@ -261,6 +261,17 @@ the same time. Rule for behavior disputes: read the event groups in
 `Events/*.txt`, not the wiki; a deviation from the dump gets its own
 "deliberate deviation" entry.
 
+## Third-party audio decoder attribution
+
+The game runtime uses the unmodified single-header
+[`dr_wav.h` and `dr_mp3.h`](https://github.com/mackron/dr_libs) by
+**David Reid (mackron)**. `dr_mp3` is based on
+[**minimp3 by Lieff**](https://github.com/lieff/minimp3). Both dr_libs headers
+offer public-domain / MIT-0 licensing; their original copyright and license
+notices are retained verbatim. Source URLs, upstream attribution and file
+hashes are recorded in
+[`FNAF1-Recomp-proj/include/third_party/README.md`](FNAF1-Recomp-proj/include/third_party/README.md).
+
 ## Disclaimer
 
 Unofficial fan reimplementation for personal console use. A legally purchased

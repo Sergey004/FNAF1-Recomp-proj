@@ -208,6 +208,7 @@ static u32 ColorForState(GameState state, f32 power) {
 // v2.17: DEV/debug menu flag (Start + B) — defined HERE because FrameEnd's
 // console gate reads it (the definition used to sit below its first use).
 static bool g_devMode  = false;
+static int  g_scottVisionPercent = 0;   // Scott Vision (Experimental), session only
 static bool FrameBegin(u32 clearColor) {
     if (!g_pd3dDevice) return false;
     g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, clearColor, 1.0f, 0);
@@ -242,6 +243,12 @@ static void FrameEnd() {
     // without this the last same-texture batch renders one frame late
     // (or not at all for static screens).
     g_batch.End();
+    // Scott Vision (Experimental): apply AFTER the complete FNAF1 frame —
+    // perspective, HUD, fades, console and even the DEV menu are composed.
+    if (g_scottVisionPercent > 0 &&
+        strcmp(AppRegistry_Active()->Name(), "FNAF1") == 0) {
+        g_batch.ApplyDeuteranomaly(g_scottVisionPercent);
+    }
     g_pd3dDevice->EndScene();
     g_pd3dDevice->Present(NULL, NULL, NULL, NULL);
 }
@@ -1584,15 +1591,16 @@ int main(int argc, char* argv[]){
                     g_render.RenderDevMenu(g_devSel, g_devNight,
                                            DEV_ANIM_NAMES[g_devAnim],
                                            DEV_SOUNDS[g_devSound].label,
-                                           g_devGod, g_showConsole, g_devAnalogDoor, g_devHoldLights);
+                                           g_devGod, g_showConsole, g_devAnalogDoor, g_devHoldLights,
+                                           g_scottVisionPercent);
                     FrameEnd();
                 }
             }
             Sleep(16); continue;
         }
         if(g_devMode){
-            if(gi.cameraUp)   { g_devSel = (g_devSel + 10) % 11; }
-            if(gi.cameraDown) { g_devSel = (g_devSel + 1) % 11; }
+            if(gi.cameraUp)   { g_devSel = (g_devSel + 11) % 12; }
+            if(gi.cameraDown) { g_devSel = (g_devSel + 1) % 12; }
             if(g_devSel == 1){
                 if(gi.cameraLeft)  { g_devNight--; if(g_devNight < 1) g_devNight = 1; }
                 if(gi.cameraRight) { g_devNight++; if(g_devNight > 7) g_devNight = 7; }
@@ -1602,6 +1610,9 @@ int main(int argc, char* argv[]){
             } else if(g_devSel == 5){
                 if(gi.cameraLeft)  g_devSound = (g_devSound + DEV_SOUND_COUNT - 1) % DEV_SOUND_COUNT;
                 if(gi.cameraRight) g_devSound = (g_devSound + 1) % DEV_SOUND_COUNT;
+            } else if(g_devSel == 11){
+                if(gi.cameraLeft)  { g_scottVisionPercent -= 5; if(g_scottVisionPercent < 0) g_scottVisionPercent = 0; }
+                if(gi.cameraRight) { g_scottVisionPercent += 5; if(g_scottVisionPercent > 100) g_scottVisionPercent = 100; }
             }
             if(gi.cameraToggle){   // A = run the selected action
                 switch (g_devSel) {
@@ -1691,7 +1702,8 @@ int main(int argc, char* argv[]){
                 g_render.RenderDevMenu(g_devSel, g_devNight,
                                        DEV_ANIM_NAMES[g_devAnim],
                                        DEV_SOUNDS[g_devSound].label,
-                                       g_devGod, g_showConsole, g_devAnalogDoor, g_devHoldLights);
+                                       g_devGod, g_showConsole, g_devAnalogDoor, g_devHoldLights,
+                                       g_scottVisionPercent);
                 FrameEnd();
             }
             Sleep(16); continue;

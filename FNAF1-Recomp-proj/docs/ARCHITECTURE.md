@@ -23,9 +23,9 @@
   Gallery/Breaker Room/Funtime Auditorium/Parts and Service ×2/Under Desk…),
   «8-bit Baby Game» шириной **12800×720**, «Final Encounter» 251 группа,
   Custom menu/level; Fusion build **286** (старее остальных — инструмент
-  переварил); в паке 392 звука, все PCM16 — 214 mp3 декодированы на этапе
-  репака (старая заметка «потребует декод/транскод» закрыта, см.
-  `docs/AUDIO.md` раздел v2.91).
+  переварил); в паке 392 звука: 178 полных WAV/PCM и 214 исходных MP3,
+  которые декодируются dr_mp3 непосредственно в игре (см.
+  `docs/AUDIO.md` раздел v2.93).
 
 ## Слои
 
@@ -86,7 +86,7 @@ class AppModule {
 | Ключевая механика | камеры+двери+свет | фонарик, вентиляция, шкатулка, маска | фонарик+шкатулка, вентиляция, PHANTOM'ы, minigames |
 | Кадры-особенности | creepy start/end | dream 2500×768, 8bit (108 групп), error/error 2, rare1 ×3 | cutscenes (190 групп), атари-кадры 3072×2304: BB/Mangle/Toy Chica/GFreddy/RWQFSFASXC/Marion, bad/good end |
 | Сейв | `freddy` (XContent) | свой layout (сверять с дампом) | свой layout |
-| Звук | 52 wav, все PCM (один 8-битный, пак v1 — не трогаем) | 66 wav, из них 18 восьмибитных 8000 Гц (звонки) — пак v2 | 70 wav, все PCM — пак v2 |
+| Звук | 52 wav, все PCM (один 8-битный, пак v1 — не трогаем) | 66 wav, из них 18 восьмибитных 8000 Гц (звонки) — пак v1 с полными RIFF | 70 wav, все PCM — пак v1 |
 
 Внимание: размеры экранов в дампах 1024×768/1600×768 — это координаты
 Fusion, НЕ финальные 1280×720; правило пересчёта то же, что у FNAF1.
@@ -124,21 +124,22 @@ zlib/LZ4 распаковались, PNG/звуки/event-листинги по�
 тулов его не было. Теперь 10 tool(s), имя пака выводится из имени игры
 (fnaf1/fnaf2/fnaf3.pak).
 
-Собранные паки (GPU-ready: DXT1/DXT5 текстуры + PCM16-звуки, big-endian,
-магия 'FNAF', формат PakLoader, **v2** — с полем бит-глубины; все mp3
-источников декодированы в PCM на этапе репака, passthrough не осталось;
-`tools/verify_pak.py` — PASSED на каждый):
+Собранные паки (GPU-ready: DXT1/DXT5 текстуры, big-endian, магия 'FNAF',
+**текущий формат v1**). PCM-WAV хранится целиком с RIFF-заголовком; MP3
+остаётся сжатым и декодируется в игре через `dr_mp3`. Ogg по-прежнему
+конвертируется при репаке. `tools/verify_pak.py` проверяет и WAV-чанки, и
+точное совпадение MP3 с источником:
 
-| Пак | Текстуры | Звуки | mp3→PCM | Размер |
-|---|---|---|---|---|
-| RecompPack/fnaf1.pak | 605 (245 DXT1 + 360 DXT5) | 52 PCM | — | 254 МБ (v1, не трогаем) |
-| RecompPack/fnaf2.pak | 804 (202 DXT1 + 602 DXT5) | 66 PCM (18 из 8-бит) | — | 246 МБ |
-| RecompPack/fnaf3.pak | 1066 (237 DXT1 + 829 DXT5) | 70 PCM | — | 223 МБ |
-| RecompPack/fnaf4.pak | 1281 (818 DXT1 + 463 DXT5) | 72 PCM | — | 358 МБ |
-| RecompPack/sisterlocation.pak | 5260 (2791 DXT1 + 2469 DXT5) | 392 PCM | 214 | 1773 МБ |
-| RecompPack/fnafworld.pak | 7660 (395 DXT1 + 7265 DXT5) | 294 PCM | 83 | 716 МБ |
-| RecompPack/ffps.pak | 2560 (285 DXT1 + 2275 DXT5) | 263 PCM | 186 | 1090 МБ |
-| RecompPack/ucn.pak | 2115 (115 DXT1 + 2000 DXT5) | 308 PCM | 250 | 834 МБ |
+| Пак | Текстуры | WAV/PCM | MP3 в игре | Размер |
+|---|---|---:|---:|---:|
+| RecompPack/fnaf1.pak | 605 (245 DXT1 + 360 DXT5) | 52 | — | 254 МБ (v1, не трогаем) |
+| RecompPack/fnaf2.pak | 804 (202 DXT1 + 602 DXT5) | 66 (18 из 8-бит) | — | 246 МБ |
+| RecompPack/fnaf3.pak | 1066 (237 DXT1 + 829 DXT5) | 70 | — | 223 МБ |
+| RecompPack/fnaf4.pak | 1281 (818 DXT1 + 463 DXT5) | 72 | — | 358 МБ |
+| RecompPack/sisterlocation.pak | 5260 (2791 DXT1 + 2469 DXT5) | 178 | 214 | 1450.6 МиБ |
+| RecompPack/fnafworld.pak | 7660 (395 DXT1 + 7265 DXT5) | 211 | 83 | 416.4 МиБ |
+| RecompPack/ffps.pak | 2560 (285 DXT1 + 2275 DXT5) | 77 | 186 | 844.9 МиБ |
+| RecompPack/ucn.pak | 2115 (115 DXT1 + 2000 DXT5) | 58 | 250 | 468.1 МиБ |
 
 Рядом: `pak_manifest.json` (полная раскладка; у каждого звука теперь и
 `sourceFormat` — wav/mp3) и `asset_mapping.hpp` (ground-truth таблица

@@ -3,6 +3,44 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.94 — Scott Vision (Experimental) in the FNAF1 DEV menu
+
+- Added **Scott Vision (Experimental): Deuteranomaly** as the 12th DEV-menu
+  entry. D-pad Left/Right adjusts the strength in 5% steps from 0 to 100%;
+  the default is 0 and the value is session-only (no save-format change).
+- The filter is a full-screen post-process, not a per-sprite tint:
+  `SpriteBatch::ApplyDeuteranomaly()` resolves the completed back buffer into
+  the existing perspective scratch texture and draws it through the standard
+  Deuteranomaly RGB matrix. It therefore runs after perspective, alpha-blended
+  overlays, HUD, fades, console and the DEV menu itself. No extra render
+  target is allocated; 0% bypasses the pass completely.
+- The setting is gated to FNAF1 and has no effect on the other modules.
+  Numeric matrix checks and static project checks are done; the XDK build and
+  visual console/Xenia check remain device-side validation.
+
+## v2.93 — single-header dr_mp3/dr_wav decoding inside the game
+
+- The requested upstream `dr_mp3.h` and `dr_wav.h` are vendored under
+  `include/third_party/`; `src/AudioDecoders.cpp` is their only
+  implementation TU and disables stdio/wchar file APIs. No decoder was
+  added to ctfak-cpp.
+- `AudioSystem::PlayInternal()` now decodes a `fmt=2` memory blob to PCM16
+  and submits that PCM to XAudio2. The voice slot owns the allocation until
+  Stop/Flush/DestroyVoice; create/submit/start failures free it too. The
+  output matrix now uses the real mono/stereo source channel count.
+- Recomp Pack keeps MP3 sources byte-for-byte instead of inflating them via
+  ffmpeg. Current paks are v1 again: complete WAVs carry their own
+  rate/channels/bit depth, so the v2 `bits` experiment is unnecessary.
+  Ogg still converts at pack time. FNaF 1 and its eager PCM path were not
+  changed or rebuilt.
+- Rebuilt FNaF World (83 runtime MP3, 416.4 MiB), Sister Location (214,
+  1450.6 MiB), FFPS (186, 844.9 MiB) and UCN (250, 468.1 MiB). All four
+  pass `verify_pak.py`: 1257/1257 sounds and every texture table/blob size
+  checked. The exact in-game adapter decoded all 733 retained MP3 blobs and
+  all 863 MP3 source files in those dump folders without failures; dr_wav
+  matched ffmpeg exactly on FNaF 2's 8-bit 8000 Hz `call 1b`. XDK/console
+  playback still needs the on-device build and listening test.
+
 ## v2.92 — every bank sound actually plays: pak v2 (bit depth) + MP3/OGG decoded at pack time
 
 - **FNaF 2's phone calls decode correctly now.** The "wrong audio on

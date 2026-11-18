@@ -682,13 +682,13 @@ void GameRender::DrawAchievementToast(const char* name, int gamerscore) {
 // v2.17 DEBUG/DEV menu — text-only debug screen (font atlas).
 void GameRender::RenderDevMenu(int sel, int night, const char* animName,
                                const char* soundLabel, bool god, bool console,
-                               bool analogDoor, bool holdLights) {
+                               bool analogDoor, bool holdLights, int scottVisionPercent) {
     if (!m_text) return;
     m_text->DrawText(16, 10, "== DEV MENU ==  (B/Y close, DPad select, A run, L/R value)", 0xFFFFFF00);
 
     char line[128];
     int y = 38;
-    for (int i = 0; i < 11; ++i) {
+    for (int i = 0; i < 12; ++i) {
         const char* mark = (sel == i) ? "> " : "  ";
         if (i == 0)      Snprintf(line, sizeof(line), "%sGod mode: %s", mark, god ? "ON" : "OFF");
         else if (i == 1) Snprintf(line, sizeof(line), "%sJump to night [ %d ]", mark, night);
@@ -700,7 +700,8 @@ void GameRender::RenderDevMenu(int sel, int night, const char* animName,
         else if (i == 7) Snprintf(line, sizeof(line), "%sReset achievements", mark);
         else if (i == 8) Snprintf(line, sizeof(line), "%sConsole: %s", mark, console ? "ON" : "OFF");
         else if (i == 9) Snprintf(line, sizeof(line), "%sAnalog doors: %s", mark, analogDoor ? "ON" : "OFF");
-        else             Snprintf(line, sizeof(line), "%sHold lights: %s", mark, holdLights ? "ON" : "OFF");
+        else if (i == 10) Snprintf(line, sizeof(line), "%sHold lights: %s", mark, holdLights ? "ON" : "OFF");
+        else             Snprintf(line, sizeof(line), "%sScott Vision (Experimental): Deuteranomaly [ %d%% ]", mark, scottVisionPercent);
         m_text->DrawText(16, y, line, (sel == i) ? 0xFFFFFFFF : 0xFF9A9A9A);
         y += 22;
     }
