@@ -3,6 +3,46 @@
 Заметки «что уже есть» и «что осталось». Версии соответствуют тегам в
 комментариях кода (`v2.8`, `v2.14`, …, `v2.32`) и историческим заметкам.
 
+## v2.95 — совместимость звуковых имён, фиксы SL и внутренние тулы CTFAK
+
+- **В Sister Location были неверные звуковые вызовы.** Аудит по manifest и
+  дампам нашёл 11 имён, которых нет в паке: `snd_elevator clank`,
+  `snd_patter`, `snd_ballora box`, `snd_Bidy`, `snd_Ballora static`,
+  `snd_hub hum`, `snd_tv show`, `snd_select3`, `snd_scream op1-1` и
+  `snd_girl line3/4`. Теперь используются оригинальные sample names дампа:
+  `snd_clankv2`, `snd_crawl_patter2/3`, `snd_Ballora_gallery`, `snd_Bidy01`,
+  `snd_statichum4`, `snd_Dark amb v4`, `snd_Dramatic soap operaB`,
+  `snd_blip`, `snd_scream op5-2`, `snd_line_3/4`. Построчный аудит SL —
+  0 пропусков; у FNAF2/3/4/World пропусков уже не было. Пересборка паков
+  не нужна.
+- **Raw-имена работают везде.** `AudioSystem` теперь для Play, Stop и
+  IsPlaying пробует сначала `name`, затем канонический `snd_<name>`. Это
+  чинит raw-имена FNaF World (`Title screen theme...`, `Cartoon_Pop_01/02`,
+  `CARTOON_POP_DOUB_40013706`, `travel1B`) и `distortion` FNAF4 без
+  переписывания всех вызовов модулей.
+- **Рабочий PCM-путь FNAF1 восстановлен точно.** Нормализованный PCM снова
+  использует прежнюю матрицу «один источник → stereo», включая последующие
+  изменения pan. Настоящее число каналов применяется только новым путем
+  декодирования dr_mp3/dr_wav. Byte-order vote банка FNAF1 остаётся
+  корректным (0 BE / 48 LE), а `ColdPresc B`, `BallastHumMedium2` и
+  `Buzz_Fan_Florescent2` совпадают с исходными WAV.
+- **CTFAK больше не запускает внешние аудиотулы.** Удалены `popen/pclose`,
+  временные декодерные файлы, ffmpeg и sox (заодно исправлена сборка MSVC
+  `C3861: popen`). `AudioDecoder` сохраняет внутренний разбор RIFF/WAVE и
+  MP3 sniffing; MP3-блобы намеренно остаются для декодера игры, а
+  неподдержанные форматы честно отклоняются.
+- **Новый отдельный тул `Frame Runtime Renderer`.** Он рендерит runtime
+  viewport (`windowWidth/windowHeight`), учитывает видимость слоёв/объектов
+  и стартовое направление анимации, применяет инверсный коэффициент
+  прозрачности CTF (`0 = opaque`, `255 = invisible`) и пишет отчёт по
+  text/TTF и не-Panorama HWA вместо editor grid/debug labels. Perspective
+  читает свои 28 байт EDATA; применяется только PANORAMA/HORIZONTAL
+  (`effect=0`, `direction=0`) с оригинальными width/height/zoom. Все 290
+  кадров восьми игр рендерятся с совпадающими размерами PNG; в отчётах
+  явно видны 25 поддержанных Perspective-pass и 18 неподдержанных режимов.
+- Баннер версии рантайма — v2.95. Юнит-тесты CTFAK — 51/51. Прослушивание
+  на консоли остаётся финальной проверкой на устройстве.
+
 ## v2.94 — Scott Vision (Experimental) в DEV-меню FNAF1
 
 - В DEV-меню добавлен 12-й пункт **Scott Vision (Experimental):

@@ -3,6 +3,46 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.95 — audio-name compatibility, SL fixes and the in-process CTFAK tools
+
+- **Sister Location sound calls were wrong.** A manifest/dump audit found 11
+  names that did not exist in the pak: `snd_elevator clank`, `snd_patter`,
+  `snd_ballora box`, `snd_Bidy`, `snd_Ballora static`, `snd_hub hum`,
+  `snd_tv show`, `snd_select3`, `snd_scream op1-1` and `snd_girl line3/4`.
+  They now use the original dump sample names (`snd_clankv2`,
+  `snd_crawl_patter2/3`, `snd_Ballora_gallery`, `snd_Bidy01`,
+  `snd_statichum4`, `snd_Dark amb v4`, `snd_Dramatic soap operaB`,
+  `snd_blip`, `snd_scream op5-2`, `snd_line_3/4`). The full SL line-level
+  audit is 0 missing; FNAF2/3/4/World audits were already 0. No pak rebuild
+  is needed.
+- **Raw sound names work everywhere.** `AudioSystem` now tries `name` and then
+  the canonical `snd_<name>` alias for Play, Stop and IsPlaying. This fixes
+  FNaF World's raw event names (`Title screen theme...`, `Cartoon_Pop_01/02`,
+  `CARTOON_POP_DOUB_40013706`, `travel1B`) and FNAF4's `distortion` without
+  rewriting every module call.
+- **The proven FNAF1 PCM path is restored exactly.** Normalized PCM again
+  uses the legacy one-source-channel-to-stereo output matrix, including on
+  later pan changes. The real source-channel matrix is used only by the new
+  dr_mp3/dr_wav decoded path. The FNAF1 bank's byte-order vote is still
+  correct (0 BE / 48 LE), and `ColdPresc B`, `BallastHumMedium2` and
+  `Buzz_Fan_Florescent2` match their source WAVs.
+- **CTFAK no longer launches external audio tools.** `popen/pclose`,
+  temporary decoder files, ffmpeg and sox are gone (this also fixes the
+  MSVC `C3861: popen` build). `AudioDecoder` keeps in-process RIFF/WAVE
+  parsing and MP3 sniffing; MP3 blobs are intentionally retained for the
+  game runtime, and unsupported formats fail closed.
+- **New separate `Frame Runtime Renderer` tool.** It renders the runtime
+  viewport (`windowWidth/windowHeight`), honors layer/object visibility and
+  initial movement direction, applies CTF's inverse transparency coefficient
+  (`0 = opaque`, `255 = invisible`), and reports text/TTF and non-panorama
+  HWA cases instead of drawing editor grid/debug labels. Perspective reads
+  its 28-byte EDATA; only PANORAMA/HORIZONTAL (`effect=0`, `direction=0`)
+  is applied with the original width/height/zoom. All 290 frames across the
+  eight games render with matching PNG dimensions; 25 supported Perspective
+  passes and 18 unsupported modes are explicitly reported.
+- The runtime version banner is now v2.95. CTFAK unit tests pass 51/51.
+  Console listening tests remain the final device-side validation.
+
 ## v2.94 — Scott Vision (Experimental) in the FNAF1 DEV menu
 
 - Added **Scott Vision (Experimental): Deuteranomaly** as the 12th DEV-menu

@@ -220,9 +220,9 @@ void SLGame::Tick(f32 dt, const SLInputs& in) {
             // bleed into the game-over screen and the next night).
             SfxStop("snd_control room power down vrs3");
             SfxStop("snd_drips");
-            SfxStop("snd_hub hum");
+            SfxStop("snd_Dark amb v4");
             SfxStop("snd_elevator ride loop");
-            SfxStop("snd_ballora box");
+            SfxStop("snd_Ballora_gallery");
             // v2.91: the custom-night office dies into its own death screen
             // (TRANSITIONS: 31 -> 32), everything else -> the game over
             m_screen = (m_screen == SCR_CUSTLEVEL) ? SCR_CUSTDEATH : SCR_GAMEOVER;
@@ -410,7 +410,7 @@ void SLGame::TickElevator(f32 dt, const SLInputs& in) {
     // 10000 ms (group 31, was 2 s). Skipping with A stays (pad affordance).
     if (m_elevatorState == 0 && (m_elevatorT >= 25.0f || in.aPressed)) {
         m_elevatorState = 1;
-        Sfx("snd_elevator clank", false, 4, 100);
+        Sfx("snd_clankv2", false, 4, 100);
     }
     if (m_elevatorState == 1) {
         m_elevButtonT += dt;
@@ -421,8 +421,8 @@ void SLGame::TickElevator(f32 dt, const SLInputs& in) {
             // doors open -> the day plan: night 1 = Baby's Room (the
             // monologue), night 2 = Hub -> Ballora, night 3 = Hub ->
             // Breaker (wave 1 labeled; the spine is per Script Event)
-            SfxStop("snd_elevator clank");
-            Sfx("snd_hub hum", true, 2, 15);
+            SfxStop("snd_clankv2");
+            Sfx("snd_Dark amb v4", true, 2, 15);
             GoTo(3);
         }
     }
@@ -550,8 +550,8 @@ void SLGame::TickBallora(f32 dt, const SLInputs& in) {
         m_stepSndT += dt;
         if (m_stepSndT >= 0.4f) {
             m_stepSndT = 0.0f;
-            Sfx("snd_patter", false, in.shiftHeld ? 2 : 3,
-                in.shiftHeld ? 100 : 50);
+            Sfx(in.shiftHeld ? "snd_crawl_patter3" : "snd_crawl_patter2",
+                false, in.shiftHeld ? 2 : 3, in.shiftHeld ? 100 : 50);
         }
     } else {
         m_contWalkT = 0.0f;
@@ -566,7 +566,7 @@ void SLGame::TickBallora(f32 dt, const SLInputs& in) {
     // she is created at progress 400 ("the dance" starts)
     if (!m_dancer && m_progress >= 400) {
         m_dancer = true;
-        Sfx("snd_ballora box", true, 1, 100);           // her music
+        Sfx("snd_Ballora_gallery", true, 1, 100);       // her music
     }
     if (m_dancer) {
         // the music pans by side (-100..100 ramp, 1 per 20 ms)
@@ -607,8 +607,8 @@ void SLGame::TickBallora(f32 dt, const SLInputs& in) {
         if (m_distance > 600) {                         // the kill
             m_scareT = 0.001f;
             m_scareImg = 1;                             // Ballora scare
-            SfxStop("snd_ballora box");
-            Sfx("snd_scream op1-1", false, 4, 100);
+            SfxStop("snd_Ballora_gallery");
+            Sfx("snd_scream op5-2", false, 4, 100);
         }
     } else if (m_progress >= 300 && m_distance < 200) {
         // the "quickly!" hint — the renderer shows it
@@ -617,7 +617,7 @@ void SLGame::TickBallora(f32 dt, const SLInputs& in) {
     // the exits (G41 the dump edges): 850 fwd -> the gallery reached;
     // 650 back -> Baby's Room
     if (m_progress >= 850) {
-        SfxStop("snd_ballora box");
+        SfxStop("snd_Ballora_gallery");
         GoTo(11);                                       // -> the Breaker end
     }
 }
@@ -937,7 +937,7 @@ void SLGame::TickDesk(f32 dt, const SLInputs& in) {
         m_deskHold += dt;
         if (!m_deskPeek) {
             m_deskPeek = true;
-            Sfx("snd_Bidy", false, 4, 100);
+            Sfx("snd_Bidy01", false, 4, 100);
         }
     } else {
         m_deskHold -= dt * 0.5f;
@@ -977,11 +977,11 @@ void SLGame::TickExtras(f32 dt, const SLInputs& in) {
     // v2.74: the dump's extras menu has FIVE rows (ANIMATRONICS / MAKING
     // BABY / MAKING FREDDY / MAKING FOXY / BLUEPRINT) and NO exit row — B
     // leaves. The old build had four invented text rows.
-    if (in.upPressed)   { m_optionSelected = (m_optionSelected + 4) % 5; Sfx("snd_select3", false, 3, 80); }
-    if (in.downPressed) { m_optionSelected = (m_optionSelected + 1) % 5; Sfx("snd_select3", false, 3, 80); }
+    if (in.upPressed)   { m_optionSelected = (m_optionSelected + 4) % 5; Sfx("snd_blip", false, 3, 80); }
+    if (in.downPressed) { m_optionSelected = (m_optionSelected + 1) % 5; Sfx("snd_blip", false, 3, 80); }
     if (in.leftPressed || in.rightPressed) {
         m_dirSide = (m_dirSide + 1) & 1;
-        Sfx("snd_select3", false, 3, 80);
+        Sfx("snd_blip", false, 3, 80);
     }
     if (in.aPressed) {
         // the jumpscare viewer row plays a scare for a beat
@@ -1050,7 +1050,7 @@ void SLGame::TickBaby(f32 dt, const SLInputs& in) {
     m_cardT += dt;
     if (m_cardT >= 8.0f || in.bPressed) {
         m_cardT = 0.0f;
-        SfxStop("snd_hub hum");
+        SfxStop("snd_Dark amb v4");
         m_screen = SCR_WINNIGHT;
         m_winT = 0.0f;
         Sfx("snd_Jingle_4b", false, 1, 100);            // the win jingle
@@ -1083,7 +1083,7 @@ void SLGame::TickWinNight(f32 dt) {
         // the checkmark beat, then the tv show
         m_screen = SCR_TVSHOW;
         m_tvT = 0.0f;
-        Sfx("snd_tv show", true, 2, 15);
+        Sfx("snd_Dramatic soap operaB", true, 2, 15);
     }
 }
 
@@ -1094,13 +1094,13 @@ void SLGame::TickTvShow(f32 dt) {
     // (3000/5000/1000 ms); 8 s is our hold (labeled).
     if (m_tvT >= 8.0f) {
         m_tvT = 0.0f;
-        SfxStop("snd_tv show");
+        SfxStop("snd_Dramatic soap operaB");
         m_screen = SCR_GIRLVOICE;
         m_girlT = 0.0f;
         // the girl says a line per night (line_1..6); the sample name
         switch (m_night) {
-            case 1: Sfx("snd_girl line3", false, 4, 100); break;
-            default: Sfx("snd_girl line4", false, 4, 100); break;
+            case 1: Sfx("snd_line_3", false, 4, 100); break;
+            default: Sfx("snd_line_4", false, 4, 100); break;
         }
     }
 }
@@ -1258,7 +1258,7 @@ void SLGame::TickFinal(f32 dt, const SLInputs& in) {
         if (m_finalRollT <= 0.0f) {
             m_finalCue = true;
             m_finalHideT = 0.0f;
-            Sfx("snd_Ballora static", false, 3, 100);   // the warning cue
+            Sfx("snd_statichum4", false, 3, 100);       // the warning cue
             m_finalRollT = 20.0f + (f32)(rand() % 21);
         }
     } else {
@@ -1268,7 +1268,7 @@ void SLGame::TickFinal(f32 dt, const SLInputs& in) {
             // must be answered within 5 s, hold 3 s total
             if (m_finalHideT >= 3.0f) {
                 m_finalCue = false;
-                SfxStop("snd_Ballora static");
+                SfxStop("snd_statichum4");
             }
         } else if (m_finalHideT > 5.0f) {
             // caught in the open — the frame-27 game-over route
@@ -1291,10 +1291,10 @@ void SLGame::TickCustMenu(f32 dt, const SLInputs& in) {
         "Minireena 2", "Yenndo", "Lolbit", "Electrobab", "Bonnet"
     };
     (void)kRows;   // the renderer draws the rows from the same order
-    if (in.upPressed)   { m_custRow = (m_custRow + 9) % 10; Sfx("snd_select3", false, 3, 80); }
-    if (in.downPressed) { m_custRow = (m_custRow + 1) % 10; Sfx("snd_select3", false, 3, 80); }
-    if (in.leftPressed)  { if (m_custDiff[m_custRow] > 0)  --m_custDiff[m_custRow]; Sfx("snd_select3", false, 3, 80); }
-    if (in.rightPressed) { if (m_custDiff[m_custRow] < 20) ++m_custDiff[m_custRow]; Sfx("snd_select3", false, 3, 80); }
+    if (in.upPressed)   { m_custRow = (m_custRow + 9) % 10; Sfx("snd_blip", false, 3, 80); }
+    if (in.downPressed) { m_custRow = (m_custRow + 1) % 10; Sfx("snd_blip", false, 3, 80); }
+    if (in.leftPressed)  { if (m_custDiff[m_custRow] > 0)  --m_custDiff[m_custRow]; Sfx("snd_blip", false, 3, 80); }
+    if (in.rightPressed) { if (m_custDiff[m_custRow] < 20) ++m_custDiff[m_custRow]; Sfx("snd_blip", false, 3, 80); }
     if (in.bPressed) { m_screen = SCR_TITLE; return; }
     if (in.aPressed) {
         m_screen = SCR_CUSTWAIT;               // TRANSITIONS: 29 -> 30 -> 31
@@ -1338,9 +1338,9 @@ void SLGame::TickCustLevel(f32 dt, const SLInputs& in) {
     // lanes: 0 Ballora (left door), 1 Funtime Foxy (right door), 2 Lolbit
     // (the vent). The doors are toggles (the FNAF1 door convention): LB/RB/Y
     // press flips the lane's barrier.
-    if (in.lbPressed) { m_custDoor[0] = !m_custDoor[0]; Sfx("snd_select3", false, 3, 80); }
-    if (in.rbPressed) { m_custDoor[1] = !m_custDoor[1]; Sfx("snd_select3", false, 3, 80); }
-    if (in.yPressed)  { m_custDoor[2] = !m_custDoor[2]; Sfx("snd_select3", false, 3, 80); }
+    if (in.lbPressed) { m_custDoor[0] = !m_custDoor[0]; Sfx("snd_blip", false, 3, 80); }
+    if (in.rbPressed) { m_custDoor[1] = !m_custDoor[1]; Sfx("snd_blip", false, 3, 80); }
+    if (in.yPressed)  { m_custDoor[2] = !m_custDoor[2]; Sfx("snd_blip", false, 3, 80); }
     for (int i = 0; i < 3; ++i) {
         const i32 diff = m_custDiff[i == 0 ? 0 : (i == 1 ? 2 : 7)];
         if (diff <= 0) continue;
@@ -1349,7 +1349,7 @@ void SLGame::TickCustLevel(f32 dt, const SLInputs& in) {
             m_custRollT[i] -= dt;
             if (m_custDoor[i]) {
                 m_custLane[i] = false;
-                Sfx("snd_select3", false, 3, 60);      // the repel beat
+                Sfx("snd_blip", false, 3, 60);      // the repel beat
                 m_custRollT[i] = 0.0f;
             } else if (m_custRollT[i] <= 0.0f) {
                 m_scareT = 0.001f;
@@ -1361,7 +1361,7 @@ void SLGame::TickCustLevel(f32 dt, const SLInputs& in) {
             if (m_custRollT[i] <= 0.0f) {
                 m_custLane[i] = true;
                 m_custRollT[i] = 1.5f;
-                Sfx(i == 0 ? "snd_ballora box" : "snd_select3", false, 3, 100);
+                Sfx(i == 0 ? "snd_Ballora_gallery" : "snd_blip", false, 3, 100);
             }
         }
         // re-arm the roll while idle (Diff 1..20 -> 9..0.9 s)
