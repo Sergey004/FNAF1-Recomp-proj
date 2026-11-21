@@ -1,0 +1,96 @@
+name: Discord changelog backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Сколько последних версий залить"
+        default: "10"
+      dry_run:
+        description: "Только вывести в лог, ничего не слать"
+        type: boolean
+        default: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Backfill -> Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          FILE: CHANGELOG.en.md
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          COUNT: ${{ inputs.count }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, time
+          import urllib.request, urllib.error
+
+          FILE, REPO, SHA = os.environ["FILE"], os.environ["REPO"], os.environ["SHA"]
+          WEBHOOK, COUNT, DRY = os.environ["WEBHOOK"], int(os.environ["COUNT"]), os.environ["DRY"] == "true"
+          MAX_MSGS = 3     # на одну версию, остальное ссылкой
+          LIMIT = 3900
+
+          text = open(FILE, encoding="utf-8").read()
+          sections = re.findall(r"^## (.+?)\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+          sections = sections[:COUNT][::-1]   # N свежих, порядок: старые -> новые
+
+          def clean(body):
+              body = re.sub(r"^---\s*$", "", body, flags=re.M)
+              return re.sub(r"\n[ \t]+(?!- |\* )(?=\S)", " ", body).strip()
+
+          def chunks(t):
+              out, cur = [], ""
+              for line in t.split("\n"):
+                  while len(line) > LIMIT:
+                      cut = line.rfind(" ", 0, LIMIT)
+                      cut = cut if cut > 0 else LIMIT
+                      if cur:
+                          out.append(cur); cur = ""
+                      out.append(line[:cut]); line = line[cut:].lstrip()
+                  if cur and len(cur) + len(line) + 1 > LIMIT:
+                      out.append(cur); cur = line
+                  else:
+                      cur = f"{cur}\n{line}" if cur else line
+              if cur:
+                  out.append(cur)
+              return out
+
+          def post(embed):
+              req = urllib.request.Request(
+                  WEBHOOK,
+                  data=json.dumps({"embeds": [embed]}).encode(),
+                  headers={"Content-Type": "application/json", "User-Agent": "changelog-ci/1.0"},
+              )
+              for _ in range(5):
+                  try:
+                      urllib.request.urlopen(req); return
+                  except urllib.error.HTTPError as e:
+                      if e.code == 429:
+                          time.sleep(float(e.headers.get("Retry-After", "2")) + 0.5); continue
+                      raise
+
+          url = f"https://github.com/{REPO}/blob/{SHA}/{FILE}"
+          total = 0
+          for title, body in sections:
+              parts = chunks(clean(body))
+              if len(parts) > MAX_MSGS:
+                  parts = parts[:MAX_MSGS]
+                  parts[-1] += f"\n\n… [полный текст]({url})"
+              print(f"{title[:70]} -> {len(parts)} msg")
+              for i, part in enumerate(parts):
+                  total += 1
+                  if DRY:
+                      continue
+                  embed = {"description": part, "color": 5793266}
+                  if i == 0:
+                      embed["title"] = title[:256]
+                      embed["url"] = url
+                  post(embed)
+                  time.sleep(1.5)   # вебхук ~5 req / 2 с, с запасом
+          print(f"total messages: {total}" + (" (dry run)" if DRY else ""))
+          PY

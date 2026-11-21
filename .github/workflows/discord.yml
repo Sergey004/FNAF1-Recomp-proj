@@ -1,0 +1,100 @@
+name: Discord changelog notify
+
+on:
+  push:
+    branches: [master]
+    paths: [CHANGELOG.en.md]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Changelog -> Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          FILE: CHANGELOG.en.md
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys, time
+          import urllib.request, urllib.error
+
+          FILE, BEFORE, AFTER = os.environ["FILE"], os.environ["BEFORE"], os.environ["AFTER"]
+          REPO, ACTOR, WEBHOOK = os.environ["REPO"], os.environ["ACTOR"], os.environ["WEBHOOK"]
+          MAX_MSGS = 5     # потолок сообщений за один релиз, чтоб не флудить
+          LIMIT = 3900     # запас под лимит 4096 на description
+
+          def top_header(text):
+              m = re.search(r"^## .+$", text, re.M)
+              return m.group(0) if m else None
+
+          new = open(FILE, encoding="utf-8").read()
+          r = subprocess.run(["git", "show", f"{BEFORE}:{FILE}"], capture_output=True, text=True)
+          old = r.stdout if r.returncode == 0 else ""
+
+          if top_header(new) == top_header(old):
+              print("top section unchanged, nothing to post")
+              sys.exit(0)
+
+          m = re.search(r"^## (.+?)\n(.*?)(?=^## |\Z)", new, re.M | re.S)
+          title, body = m.group(1).strip(), m.group(2)
+          body = re.sub(r"^---\s*$", "", body, flags=re.M)             # разделители
+          body = re.sub(r"\n[ \t]+(?!- |\* )(?=\S)", " ", body).strip()  # склейка хард-в# врапов
+          # body = "\n".join(l for l in body.split("\n")
+          #                  if not re.match(r"^- (Files|Verified)\b", l))  # убрать техничку
+
+          def chunks(text):
+              out, cur = [], ""
+              for line in text.split("\n"):
+                  while len(line) > LIMIT:
+                      cut = line.rfind(" ", 0, LIMIT)
+                      cut = cut if cut > 0 else LIMIT
+                      if cur:
+                          out.append(cur); cur = ""
+                      out.append(line[:cut]); line = line[cut:].lstrip()
+                  if cur and len(cur) + len(line) + 1 > LIMIT:
+                      out.append(cur); cur = line
+                  else:
+                      cur = f"{cur}\n{line}" if cur else line
+              if cur:
+                  out.append(cur)
+              return out
+
+          def post(embed):
+              req = urllib.request.Request(
+                  WEBHOOK,
+                  data=json.dumps({"embeds": [embed]}).encode(),
+                  headers={"Content-Type": "application/json", "User-Agent": "changelog-ci/1.0"},
+              )
+              for _ in range(3):
+                  try:
+                      urllib.request.urlopen(req); return
+                  except urllib.error.HTTPError as e:
+                      if e.code == 429:
+                          time.sleep(float(e.headers.get("Retry-After", "2")) + 0.5); continue
+                      raise
+
+          url = f"https://github.com/{REPO}/blob/{AFTER}/{FILE}"
+          parts = chunks(body)
+          trimmed = len(parts) > MAX_MSGS
+          parts = parts[:MAX_MSGS]
+          if trimmed:
+              parts[-1] += f"\n\n… [полный текст]({url})"
+
+          for i, part in enumerate(parts):
+              embed = {"description": part, "color": 5793266}
+              if i == 0:
+                  embed["title"] = title[:256]
+                  embed["url"] = url
+              if i == len(parts) - 1:
+                  embed["footer"] = {"text": f"{REPO} · {ACTOR}"}
+              post(embed)
+              time.sleep(1)
+          PY

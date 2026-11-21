@@ -50,6 +50,26 @@ static void ApplyOutputPan(IXAudio2SourceVoice* voice,
                            sourceChannels, 2, matrix);
 }
 
+static PakLoadedSound* FindSoundCompat(PakLoader* pak, const char* name) {
+    PakLoadedSound* snd = pak->FindSound(name);
+    if (snd || strncmp(name, "snd_", 4) == 0) return snd;
+    // Recomp Pack canonicalizes every entry as snd_<source basename>. Several
+    // modules pass the event/sample name verbatim instead. Do not truncate:
+    // a truncated alias could select a different long sound name.
+    if (strlen(name) > 59) return 0;
+    char full[64];
+    memcpy(full, "snd_", 4);
+    strcpy(full + 4, name);
+    return pak->FindSound(full);
+}
+
+static bool SoundNameMatches(const char* canonical, const char* requested) {
+    if (strcmp(canonical, requested) == 0) return true;
+    return strncmp(canonical, "snd_", 4) == 0 &&
+           strncmp(requested, "snd_", 4) != 0 &&
+           strcmp(canonical + 4, requested) == 0;
+}
+
 AudioSystem::AudioSystem()
     : m_xaudio(0)
     , m_master(0)
@@ -144,7 +164,7 @@ void AudioSystem::Tick() {
 bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, float volume, int channel) {
     if (!m_ok || !pak || !sndName || !sndName[0]) return false;
 
-    PakLoadedSound* snd = pak->FindSound(sndName);
+    PakLoadedSound* snd = FindSoundCompat(pak, sndName);
     if (!snd) {
         printf("AudioSystem: sound not found: %s\n", sndName);
         return false;
@@ -230,20 +250,23 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
     }
 
     // v2.91: bind the channel's current pan to this voice through its
-    // output matrix, using the actual mono/stereo source channel count.
+    // output matrix. Normalized PCM keeps the proven FNAF1 legacy mapping
+    // (one source channel -> stereo). Only the new decoder path needs the
+    // real source channel count for correct stereo MP3/WAV playback.
+    const u32 matrixChannels = (snd->format != 0) ? audioChannels : 1;
     float pan = (channel >= 0 && channel < 32) ? m_channelPan[channel] : 0.0f;
     ApplyOutputPan(voice, reinterpret_cast<IXAudio2MasteringVoice*>(m_master),
-                   audioChannels, pan);
+                   matrixChannels, pan);
 
     VoiceSlot& s = m_slots[slot];
     s.voice = voice;
     s.inUse = true;
     s.channel = channel;
     s.pan = pan;
-    s.sourceChannels = audioChannels;
+    s.sourceChannels = matrixChannels;
     s.decoded = decoded;             // transfer ownership to the live voice
     ResetDecodedAudio(decoded);
-    strncpy(s.name, sndName, sizeof(s.name) - 1);
+    strncpy(s.name, snd->name, sizeof(s.name) - 1);
     s.name[sizeof(s.name) - 1] = '\0';
     return true;
 }
@@ -311,7 +334,7 @@ float AudioSystem::GetChannelPan(int channel) const {
 void AudioSystem::Stop(const char* sndName) {
     if (!m_ok || !sndName) return;
     for (int i = 0; i < m_slotCount; ++i) {
-        if (m_slots[i].inUse && strcmp(m_slots[i].name, sndName) == 0) {
+        if (m_slots[i].inUse && SoundNameMatches(m_slots[i].name, sndName)) {
             FreeSlot(i);
         }
     }
@@ -324,7 +347,7 @@ void AudioSystem::StopAll() {
 bool AudioSystem::IsPlaying(const char* sndName) const {
     if (!m_ok || !sndName) return false;
     for (int i = 0; i < m_slotCount; ++i) {
-        if (m_slots[i].inUse && strcmp(m_slots[i].name, sndName) == 0) return true;
+        if (m_slots[i].inUse && SoundNameMatches(m_slots[i].name, sndName)) return true;
     }
     return false;
 }
