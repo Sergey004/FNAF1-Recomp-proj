@@ -25,3 +25,23 @@ Downloaded from the linked upstream `master` files on 2026-11-18:
 
 Implementations are compiled exactly once by `src/AudioDecoders.cpp` with
 stdio and wchar file APIs disabled. No decoder is used by ctfak-cpp.
+
+---
+
+## SMC.h — Xbox 360 Southbridge Micro Controller helpers
+
+The game also vendors **one unmodified header** from the **Lightshow**
+Ring-of-Light tester project by **Derf** (ConsoleMods.org):
+
+- [`SMC.h`](../../Lightshow/Lightshow/SMC.h) — SMC quadrant LEDs
+  (message `0x99`), center power LED (`0x8c`), fan speed, temperature /
+  tilt / tray / AV-pack queries. LED messages credit
+  [free60.org/SMC](http://www.free60.org/wiki/SMC) and tmbinc's smc.c;
+  the header credits landaire's LaunchCode.
+
+License: **CC0 1.0 Universal** (the Lightshow repository's LICENSE).
+The four functions Lightshow implements (`PrepareBuffers`, `SetPowerLED`,
+`SetSolidRing`, `SetLEDs`) are copied verbatim into `src/RoL.cpp`; the
+header is byte-identical to the upstream copy and is included by exactly
+one translation unit (`src/RoL.cpp`), because it defines the SMC buffers.
+

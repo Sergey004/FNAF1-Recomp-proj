@@ -18,6 +18,7 @@
 #include "MenuSystem.h"
 #include "Progress.h"     // v2.7.13: persistent night-flow progress
 #include "Achievements.h" // v2.14: in-game achievements
+#include "RoL.h"          // v2.97: SMC Ring of Light (battery divisions, scare red)
 #include "SpriteBatch.h"
 #include "PakLoader.h"
 #include "ScreenFade.h"   // v2.76: the shared CFT frame-transition model
@@ -93,6 +94,12 @@ static void TickRumble(f32 dt) {
 
 // Game reference for callbacks needing state
 static Game* g_gameRef = nullptr;
+
+// v2.97: RoL diagnostics — every ACTUAL SMC Ring of Light write lands on
+// the on-screen debug console (registered after g_debugConsole.Init)
+static void RolDebugSink(const char* msg){
+    g_debugConsole.Print("%s", msg);
+}
 
 static const i32 SCREEN_W = 1280;
 static const i32 SCREEN_H = 720;
@@ -315,7 +322,17 @@ static bool SysPrompt(const wchar_t* title, const wchar_t* text,
 // dashboard instead. Exception: Golden Freddy's force-close keeps exit(0)
 // on purpose (it mirrors the original's abrupt close).
 static void ExitToDashboard() {
+    // v2.97: XLaunchNewImage kills the process WITHOUT the CRT shutdown, so
+    // an atexit handler would never run — hand the Ring of Light back to the
+    // dashboard BEFORE the image switch (otherwise our last state sticks).
+    rol::RestoreDefault();
     XLaunchNewImage(NULL, NULL);
+}
+
+// v2.97: CRT-managed exits (return from main, the deliberate exit(0) force
+// close) DO run atexit — restore the ring there too.
+static void RolRestoreAtExit(){
+    rol::RestoreDefault();
 }
 
 static bool ShowPakErrorScreen(){
@@ -780,7 +797,24 @@ void OnTimeUpdate(i32 hour){
         // his "got in" entry, not the clock (the old FREDDY_LAUGH[hour%3] was wrong).
     }
 }
-void OnPowerUpdate(f32 power){ s_lastPower=power; }
+void OnPowerUpdate(f32 power){
+    s_lastPower=power;
+    // v2.97: the Ring of Light IS the battery — the four quadrants are the
+    // power divisions ("Power left: NN%"), draining left-to-right. The SMC
+    // mixes red+green = ORANGE/yellow, so the whole ring also shifts color
+    // as the night drains: GREEN (healthy) -> ORANGE (halved) -> RED
+    // (dying). Ladder: 4 green >75%, 3 green >50%, 2 orange >25%,
+    // 1 orange 21..25%, 1 red 1..20%, dark at 0% (power-out hook also
+    // runs). RoL dedupes/throttles — safe at 60 Hz.
+    const int pct = (int)power;   // HUD truncate (999 tenths -> "99")
+    if (pct <= 0) { rol::SetAllOff(); return; }
+    const rol::QuadrantState c = (pct > 50) ? rol::Q_GREEN
+                               : (pct > 20) ? rol::Q_ORANGE : rol::Q_RED;
+    if      (pct > 75) rol::SetSolid(c);
+    else if (pct > 50) rol::SetQuadrants(c, c, c, rol::Q_OFF);
+    else if (pct > 25) rol::SetQuadrants(c, c, rol::Q_OFF, rol::Q_OFF);
+    else               rol::SetQuadrants(c, rol::Q_OFF, rol::Q_OFF, rol::Q_OFF);
+}
 
 // v2.48/2.49: XSCREAM is NOT always instant in the original — the office
 // kills reach the scream a beat after the scare anim starts: Freddy at frame
@@ -818,6 +852,9 @@ void OnJumpscare(AnimatronicId anim){
     g_audio.Stop(Snd::WHISPERING);   // v2.46: the office whisper dies with the kill
     // v2.37: the pad shakes at FULL force for the whole scare (both motors)
     RumbleKick(65535, 65535, 1.4f);
+    // v2.97: the WHOLE Ring of Light goes RED for the scare — restored on
+    // game-over (OnGameOver) / 6 AM (OnNightComplete).
+    rol::SetSolid(rol::Q_RED);
     g_debugConsole.Print("SCARE %s begin", nm);
     // v2.23: no "lives" system — the original has none. A death just returns
     // to the title and Continue retries the same (unlocked) night; progress is
@@ -826,6 +863,8 @@ void OnJumpscare(AnimatronicId anim){
 }
 void OnPowerOut(){
     printf("*** POWER OUT! ***\n");
+    // v2.97: the battery is dead — dark ring (matches the office blackout)
+    rol::SetAllOff();
     // group 285: powerdown + stop office loops
     g_audio.Stop(Snd::COLD_PRESC); g_audio.Stop(Snd::BUZZ_FAN);
     g_audio.Stop(Snd::BALLAST_HUM); g_audio.Stop(Snd::ROBOT_VOICE);
@@ -857,6 +896,8 @@ void OnPowerOutSteps(){
 }
 void OnNightComplete(i32 night){
     printf("\n6 AM -- Night %d Complete!\n",night);
+    // v2.97: survived — hand the Ring of Light back to the dash default
+    rol::RestoreDefault();
     g_audio.StopAll();
     // chimes start immediately (frame "next day" group 1); the kids cheer
     // fires on the roll-landing edge in main (v2.7.13)
@@ -883,6 +924,9 @@ void OnNightComplete(i32 night){
 }
 void OnGameOver(){
     printf("--- GAME OVER ---\n");
+    // v2.97: scare is over — ring back to the dash default before the
+    // game-over static / menu return
+    rol::RestoreDefault();
     g_audio.StopAll();
     g_audio.Play(&g_pak, Snd::STATIC2, true, 0.6f);
 }
@@ -1137,10 +1181,13 @@ static i32 RunBootSelector() {
 
 
 int main(int argc, char* argv[]){
+    // v2.97: FIRST of all — return the Ring of Light if we die a CRT death
+    // (exit(0) paths); the XLaunchNewImage path is covered in ExitToDashboard.
+    atexit(RolRestoreAtExit);
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.96 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.97 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -1155,7 +1202,15 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.96 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.97 (%s %s)", __DATE__, __TIME__);
+    // v2.97: DECISIVE SMC diagnostic — right here the ring cycles
+    // GREEN -> ORANGE -> RED -> dark using the exact Lightshow Sleep()
+    // pattern. If the ring shows this, HalSendSMCMessage works in this
+    // XEX and any missing in-game effect is game-logic timing (the debug
+    // console reports every real write from now on). If it does NOT, the
+    // SMC path itself is dead in this XEX — no game hook can fix that.
+    rol::SetDebugSink(RolDebugSink);
+    rol::RoLSelfTest();
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1458,6 +1513,21 @@ int main(int argc, char* argv[]){
         g_audio.Tick();
         g_ach.Tick(1.0f/60.0f);     // v2.14: achievement toast timer
         TickRumble(1.0f/60.0f);     // v2.37: pad rumble envelope (decay + XInputSetState)
+        rol::Tick(1.0f/60.0f);      // v2.97: flush deferred SMC Ring of Light sends
+        // v2.97: the ring MIRRORS THE GAME STATE every frame. A swallowed
+        // one-shot send can no longer leave it stale: the dedup byte inside
+        // RoL makes unchanged re-asserts free, so JUMPSCARE keeps the whole
+        // ring RED from the scare's first frame (onJumpscare kicks it in the
+        // same logic tick), POWER_OUT keeps it dark, and 6 AM / Game Over /
+        // menus hold the dash default. Gameplay battery stays callback-driven
+        // (OnPowerUpdate). Quitting via the GUIDE button is handled by the
+        // app's own guide handler (v2.77) -> ExitToDashboard() -> ring back.
+        if (state == GAME_STATE_JUMPSCARE)          rol::SetSolid(rol::Q_RED);
+        else if (state == GAME_STATE_POWER_OUT)     rol::SetAllOff();
+        else if (state == GAME_STATE_NIGHT_COMPLETE ||
+                 state == GAME_STATE_GAME_OVER ||
+                 state == GAME_STATE_MENU ||
+                 state == GAME_STATE_DISCLAIMER)    rol::RestoreDefault();
         TickFade(state, 1.0f/60.0f);  // v2.15: advance any running fade (may change `state`)
         if (g_goldenScareT >= 0.0f) {          // v2.17: scare flash timer
             g_goldenScareT += 1.0f/60.0f;

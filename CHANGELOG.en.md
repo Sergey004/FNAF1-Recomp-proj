@@ -3,6 +3,93 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.98 — CTFAK: first-tick input/timer/speaker conditions
+
+- **Unsupported-event audit across all dumps.** Aggregating the Frame
+  Runtime Renderer reports for all 8 games showed the top unsupported
+  conditions: Mouse&Keyboard (-6,-1/-2/-4/-5/-7/-8), Timer (-4,-7/-8),
+  Player (-7,-2/-4), Speaker (-2,-1) and the Active ones
+  (2,-4)/(2,-32)/...
+- **Input/timer/audio-state conditions are now deterministic at the first
+  tick.** No key is pressed, the mouse is not over anything, no timer
+  interval has elapsed, and a visual renderer tracks no audio state — the
+  faithful answer is FALSE, TRUE when negated (NOT). Pairs identified from
+  real dump parameters: "key pressed/released", "click on object/background",
+  "mouse over object", "after/every N" (the "timer N + value 0" parameters),
+  "player control", "sample playing". Fail-closed is preserved: the pairs
+  come from a table, nothing is guessed.
+- **Result over the same 7 games (233 frames):** skipped unsupported
+  5912 -> 3241 (−45%), groups false 10059 -> 12684 (+2625 — correctly
+  evaluated false), groups executed 1864 -> 1910 (+46 — groups with
+  negated input conditions, which are true at the first tick). Of the 233
+  PNGs exactly one changed — the FNaF World overworld: the map's init
+  groups ("NOT key released", "NOT moving") now execute and remove the
+  stray sprite from the map center.
+- The remainder stays deliberately unsupported (fail-closed): Active
+  (2,-4) — object collision/overlap (1413 groups — a static bbox test
+  could wrongly flip group execution), (2,-32)/(2,-23)/(2,-7)/(2,-22)/
+  (2,-34)/(2,-16), Counter (7,-4). The reports name their exact IDs.
+- Tests: 68/68 (+5 new — input false/negated-true, timers, speaker/player).
+  The FNAF1 dump is from the previous run (its source exe is absent from
+  the workspace).
+
+## v2.97 — SMC Ring of Light: battery divisions and the jumpscare red ring
+
+- **The ring divisions ARE the battery, plus a color gradient.** The four
+  Ring of Light quadrants mirror "Power left: NN%" and drain left-to-right,
+  and since the SMC mixes red+green = yellow/orange, the ring also SHIFTS
+  COLOR as the night drains: 4 green >75%, 3 green >50%, 2 orange >25%,
+  1 orange 21..25%, 1 red 1..20%, dark at 0% together with the office.
+- **The WHOLE ring goes RED on a jumpscare** — for the full scream;
+  OnGameOver (right after the scare ends) and OnNightComplete (6 AM)
+  restore the dashboard default.
+- **The ring now MIRRORS THE GAME STATE (fix for "one-shot sends never
+  show").** The tick loop re-asserts the ring EVERY FRAME from the state:
+  JUMPSCARE = solid red from the scare's first frame (onJumpscare kicks it
+  in the same logic tick), POWER_OUT = dark, 6 AM / Game Over / menus =
+  dashboard default. The dedup byte inside RoL makes unchanged re-asserts
+  free for the SMBus, and a swallowed one-shot send can no longer leave the
+  ring stale.
+- **The ring is handed back to the system on close.** `XLaunchNewImage`
+  kills the process without the CRT shutdown, so `ExitToDashboard()` clears
+  the ring BEFORE the image switch; CRT-managed exits (return from main,
+  the deliberate exit(0)) restore through an `atexit` handler.
+- **Guide = exit with the ring handed back.** The GUIDE button is a plain
+  XInput edge on this build (v2.77): its handler calls `ExitToDashboard()`,
+  which returns the ring BEFORE `XLaunchNewImage`. Kernel notifications
+  (XN_SYS_UI / `XNotifyGetLast`) were not needed — that export lives in
+  xam.xex and is absent from xboxkrnl.lib (LNK2019); the in-app handler
+  covers the same exit path.
+- **Lightshow's SMC code taken WHOLESALE.** `SMC.h` is vendored
+  byte-for-byte from the Lightshow project (Derf, ConsoleMods.org;
+  CC0 license, credits free60.org/SMC, tmbinc and landaire), and the four
+  functions (`PrepareBuffers/SetPowerLED/SetSolidRing/SetLEDs`) are copied
+  verbatim from Lightshow-boot.cpp — sends go through `HalSendSMCMessage`
+  (xboxkrnl.lib) and the same `New_SMC_State[4]` globals. RoL adds only
+  the dedup byte, the 100 ms throttle window and the game-facing API.
+- **Boot ring self-test** — the decisive diagnostic: right after InitD3D
+  the ring cycles GREEN -> ORANGE -> RED -> dark with the same Sleep()
+  pattern Lightshow uses. If the ring shows this, the SMC path works in
+  this XEX and any missing in-game effect is game-logic timing; if not,
+  the path is dead in the XEX itself and no game hook can fix it. Every
+  real write is printed to the on-screen debug console ("RoL send
+  0x99 <byte>").
+- **Known hardware limitation: Phat consoles only.** Ring of Light quadrant
+  control through SMC message 0x99 works on Phat models (Falcon/Jasper);
+  on Slim (Trinity/Corona) the SMC is a different generation and this
+  command does not drive the quadrants — the ring simply stays in its
+  system state (verified on hardware). If the boot self-test on a Slim
+  does not show the green/orange/red cycle, that is expected model
+  behavior, not a bug.
+- **SMC etiquette:** every call is a synchronous SMBus transaction, so the
+  module caches the packed byte, sends only on a CHANGE, and at most ~10 Hz
+  (a change inside the 100 ms guard window parks until `rol::Tick` in the
+  main loop). OnPowerUpdate ticks 60x/s — the bus never floods. The center
+  power LED is not touched by the hooks.
+- Hooks live only in the FNAF1 callbacks (onPowerUpdate/onPowerOut/
+  onJumpscare/onGameOver/onNightComplete); other modules leave the ring
+  alone.
+
 ## v2.96 — CTFAK frame-start event evaluator
 
 - `Frame Runtime Renderer` now evaluates **Start of Frame / always event
@@ -41,6 +128,12 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
   the regular Debug/Release Xbox 360 builds. The dedicated CodeAnalysis
   configuration still runs it; ordinary Release builds no longer drown in
   analyzer diagnostics for vendored dr_libs and pre-existing code.
+- **Removed the background office rumble.** There was no literal "fan rumble"
+  in the code — what read as fan/ambience vibration was the v2.37 faint
+  LF pulses on Freddy's move/laugh (`RumbleKick(13000, 0, 0.2f)`) layered over
+  the continuous office hum. Both calls are removed: Freddy's steps and laugh
+  are audio-only now. Intentional rumble is preserved: jumpscare, power-out,
+  door close, Foxy door bang and the nose honk.
 
 ## v2.95 — audio-name compatibility, SL fixes and the in-process CTFAK tools
 
