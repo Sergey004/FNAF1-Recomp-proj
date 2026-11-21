@@ -249,14 +249,16 @@ bool AudioSystem::PlayInternal(PakLoader* pak, const char* sndName, bool loop, f
         return false;
     }
 
-    // v2.91: bind the channel's current pan to this voice through its
-    // output matrix. Normalized PCM keeps the proven FNAF1 legacy mapping
-    // (one source channel -> stereo). Only the new decoder path needs the
-    // real source channel count for correct stereo MP3/WAV playback.
+    // v2.71's proven FNAF1 path did NOT call SetOutputMatrix: XAudio2's
+    // default source->master mapping is exactly what made the office bank
+    // sound correct. Only a non-zero channel pan (added later for SL) needs
+    // an explicit matrix. Do not send a unity/default matrix at play time.
     const u32 matrixChannels = (snd->format != 0) ? audioChannels : 1;
     float pan = (channel >= 0 && channel < 32) ? m_channelPan[channel] : 0.0f;
-    ApplyOutputPan(voice, reinterpret_cast<IXAudio2MasteringVoice*>(m_master),
-                   matrixChannels, pan);
+    if (pan != 0.0f) {
+        ApplyOutputPan(voice, reinterpret_cast<IXAudio2MasteringVoice*>(m_master),
+                       matrixChannels, pan);
+    }
 
     VoiceSlot& s = m_slots[slot];
     s.voice = voice;

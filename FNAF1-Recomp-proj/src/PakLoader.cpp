@@ -829,6 +829,13 @@ void PakLoader::EnsureSoundLoaded(int idx)
         return;
     }
     OwnedBuf* b = new (std::nothrow) OwnedBuf;
+    if (!b) {
+        delete[] buf;
+        s.resident = true;
+        s.format = 1;
+        if (m_loadCs) LeaveCriticalSection((CRITICAL_SECTION*)m_loadCs);
+        return;
+    }
     b->data = buf; b->next = m_owned; m_owned = b;
     s.data = buf;
     NormalizeOne(idx);

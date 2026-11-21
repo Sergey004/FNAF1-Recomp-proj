@@ -3,6 +3,45 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.96 — CTFAK frame-start event evaluator
+
+- `Frame Runtime Renderer` now evaluates **Start of Frame / always event
+  groups** once before drawing, so it renders the first-tick CTF state rather
+  than the serialized editor layout. Supported state: counters (including the
+  newly preserved serialized initial/min/max), per-instance alterables,
+  show/hide, relative/absolute position, animation selection and event-set
+  alpha coefficients.
+- Added a small expression evaluator for real dump tokens: constants, global
+  values, object alterables, parentheses, addition (`op 2`) and multiplication
+  (`op 8`). Unknown operators/operands fail closed.
+- Event conditions are evaluated per instance. Supported: Start of Frame,
+  always-family, counter compare, alterable compare, animation compare, X
+  compare, visible check, compare-two-expressions, and NOT selection. Unsupported
+  timer/input/collision/action groups do not partially modify state; the report
+  names the exact condition/action IDs.
+- Audio, INI storage and frame-navigation actions are intentionally no-ops for
+  a visual renderer and are listed separately. Timer ticks, movement, scroll,
+  input and custom HWA shaders remain out of scope.
+- Reports now show groups executed, groups false at the first tick, groups
+  skipped unsupported and counters initialized. JSON export includes counter
+  initial/min/max.
+- Verified: 63/63 CTFAK tests pass. FNAF1 office/title now apply event
+  visibility (52 office sprites instead of 80; the title hides 6th-night/star
+  state for a fresh save), FNAF2/FNAF3/SL render with event state, and all
+  PNGs remain runtime-sized viewports.
+- **Restored the v2.71 FNAF1 mixing behavior.** Commit `7bb8190`
+  (v2.90/v2.91) added channel pan and began calling `SetOutputMatrix` on
+  every FNAF1 voice; later commits corrected the signature/dimensions but
+  still sent a unity matrix. v2.71 did not call it at all. Play now skips the
+  matrix when the channel pan is zero, restoring XAudio2's proven default
+  mapping for FNAF1 PCM. Explicit pan remains for SL and other modules;
+  decoded stereo uses its real channel count only when a pan is actually set.
+- Build cleanup: fixed the v2.96 `matrixChannels` scope error, guarded the
+  remaining nothrow sound-buffer allocation, and disabled PREfast analysis in
+  the regular Debug/Release Xbox 360 builds. The dedicated CodeAnalysis
+  configuration still runs it; ordinary Release builds no longer drown in
+  analyzer diagnostics for vendored dr_libs and pre-existing code.
+
 ## v2.95 — audio-name compatibility, SL fixes and the in-process CTFAK tools
 
 - **Sister Location sound calls were wrong.** A manifest/dump audit found 11

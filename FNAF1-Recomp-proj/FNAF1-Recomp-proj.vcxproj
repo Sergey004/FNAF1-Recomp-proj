@@ -114,7 +114,6 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PreprocessorDefinitions>_DEBUG;_XBOX</PreprocessorDefinitions>
       <CallAttributedProfiling>Callcap</CallAttributedProfiling>
-      <PREfast>Analyze</PREfast>
       <AdditionalIncludeDirectories>C:\Users\123\Desktop\FNAF1-Recomp-proj\FNAF1-Recomp-proj\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -242,7 +241,6 @@
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <PreprocessorDefinitions>NDEBUG;_XBOX</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>C:\Users\123\Desktop\FNAF1-Recomp-proj\FNAF1-Recomp-proj\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PREfast>Analyze</PREfast>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>

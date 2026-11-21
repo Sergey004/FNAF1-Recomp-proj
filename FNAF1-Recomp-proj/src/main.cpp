@@ -929,8 +929,8 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
     RoomInfo i=RoomSystem::GetRoomInfo(r);
     printf("[AI] %s -> %s\n",n[a],i.name);
     // v2.37: Freddy's hulk creeping closer — a barely-there low-freq pulse
-    // on his path steps (the touch of the approach)
-    if (a == ANIM_FREDDY) RumbleKick(13000, 0, 0.2f);
+    // on his path steps. Removed: it read as unwanted background rumble over
+    // the office fan/ambience (user call; the steps sound already carries it).
     // v2.17: deep steps for Bonnie/Chica; Freddy's laugh is the _1d/_2d/_8d
     // giggle family (#56/57/58), NOT Laugh_Giggle_Girl_1 (#38 = Golden Freddy).
     if(a==ANIM_BONNIE||a==ANIM_CHICA) {
@@ -963,7 +963,7 @@ void OnAnimatronicMove(AnimatronicId a,RoomId r){
         g_audio.SetChannelVolume(CH_FREDDY_LAUGH, laughV);
         g_audio.SetChannelVolume(CH_RUNFAST, runV);
         g_audio.PlayOnChannel(&g_pak, Snd::FREDDY_LAUGH[rand() % 3], false, CH_FREDDY_LAUGH);
-        RumbleKick(13000, 0, 0.2f);   // v2.37: Freddy's laugh — faint LF pulse
+        // v2.37 laugh rumble removed: it felt like unwanted fan/ambience buzz.
         g_audio.PlayOnChannel(&g_pak, Snd::RUNNING_FAST, false, CH_RUNFAST);
         // music box while Freddy is in the kitchen (groups 399/400, ch22)
         if (r==ROOM_KITCHEN) g_audio.PlayOnChannel(&g_pak, Snd::MUSIC_BOX, false, CH_MUSICBOX);
@@ -1140,7 +1140,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.95 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.96 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -1155,7 +1155,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.95 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.96 (%s %s)", __DATE__, __TIME__);
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
