@@ -1187,7 +1187,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.97 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.99 built %s %s ===\n", __DATE__, __TIME__);
 
     Game game;
     g_gameRef = &game;
@@ -1202,7 +1202,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.97 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.99 (%s %s)", __DATE__, __TIME__);
     // v2.97: DECISIVE SMC diagnostic — right here the ring cycles
     // GREEN -> ORANGE -> RED -> dark using the exact Lightshow Sleep()
     // pattern. If the ring shows this, HalSendSMCMessage works in this

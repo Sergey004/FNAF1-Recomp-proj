@@ -288,7 +288,13 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
     const bool halloween = game.IsHalloween() && (game.GetViewing() == 0);
     if (halloween)
         DrawWorld(507,   0.0f,   0.0f, 1600.0f, 255.0f, pan, 0xFFFFFFFF);// "lights" strips
-    DrawWorld(218, 637.0f,   0.0f,  899.0f, 389.0f, pan, worldCol);  // "Active 20" wall piece
+    // v2.99: img_218 ("Active 20") is NOT a wall piece — the ctfak frame
+    // runtime audit proved it is Mangle's CAM-FEED sprite: dump group 372
+    // hides it while viewing==0 and groups 373-377 show it only when the
+    // monitor is up with Mangle at the viewed cam. RenderOffice runs ONLY
+    // with viewing==0, so it must never draw here; the monitor feed owns
+    // this sprite. The office Mangle stays the v2.66 GetMangleOfficeView()
+    // hanging frames further below.
     DrawWorld( 90, 105.0f, 361.0f,   92.0f, 141.0f, pan, 0xFFFFFFFF);// LEFT light button
     DrawWorld( 98, 1395.0f, 359.0f,  92.0f, 141.0f, pan, 0xFFFFFFFF);// RIGHT light button
 

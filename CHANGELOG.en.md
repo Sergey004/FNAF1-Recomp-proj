@@ -3,7 +3,57 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.99 — port: Mangle no longer hangs in the FNAF2 office
+
+- **Removed the unconditional DrawWorld(218) from RenderOffice** ("Active
+  20" was mislabeled a "wall piece"). The frame-runtime audit proved img_218
+  is Mangle's CAM-FEED sprite: dump group 372 hides it while viewing==0 and
+  groups 373-377 show it only with the monitor up and Mangle at the viewed
+  cam. RenderOffice runs ONLY with viewing==0, so the sprite must never
+  draw there. The night-start office now matches the real game: the desk
+  with the toys, the fan, the buttons — no Mangle overhead (verified with
+  the offline harness, frame f2_03_office_down).
+- The office Mangle remains on the v2.66 mechanism (GetMangleOfficeView,
+  the 217/219/78 hanging frames) — she appears only when Mangle actually
+  enters the office.
+- Harness: added the f2_03_office_down frame (the monitor-down office) for
+  regression checks. The monitor feed is untouched — its characters come
+  through the scene selector's images.
+
 ## v2.98 — CTFAK: first-tick input/timer/speaker conditions
+
+- **(2,-2) = "animation N has finished playing", NOT "animation == N".** The
+  old reading evaluated TRUE whenever the start animation matched the compared
+  value, wrongly firing mid-game UI chains at tick 0. Proof from FNAF2: office
+  group 149 ("flip animation" finished frame 0 -> act #24 + restore the last
+  camera) fired at tick 0 under the old reading (the flip object's start frame
+  is 0) and set viewing=9, so group 372 (viewing==0 -> hide) never hid
+  **Mangle** in the office. FNAF1 confirms: the door chains "finished closing
+  (12) -> animation 13 (closed)". After the fix Mangle is no longer in the
+  FNAF2 office at runtime ✓.
+- **Side effect — the honest serialized frame of the UI chains.** The bogus
+  act #24 calls used to push the flip/mask/blip objects' animations out of
+  range ("no frame-start image" -> object skipped), which painted the FNAF2
+  office bright. Now the chains do not fire and the objects draw their
+  serialized frame: "flip animation" = img 114 (a near-black office frame
+  with the desk strip), the mask/monitor buttons are visible — the true
+  first-tick state before the flip animation plays. 23 frames changed versus
+  the morning run (FNaF World 10, FNAF3 10, Pizzeria 3) — Mangle's Quest now
+  shows the level's green slabs.
+- **Graphics audit of the other games + the "idle placeholder" rule.** The
+  key-screen sweep found an error class: animation-chain objects serialized
+  with a SOLID placeholder frame (FNAF4's black attack states, flash covers)
+  blanked whole screens. The rule: a (2,-2) chain subject whose resolved
+  frame is solid is not drawn and lands in the report ("animation-chain
+  object ... idle at first tick"). FNAF4's bedroom lost 5 such overlays
+  (bonnie bedroom attack, cupcake attack, freddy bedroom attack, fredbear
+  scare, closetcreak), FNAF3's "end" 1.
+- **Diagnosed, next rounds:** the dark first ticks of the FNAF2 office (the
+  flip frame before it plays) and the FNAF4 bedroom (the dark overlays at
+  their pan-state positions) — these are the PRE-FADE states; a settle-pass
+  model is needed. The UCN roster is covered by the Active 5/6 pair (img
+  143, alpha 255 and 0) — contradictory polarity, needs the transition
+  model. The FNAF3 office panel/menu belong to the same family.
 
 - **Unsupported-event audit across all dumps.** Aggregating the Frame
   Runtime Renderer reports for all 8 games showed the top unsupported
