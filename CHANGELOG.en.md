@@ -3,6 +3,32 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.101 — CTFAK: Y compare + alterable operand; the rest of the games audited
+
+- **(2,-16) is the Y-position compare** (the mirror of the already supported
+  (2,-17)=X). Evidence from the dumps: FNAF3's "hitbox" compares its Y with
+  the player's Y +/- 384 (a vertical tolerance around the player), "top jaw"
+  tests Y 0/-710, the blueprint-mode "scroll" tests the Y band 540..1620 and
+  the FNaF World "man" 200..600.
+- The expression operand **`Object(info=N, list=I, num=80)`** (the object's
+  alterable value I) is now evaluated: 3867 references in the dumps, among
+  them FNAF4's AI formula `Object(info=56, list=0, num=80)` (the AI level).
+  The other object slots (81/82/1/11/...) are unproven and fail closed.
+- The dumps of all eight games (FNAF1/2/3/4, SL, World, UCN, FFPS) were
+  regenerated: every "unsupported expression operand" note is gone and both
+  (2,-16) and (2,-4) resolve everywhere. Tests: +2 (Y compare, alterable
+  operand) — 76/76, ctest ✓.
+- **Objective art audit of the remaining games.** For every port screen the
+  check is whether its images belong to the matching dump frame (the per-frame
+  image sets were rebuilt from the JSON export, animation cells included):
+  FNAF1, FNAF2, FNAF3 and Sister Location are clean; FNaF World's map is
+  generated from the "overworld" frame (2207 instances) with no stray assets;
+  FNAF4 was the only game with a wrong base (img 4, fixed in v2.100) — and
+  img_4 belongs to no animation of any FNAF4 object (checked across the 405
+  objects of the JSON export).
+- Still unsupported (fail closed, evidence needed): (2,-32), (2,-23), (2,-7),
+  (2,-22), (2,-8), (2,-3), (2,-1) and the Counter condition (7,-4).
+
 ## v2.100 — FNAF4: dump-correct bedroom base + honest collision in CTFAK
 
 - **Port: the bedroom base image is img 16, not img 4.** The audit of all
