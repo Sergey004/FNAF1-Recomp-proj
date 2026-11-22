@@ -584,6 +584,9 @@ void FNaF4Game::TickIntro(f32 dt, const FNaF4Inputs& in) {
 
 void FNaF4Game::StartMinigame(i32 game, bool fromExtras) {
     m_pt.Clear();
+    m_ptFlashPrev = false;         // v2.100: the flash edge must re-arm on a
+                                   // fresh run — a restart while the light is
+                                   // held would swallow the first press
     m_pt.game = game;
     m_pt.fromExtras = fromExtras;
     m_pt.clock = game == 1 ? 45 :                     // g53 (BB): 45 s

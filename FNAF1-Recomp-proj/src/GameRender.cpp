@@ -1177,18 +1177,26 @@ static int CamFeedFor(const Game& game, CameraId cam) {
             if (c) return CAMFEED_1B_CHICA;
             return CAMFEED_1B_EMPTY;
         case CAM_2A:
-            if (b) return CAMFEED_2A_BONNIE;
-            if (c) return CAMFEED_2A_FIGURE;
+            // v2.99 art audit: img 206 = the West Hall with BONNIE's dark
+            // silhouette at the end (the 2A presence frame). img 226 is the
+            // CHICA face close-up and was wrongly returned here — Bonnie's
+            // own hall feed showed Chica's face. Chica never takes the west
+            // wing, so her gate is gone.
+            if (b) return CAMFEED_2A_FIGURE;
             return CAMFEED_2A_EMPTY;
         case CAM_2B:
             if (b) return CAMFEED_2B_BONNIE;
-            if (c) return CAMFEED_2B_CHICA;
+            // v2.99: Chica never takes the west corner; the old gate drew a
+            // Bonnie stare frame (img 478) for her
             return CAMFEED_2B_EMPTY;
         case CAM_3:
             if (b) return CAMFEED_3_BONNIE;
             return CAMFEED_3_EMPTY;
         case CAM_4A:
-            if (b) return CAMFEED_4A_FIGURE;
+            // v2.99 art audit: img 221 = the EAST HALL with CHICA standing
+            // at the far end — the gate was on Bonnie, who never takes the
+            // east wing, so Chica's visit rendered the empty hall
+            if (c) return CAMFEED_4A_FIGURE;
             return CAMFEED_4A_EMPTY;
         case CAM_4B:
             if (c) return CAMFEED_4B_CHICA;

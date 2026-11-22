@@ -11,8 +11,48 @@
 #include "XdkCompat.h"   // Snprintf — XDK CRT predates C99 snprintf
 #include "SystemDate.h"   // v2.74: the dashboard's date (the "term" secret)
 #include <stdlib.h>
+#include <math.h>
 
 namespace fnaf {
+
+// v2.100: the monitor map button coordinates (the renderer's map space) —
+// the room page: cams 01..10 + the "Map Toggle" plate; the vent page:
+// cams 11..15 + the toggle. The 4-directional D-pad walks this graph
+// positionally instead of cycling the cams sequentially.
+struct F3NavPt { f32 x, y; i32 sel; };
+static const F3NavPt kNavRoom[11] = {
+    {  74, 280, 0 }, { 289, 252, 1 }, { 370, 210, 2 }, { 370, 145, 3 },
+    { 206, 161, 4 }, {  67, 169, 5 }, {  67, 103, 6 }, { 172,  81, 7 },
+    { 238,  38, 8 }, { 346,  74, 9 }, { 215, 370, 15 }
+};
+static const F3NavPt kNavVent[6] = {
+    {  71,  10, 0 }, { 133, 128, 1 }, { 218, 188, 2 },
+    { 303, 108, 3 }, { 328, 248, 4 }, { 215, 370, 15 }
+};
+
+// the nearest button in the pressed direction: prefer the smallest angle
+// off the pressed axis, then the shortest hop
+static i32 MapNavDir(const F3NavPt* pts, i32 count, i32 cur, f32 dx, f32 dy) {
+    i32 curIdx = -1;
+    for (i32 i = 0; i < count; ++i)
+        if (pts[i].sel == cur) { curIdx = i; break; }
+    if (curIdx < 0) return pts[0].sel;
+    const f32 cx = pts[curIdx].x, cy = pts[curIdx].y;
+    i32 best = -1;
+    f32 bestScore = -1e9f;
+    for (i32 i = 0; i < count; ++i) {
+        if (i == curIdx) continue;
+        const f32 vx = pts[i].x - cx, vy = pts[i].y - cy;
+        const f32 dot = vx * dx + vy * dy;
+        if (dot <= 0.0f) continue;                    // behind the cursor
+        const f32 len = sqrtf(vx * vx + vy * vy);
+        if (len < 0.001f) continue;
+        const f32 score = (dot / len) * 2.0f - len / 400.0f;
+        if (score > bestScore) { bestScore = score; best = i; }
+    }
+    return best >= 0 ? pts[best].sel : cur;
+}
+
 
 // ------------------------------------------------------------
 // construction / flow
@@ -527,10 +567,16 @@ void FNaF3Game::TickOffice(f32 dt, const FNaF3Inputs& in) {
         }
     } else if (m_viewing != 0) {
         // ---- map selector + camera select + actions ----
-        if (in.upPressed)    m_selIdx = (m_selIdx + 15) % 16;
-        if (in.downPressed)  m_selIdx = (m_selIdx + 1) % 16;
-        if (in.leftPressed)  m_selIdx = (m_selIdx + 15) % 16;
-        if (in.rightPressed) m_selIdx = (m_selIdx + 1) % 16;
+        // v2.100: the 4-directional positional navigation — the D-pad moves
+        // the cursor to the nearest map button in the pressed direction
+        // (was: all four directions cycled the cams sequentially)
+        const f32 navDx = (in.rightPressed ? 1.0f : 0.0f) - (in.leftPressed ? 1.0f : 0.0f);
+        const f32 navDy = (in.downPressed ? 1.0f : 0.0f) - (in.upPressed ? 1.0f : 0.0f);
+        if (navDx != 0.0f || navDy != 0.0f) {
+            m_selIdx = m_mapVent
+                ? MapNavDir(kNavVent, 6, m_selIdx, navDx, navDy)
+                : MapNavDir(kNavRoom, 11, m_selIdx, navDx, navDy);
+        }
         const bool ventMap = m_mapVent;
         // selector rows: on the room map indices 0..9 = cams 1..10 (+15 =
         // toggle); on the vent map indices 0..4 = cams 11..15 (+15 = toggle)

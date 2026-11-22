@@ -207,8 +207,15 @@ void FNaF4Render::RenderBedroom(const FNaF4Game& game, f32 time, f32 pan) {
     if (!m_batch || !m_pak) return;
     (void)time;
 
-    // the bedroom base
-    DrawWorld(4, 0.0f, 0.0f, 1300.0f, 768.0f, pan, 0xFFFFFFFF);
+    // v2.100: the bedroom base is img 16 — objInfo 60 "Active", the only
+    // static full-room object of frame 3 "level" (1300x768 at (1,1), hot
+    // (649,383), layer 0). The old img 4 is an ORPHAN: no object in any
+    // FNAF4 frame references 4.png (checked across all 19 FrameLayout
+    // dumps), and it is the brighter closet-spotlight variant — the real
+    // idle bedroom is the dim img 16. The lit variants are separate
+    // runtime layers: 'on4' img 547 (the closet light, g215) and 'off4'
+    // img 539 (the turn-to-bed blackout, g209-212).
+    DrawWorld(16, 0.0f, 0.0f, 1300.0f, 768.0f, pan, 0xFFFFFFFF);
 
     // the walk darks (world-size overlays; first frames 45/160/57)
     if (game.IsWalking()) {

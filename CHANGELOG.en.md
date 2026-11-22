@@ -3,6 +3,40 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.100 — FNAF4: dump-correct bedroom base + honest collision in CTFAK
+
+- **Port: the bedroom base image is img 16, not img 4.** The audit of all
+  19 FNAF4 FrameLayout dumps showed img_4 is referenced by NO object in any
+  frame (an orphaned asset, the brighter closet-spotlight variant). The only
+  static room object is objInfo 60 "Active" — img_16 1300x768 at (1,1),
+  layer 0 — the dim bedroom of the real game. The lit states are separate
+  runtime layers: "on4" (img 547, the closet light, group 215) and "off4"
+  (img 539, the turn-to-bed blackout, groups 209-212). RenderBedroom now
+  draws img 16 (harness: f4_02_bedroom shows the dim room with the fan,
+  dressers and toys).
+- **Port: the flashlight edge re-arms in StartMinigame.** m_ptFlashPrev was
+  not reset when a minigame started — restarting while the light was held
+  swallowed the first press: viewState never became 1 and the lit pose
+  (img 879/1225) never showed. The harness frames f4_mg_plush_chair /
+  f4_mg_plush_light / f4_mg_bb_light now show PlushTrap on the chair under
+  the spotlight and BB in the hallway — matching the original.
+- **Harness: bedroom pans and lit snapshots.** f4_02_bedroom_left/right
+  (pan 0/276 — the edges of the 1300-wide world at a 1024 viewport) and
+  three lit minigame frames were added to RunFNaF4 for regression.
+- **CTFAK: (2,-4) = "collision with object", now evaluated honestly.** The
+  condition used to fall through as unsupported (56 FNAF4 level groups
+  skipped because of it; 67 skipped total). Evidence: the parameter is a
+  zone object — FNAF4 builds its whole position system on it ("plushtrap"
+  collides with "in chair"/"hall stage N"; FNAF2 "your view" collides with
+  "paper pals" as the camera-visibility test). The serialized first tick
+  HAS positions, so the evaluator now computes a real AABB overlap from the
+  instance x/y plus the start image's size/hotspot (the same anchor the
+  renderer draws at). Overlap selects; no overlap is false (negated —
+  true). FNAF4 level: executed 44→54, skipped 67→11, every (2,-4)
+  resolved; the FNAF2 office and FNAF3 dumps were regenerated — no (2,-4)
+  left anywhere.
+- Tests: 3 new collision tests (overlap / no overlap / negated) — 74/74.
+
 ## v2.99 — port: Mangle no longer hangs in the FNAF2 office
 
 - **Removed the unconditional DrawWorld(218) from RenderOffice** ("Active
@@ -19,6 +53,18 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 - Harness: added the f2_03_office_down frame (the monitor-down office) for
   regression checks. The monitor feed is untouched — its characters come
   through the scene selector's images.
+- **FNAF3: the monitor's vent map brought to the original.** The vent page's
+  background = img 626 (the blue vent maze — the second frame of the "map"
+  object's seq 12 pair; the port drew the room map 532 on both pages). The
+  CAM 11-15 plates = the dump's imgs 613/614/617/619/621. The seal
+  indicators: img 609 is a GRAY bar the game tints — the port now tints it
+  green (open) / red (sealed) instead of white/blue. The vent-entrance
+  pointers = the arrow imgs 93-96 (17 instances, the positions from
+  FrameLayout/frame_3_Frame 1.txt). The "Seal Vent" plate (img 80) moved to
+  the left edge (it clipped at the screen border), and the dump's own hint
+  text "To seal a vent, double-click the vent cam button." added (the port
+  font stands in for the TTF). The page toggle: RB or select "Map Toggle" +
+  A (existed before — now visible).
 
 ## v2.98 — CTFAK: first-tick input/timer/speaker conditions
 

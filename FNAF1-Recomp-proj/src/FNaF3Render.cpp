@@ -383,10 +383,28 @@ static const MapBtn kVentBtn[5] = {
     { 303.0f, 108.0f }, { 328.0f, 248.0f }
 };
 static const MapBtn kVentMark[5] = {
-    {  46.0f,  69.0f }, {  75.0f, 141.0f }, { 167.0f, 201.0f },
-    { 355.0f, 172.0f }, { 277.0f, 272.0f }
+    {  37.0f,  92.0f }, {  66.0f, 164.0f }, { 158.0f, 224.0f },
+    { 346.0f, 195.0f }, { 268.0f, 295.0f }
 };
-static const f32 kMapX = 740.0f, kMapY = 70.0f;
+// v2.99: the vent cam plates (the dump's own "CAM 11".."CAM 15" images —
+// the room page's 83..92 counterparts) and the vent-entrance pointers
+// (the dump's arrow 1..7 instances, positions map-relative from
+// FrameLayout/frame_3_Frame 1.txt, layer 4)
+static const MapBtn kVentLabel[5] = {
+    {  15.0f,   8.0f }, {  15.0f,   8.0f }, {  15.0f,   8.0f },
+    {  15.0f,   8.0f }, {  15.0f,   8.0f }
+};
+static const i32 kVentLabelImg[5] = { 613, 614, 617, 619, 621 };
+static const struct { i32 img; f32 x, y, w, h; } kVentArrows[] = {
+    { 93, 100, 307, 40, 21 }, { 93,  90, 131, 40, 21 }, { 93,  89, 195, 40, 21 },
+    { 93, 327, 134, 40, 21 },
+    { 94, 330, 238, 40, 21 }, { 94,  93, 153, 40, 21 }, { 94, 293, 276, 40, 21 },
+    { 94, 332, 171, 40, 21 }, { 94, 307, 104, 40, 21 }, { 94, 181, 217, 40, 21 },
+    { 94, 119, 153, 40, 21 }, { 94, 319, 286, 40, 21 }, { 94, 358, 181, 40, 21 },
+    { 95, 277, 250, 21, 40 },
+    { 96, 167, 119, 21, 40 }, { 96,  74,  47, 21, 40 }, { 96, 233,  76, 21, 40 },
+};
+static const f32 kMapX = 586.0f, kMapY = 299.0f;
 
 void FNaF3Render::RenderMonitor(const FNaF3Game& game, f32 time) {
     if (!m_batch || !m_pak) return;
@@ -478,17 +496,28 @@ void FNaF3Render::RenderMap(const FNaF3Game& game) {
         Draw(426, kMapX + 190.0f, kMapY + 355.0f, 50.0f, 30.0f,
              (sel == 15) ? 0xFF50A0FF : 0xFFFFFFFF);     // the toggle button
     } else {
-        // the vent map: 5 vent cams + the sealed/open markers
-        Draw(532, kMapX, kMapY, 430.0f, 400.0f, 0xFFFFFFFF);
+        // the vent map: the dump's map object seq 12 frame 0 = img 626 (the
+        // blue vent maze, YOU baked in); the 5 vent bars (img 609, GRAY art)
+        // tint green = open / red = sealed (the dump's vent objects: seq 0 =
+        // [609] the sealed bar, seq 12 = [531] the green open bar); the
+        // cam plates 613/614/617/619/621 = "CAM 11".."CAM 15"; the white
+        // triangles = the vent-entrance pointers (arrow 1..7 instances)
+        Draw(626, kMapX, kMapY, 430.0f, 400.0f, 0xFFFFFFFF);
         for (i32 i = 0; i < 5; ++i) {
             const i32 ventCam = 11 + i;
             const u32 tint = (sel == i) ? 0xFF50A0FF : 0xFFFFFFFF;
-            Draw(81, kMapX + kVentBtn[i].x, kMapY + kVentBtn[i].y, 60.0f, 40.0f, tint);
-            // the vent marker: sealed = red tint (anim 0/12 of img 609 —
-            // only one image was dumped, so the state is a tint)
-            const u32 mt = (game.GetSealedVent() == ventCam) ? 0xFF5050FF : 0xFFFFFFFF;
+            Draw(kVentLabelImg[i], kMapX + kVentBtn[i].x + kVentLabel[i].x,
+                 kMapY + kVentBtn[i].y + kVentLabel[i].y, 30.0f, 25.0f, tint);
+            // the vent bar: sealed = RED tint, open = GREEN tint (img 609
+            // is gray — the dump's vent objects flip seq 0 [609] / seq 12
+            // [531] per the seal state; one gray art + tints)
+            const u32 mt = (game.GetSealedVent() == ventCam) ? 0xFFFF5959 : 0xFF59FF66;
             Draw(609, kMapX + kVentMark[i].x, kMapY + kVentMark[i].y, 40.0f, 27.0f, mt);
         }
+        for (size_t a = 0; a < sizeof(kVentArrows) / sizeof(kVentArrows[0]); ++a)
+            Draw(kVentArrows[a].img, kMapX + kVentArrows[a].x,
+                 kMapY + kVentArrows[a].y, kVentArrows[a].w, kVentArrows[a].h,
+                 0xFFFFFFFF);
         Draw(426, kMapX + 190.0f, kMapY + 355.0f, 50.0f, 30.0f,
              (sel == 15) ? 0xFF50A0FF : 0xFFFFFFFF);
         // the sealing progress bar (img 611) while a seal is armed
@@ -496,12 +525,21 @@ void FNaF3Render::RenderMap(const FNaF3Game& game) {
             const f32 w = 165.0f * (game.GetSealProgress() / game.GetSealDuration());
             Draw(611, kMapX + 130.0f, kMapY + 300.0f, w, 30.0f, 0xFFFFFFFF);
         }
+        // v2.99: the dump's own vent-map hint (the frame's String object —
+        // "To seal a vent, double-click the vent cam button."), shown while
+        // the vent map is up; the port font stands in for the TTF
+        if (m_text) {
+            m_text->DrawText((int)(350.0f * kScaleX), (int)(398.0f * kScaleY),
+                             "To seal a vent, double-click", 0xFFFFFFFF);
+            m_text->DrawText((int)(350.0f * kScaleX), (int)(424.0f * kScaleY),
+                             "the vent cam button.", 0xFFFFFFFF);
+        }
     }
     // v2.67: the dump's own overlay plates replace the debug caption —
     // "play text" img 366 / "toggle text" img 431 (room map) and "seal vent
     // text" img 80 (vent map), parked next to our toggle button (the dump
     // sits them beside its own, at (1461..1508, 625..640) world space).
-    if (game.IsVentMap()) DrawNat(80,  kMapX + 250.0f, kMapY + 362.0f, 0xFFFFFFFF);
+    if (game.IsVentMap()) DrawNat(80,  kMapX + 10.0f, kMapY + 362.0f, 0xFFFFFFFF);
     else {
         DrawNat(366, kMapX +  10.0f, kMapY + 338.0f, 0xFFFFFFFF);
         DrawNat(431, kMapX + 250.0f, kMapY + 362.0f, 0xFFFFFFFF);

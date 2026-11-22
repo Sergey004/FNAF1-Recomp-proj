@@ -280,14 +280,21 @@ enum PakCamFeed {
     COVE_OUT           = 338,  // stage 2: Foxy standing out, hook visible
     COVE_EMPTY         = 240,  // stage 3: cove empty, he is running
     CAMFEED_2A_EMPTY   = 43,
+    // v2.99 art audit: img 206 = the WEST HALL with Bonnie's dark silhouette
+    // at the end (the 2A presence frame); img 226 = the CHICA face
+    // close-up (the E. Hall Corner stare art — Bonnie was never in it)
     CAMFEED_2A_FIGURE  = 206,
-    CAMFEED_2A_BONNIE  = 226,
+    CAMFEED_2A_BONNIE  = 226,  // MISLABELED ART: this is Chica's face (unused
+                               // for 2A after the v2.99 gate fix)
     CAMFEED_2B_EMPTY   = 0,    // img_0 "LET'S PARTY!" corner — handle 0 IS real
     CAMFEED_2B_BONNIE  = 479,  // Bonnie face staring into the camera
-    CAMFEED_2B_CHICA   = 478,  // Chica face staring into the camera
+    CAMFEED_2B_CHICA   = 478,  // MISLABELED ART: another Bonnie stare frame
+                               // (Chica never takes the west corner)
     CAMFEED_3_EMPTY    = 62,
     CAMFEED_3_BONNIE   = 190,
     CAMFEED_4A_EMPTY   = 67,
+    // v2.99 art audit: img 221 = the EAST HALL with Chica standing at the
+    // far end (the 4A presence frame — Chica's wing, not Bonnie's)
     CAMFEED_4A_FIGURE  = 221,
     CAMFEED_4B_EMPTY   = 486,
     CAMFEED_4B_CHICA   = 220,
