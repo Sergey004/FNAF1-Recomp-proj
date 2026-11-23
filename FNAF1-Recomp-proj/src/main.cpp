@@ -1202,7 +1202,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.99 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.107 (%s %s)", __DATE__, __TIME__);
     // v2.97: DECISIVE SMC diagnostic — right here the ring cycles
     // GREEN -> ORANGE -> RED -> dark using the exact Lightshow Sleep()
     // pattern. If the ring shows this, HalSendSMCMessage works in this
