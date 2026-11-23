@@ -18,8 +18,24 @@
 
 namespace fnaf {
 
-static const f32 kScaleX = 1280.0f / 1024.0f;   // full-stretch 16:9
-static const f32 kScaleY = 720.0f / 768.0f;
+// v2.104: the original window is 1024x768 (4:3) — the Xbox 360 pillarboxes
+// it in 1280x720 (160 px bars). The port used to full-stretch it (X 1.25 /
+// Y 0.9375), which made every sprite 33% too wide (the camera menu looked
+// "crooked"). Uniform scale + bars restores the original proportions.
+static const f32 kScale = 720.0f / 768.0f;                        // 0.9375
+static const f32 kOffsetX = (1280.0f - 1024.0f * kScale) * 0.5f;   // 160
+// the perspective pass warps the CAPTURE in screen space, so the room has
+// to fill the whole capture while it is drawn; the bars are painted after.
+static const f32 kStretchX = 1280.0f / 1024.0f;                    // 1.25
+static bool s_rawCapture = false;
+
+// v2.104: the 4:3 pillarbox bars — the original window is 1024x768, so
+// the Xbox 360 shows black bars on the sides.
+void FNaF3Render::DrawBars() {
+    if (!m_batch) return;
+    m_batch->DrawSolid(0.0f, 0.0f, kOffsetX, 720.0f, 0xFF000000u);
+    m_batch->DrawSolid(1280.0f - kOffsetX, 0.0f, kOffsetX, 720.0f, 0xFF000000u);
+}
 
 void FNaF3Render::Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text) {
     m_pak = pak; m_batch = batch; m_text = text;
@@ -35,8 +51,12 @@ void FNaF3Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
     // sampling pulled that junk into the quad (F2 title "Continue" syndrome).
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
-                  fw * kScaleX, fh * kScaleY, 0.0f, 0.0f, u1, v1, color);
+    if (s_rawCapture)
+        m_batch->Draw(t->texture, fx * kStretchX, fy * kScale,
+                      fw * kStretchX, fh * kScale, 0.0f, 0.0f, u1, v1, color);
+    else
+        m_batch->Draw(t->texture, (fx * kScale + kOffsetX), (fy * kScale),
+                      (fw * kScale), (fh * kScale), 0.0f, 0.0f, u1, v1, color);
 }
 
 // v2.67: native-size draw (the pak cells carry their own dimensions)
@@ -47,9 +67,14 @@ void FNaF3Render::DrawNat(int handle, float fx, float fy, u32 color) {
     if (!t || !t->texture || !m_batch) return;
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
-                  (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY,
-                  0.0f, 0.0f, u1, v1, color);
+    if (s_rawCapture)
+        m_batch->Draw(t->texture, fx * kStretchX, fy * kScale,
+                      (f32)t->origWidth * kStretchX, (f32)t->origHeight * kScale,
+                      0.0f, 0.0f, u1, v1, color);
+    else
+        m_batch->Draw(t->texture, (fx * kScale + kOffsetX), (fy * kScale),
+                      (f32)t->origWidth * kScale, (f32)t->origHeight * kScale,
+                      0.0f, 0.0f, u1, v1, color);
 }
 
 // v2.67: Clickteam counter from its CNTR glyph list (alphabet 0-9-+.e);
@@ -77,8 +102,8 @@ void FNaF3Render::DrawCounterNat(int value, const int* strip, float fx, float fy
         PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
         const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
         const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-        m_batch->Draw(t->texture, x * kScaleX, (fy - (f32)t->origHeight) * kScaleY,
-                      (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY,
+        m_batch->Draw(t->texture, (x * kScale + kOffsetX), ((fy - (f32)t->origHeight) * kScale),
+                      (f32)t->origWidth * kScale, (f32)t->origHeight * kScale,
                       0.0f, 0.0f, u1, v1, color);
         x += (f32)t->origWidth + 1.0f;
     }
@@ -86,15 +111,16 @@ void FNaF3Render::DrawCounterNat(int value, const int* strip, float fx, float fy
 
 void FNaF3Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
                             float pan, u32 color) {
-    const f32 sx = (wx - pan) * kScaleX;
-    if (sx >= 1280.0f || sx + fw * kScaleX <= 0.0f) return;
+    const f32 sx = s_rawCapture ? ((wx - pan) * kStretchX)
+                                : ((wx - pan) * kScale + kOffsetX);
+    if (sx >= 1280.0f || sx + (fw * kScale) <= 0.0f) return;
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, sx, wy * kScaleY, fw * kScaleX, fh * kScaleY,
+    m_batch->Draw(t->texture, sx, (wy * kScale), (fw * kScale), (fh * kScale),
                   0.0f, 0.0f, u1, v1, color);
 }
 
@@ -111,6 +137,8 @@ void FNaF3Render::RenderDisclaimer() {
     // img 329, 477x90 at (292,308)); its String child sits off-screen in
     // the export and is never moved (the old paragraphs were invented).
     Draw(329, 292.0f, 308.0f, 477.0f, 90.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderTitle(const FNaF3Game& game, f32 time) {
@@ -181,6 +209,8 @@ void FNaF3Render::RenderTitle(const FNaF3Game& game, f32 time) {
             Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
         }
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- the between-night cards ------------------------------------------
@@ -205,6 +235,8 @@ void FNaF3Render::RenderNightStart(i32 night, f32 t) {
     DrawNat(1126, 0.0f, 391.0f, 0xFFFFFFFF);
     const i32 img = kPlate[night < 1 ? 0 : (night > 7 ? 6 : night - 1)];
     Draw(img, 412.0f, 322.0f, 201.0f, 104.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderStatic6() {
@@ -214,6 +246,8 @@ void FNaF3Render::RenderStatic6() {
     if (m_batch) Draw(StaticFrame(0.0f), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     DrawNat(306, 560.0f, 330.0f, 0xFFFFFFFF);
     DrawNat(246, 590.0f, 330.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderNextDay(i32 night) {
@@ -229,6 +263,8 @@ void FNaF3Render::RenderNextDay(i32 night) {
         for (int i = 0; i < 6; ++i)
             DrawNat(501, (f32)((i % 3) * 341), kConfY[i], 0xFFFFFFFF);
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- office (frame 3 "Frame 1", 200x768, pan window) ------------------
@@ -240,7 +276,8 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
     // v2.66: the dump's OWN perspective (frame 3, "Perspective" obj 60 at
     // (-8,-8): object 1048x790, EDATA zoom=150 curve=4) wraps the office
     // layer — the mild bend FNAF3's office really has.
-    m_batch->BeginSceneCapture(0xFF000000);
+    s_rawCapture = true;                    // the warp samples the capture
+    m_batch->BeginSceneCapture(0xFF000000); // in screen space
 
     // the office "foreground" states (dump objInfo 123: anim 0 = 203 normal,
     // anim 12 = 204 — the VENT-ERROR variant; groups 337/338/344 switch it
@@ -273,6 +310,12 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
         DrawWorld(kJack[(int)(time * 15.0f) % 7], 1632.0f, 461.0f, 147.0f, 155.0f,
                    pan, 0xFFFFFFFF);
     }
+
+    // v2.102: Shadow Freddy in the office (the dump's 'shadow freddy'
+    // obj 217 = img 290 @ left -1, top 226, layer 1 — the silhouette that
+    // stands in the office's left darkness when its roll hits 1)
+    if (game.IsShadowFreddy())
+        DrawWorld(290, -1.0f, 226.0f, 273.0f, 545.0f, pan, 0xFFFFFFFF);
 
     // Springtrap at the office window (img 206) — the stage-4 scare pose
     if (game.GetSpringtrapRoom() == FNaF3Game::R3_ST4)
@@ -324,15 +367,22 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
     // the layer-0 warp: end the capture and run the dump's own bend
     // (zoom 150 / curve 4 over the 1048x790 object at (-8,-8)).
     m_batch->EndSceneCapture();
+    s_rawCapture = false;
     {   // vc100 (XDK) has no braced-init args: explicit local
         SpriteBatch::PerspGeom g;
         g.objW = 1048.0f; g.objH = 790.0f; g.orgX = -8.0f; g.orgY = -8.0f;
         g.winW = 1280.0f; g.winH = 720.0f;
         m_batch->SetPerspectiveGeometry(g);
     }
-    m_batch->DrawPerspective(150.0f, 355.0f, 4.0f);
+    // v2.105: the warp pivot = the dump's 'Perspective' object origin plus
+    // half its object height (-8 + 790/2 = 387). The port used 355 - that
+    // is FNAF1's pivot (-22 + 754/2) copied over, and it put the bend 32 px
+    // above the middle, so the office looked over-twisted.
+    m_batch->DrawPerspective(150.0f, 387.0f, 4.0f);
 
     DrawHud(game);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // v2.69: the layer-4 HUD cluster is REAL frame art (the v2.66 "no HUD in
@@ -409,6 +459,10 @@ static const f32 kMapX = 586.0f, kMapY = 299.0f;
 void FNaF3Render::RenderMonitor(const FNaF3Game& game, f32 time) {
     if (!m_batch || !m_pak) return;
 
+    // v2.105: the monitor view is a UI-layer screen — it is drawn OUTSIDE
+    // the office's perspective capture, so the feed stays flat while the
+    // room behind it bends (the office's 'Perspective' object lives on the
+    // scroll-control layer 2 and warps the room below it).
     // the monitor frame (img 75) centered; the feed inside it
     Draw(75, 204.0f, 44.0f, 873.0f, 679.0f, 0xFFFFFFFF);
     const i32 cam = game.GetYouIn();
@@ -417,25 +471,37 @@ void FNaF3Render::RenderMonitor(const FNaF3Game& game, f32 time) {
     // cams draw the dump's own anim cell (FNaF3Game::FeedImg) fit inside the
     // 825x650 feed — the cells are the props the original composites over
     // the base, drawn here at native aspect from the pak's texture dims
-    if (game.IsShadowFreddy() && cam == 2)      Draw(61, 228.0f, 58.0f, 845.0f, 679.0f, 0xFFFFFFFF);
-    else if (game.IsShadowFreddy() && cam == 10) Draw(60, 228.0f, 58.0f, 869.0f, 680.0f, 0xFFFFFFFF);
-    else {
-        Draw(104, 228.0f, 58.0f, 825.0f, 650.0f, 0xFFFFFFFF);
+    // v2.102: the shadow Freddy is NOT a camera feed — in the dump it is
+    // the office object 'shadow freddy' (img 290, 273x545 @ left -1, top
+    // 226, layer 1), shown while its alterable rolls 1 (g613 hides it when
+    // alt0 != 1, g617 shows it when alt0 == 1). The old code painted the
+    // monitor-FLIP cells (59..63, the 'flip in'/'flip out' animations) over
+    // cams 2/10 instead.
+    // v2.106: the feed IS the 'camera screen' object's animation cell for
+    // the selected camera (the dump's groups g90-g102 set the sequence;
+    // seq 0 = img 104 the empty screen). The port used the SEQUENCE
+    // numbers as image handles and drew unrelated art over the empty
+    // screen - hence "two monitors". Now the sequence is resolved to its
+    // cell: the camera views are 825x650 and fill the screen area, the two
+    // tiny overlays (seq 20/22) sit centred on it.
+    {
         const bool stHere = game.SpringtrapOnCam(cam);
-        const i32 piece = FNaF3Game::FeedImg(cam, stHere);
-        if (piece != 0 && piece != 104) {
-            // fit the piece inside a centered 40x330 box, native aspect
+        const i32 seq = FNaF3Game::FeedImg(cam, stHere);
+        const i32 cell = FNaF3Game::ScreenCell(seq);
+        if (cell > 0) {
             char pname[32];
-            Snprintf(pname, sizeof(pname), "img_%d", piece);
+            Snprintf(pname, sizeof(pname), "img_%d", cell);
             PakLoadedTexture* pt = m_pak ? m_pak->FindTexture(pname) : 0;
             if (pt && pt->texture) {
                 const f32 pw = (f32)pt->origWidth, ph = (f32)pt->origHeight;
-                const f32 k = (pw > 0.0f && ph > 0.0f)
-                            ? (pw / ph > 400.0f / 330.0f ? 400.0f / pw : 330.0f / ph)
-                            : 1.0f;
-                const f32 dw = pw * k, dh = ph * k;
-                Draw(piece, 228.0f + (825.0f - dw) * 0.5f,
-                     58.0f + (650.0f - dh) * 0.5f, dw, dh, 0xFFFFFFFF);
+                if (pw >= 800.0f && ph >= 600.0f) {
+                    // the full camera view (825x650) - the screen area
+                    Draw(cell, 228.0f, 58.0f, pw, ph, 0xFFFFFFFF);
+                } else {
+                    // a small overlay - centred on the screen area
+                    Draw(cell, 228.0f + (825.0f - pw) * 0.5f,
+                         58.0f + (650.0f - ph) * 0.5f, pw, ph, 0xFFFFFFFF);
+                }
             }
         }
     }
@@ -480,6 +546,8 @@ void FNaF3Render::RenderMonitor(const FNaF3Game& game, f32 time) {
     // but the layer-4 night/hour HUD cluster stays above the feed (the
     // original never hides it); draw it here too.
     DrawHud(game);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderMap(const FNaF3Game& game) {
@@ -529,9 +597,9 @@ void FNaF3Render::RenderMap(const FNaF3Game& game) {
         // "To seal a vent, double-click the vent cam button."), shown while
         // the vent map is up; the port font stands in for the TTF
         if (m_text) {
-            m_text->DrawText((int)(350.0f * kScaleX), (int)(398.0f * kScaleY),
+            m_text->DrawText((int)((350.0f * kScale + kOffsetX)), (int)(398.0f * kScale),
                              "To seal a vent, double-click", 0xFFFFFFFF);
-            m_text->DrawText((int)(350.0f * kScaleX), (int)(424.0f * kScaleY),
+            m_text->DrawText((int)((350.0f * kScale + kOffsetX)), (int)(424.0f * kScale),
                              "the vent cam button.", 0xFFFFFFFF);
         }
     }
@@ -544,6 +612,8 @@ void FNaF3Render::RenderMap(const FNaF3Game& game) {
         DrawNat(366, kMapX +  10.0f, kMapY + 338.0f, 0xFFFFFFFF);
         DrawNat(431, kMapX + 250.0f, kMapY + 362.0f, 0xFFFFFFFF);
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderPanel(const FNaF3Game& game) {
@@ -582,6 +652,8 @@ void FNaF3Render::RenderPanel(const FNaF3Game& game) {
         const f32 w = 165.0f * (game.GetRebootProgress() / 10.0f);
         Draw(611, 206.0f, 520.0f, w, 24.0f, 0xFFFFFFFF);
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- the office jumpscare ----------------------------------------------
@@ -597,11 +669,15 @@ void FNaF3Render::DrawAttack(const FNaF3Game& game) {
 void FNaF3Render::RenderAd() {
     // frame 8: the "COMING SOON! Fazbear's Fright" newspaper (img 0)
     Draw(0, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderRare2() {
     // frame 13: the post-night glitch screen (img 228)
     Draw(228, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderEndScreen(i32 which) {
@@ -614,8 +690,13 @@ void FNaF3Render::RenderEndScreen(i32 which) {
     else if (which == 3) Draw(123, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     else {
         Draw(29, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-        Draw(505, 478.0f, 364.0f, 1044.0f, 124.0f, 0xFFFFFFFF);
+        // v2.102: the dump's 'Active' img_505 sits at the instance
+        // (478,364) with the hot spot (489,57) -> the draw origin is
+        // (-11,307), not the instance point.
+        Draw(505, -11.0f, 307.0f, 1044.0f, 124.0f, 0xFFFFFFFF);
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ============================================================
@@ -625,6 +706,8 @@ void FNaF3Render::RenderEndScreen(i32 which) {
 
 void FNaF3Render::RenderWait() {
     // frame 7 "wait": plain black for 100 ms (the batch clears black)
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderStaticDeath() {
@@ -636,6 +719,8 @@ void FNaF3Render::RenderStaticDeath() {
         const int f = (int)(s_t * 12.0f) % 10;
         if (f < 4) Draw(272, 0.0f, 0.0f, 1024.0f, 768.0f, 0x50FFFFFF);
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderGameOver() {
@@ -646,6 +731,8 @@ void FNaF3Render::RenderGameOver() {
     Draw(339, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     Draw( 37, 0.0f, 0.0f, 1024.0f, 768.0f, 0xB0FFFFFF);
     DrawNat(709, 0.0f, 361.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderDemoEnd() {
@@ -655,12 +742,16 @@ void FNaF3Render::RenderDemoEnd() {
     if (m_batch) m_batch->DrawSolid(0.0f, 0.0f, 1280.0f, 720.0f, 0xFF000000);
     // 1024x768 -> 1280x720: x * 1.25, y * 0.9375
     DrawNat(46, 199.0f * 1.25f, 298.0f * 0.9375f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderRare(i32 id) {
     // frame 12 = img 225 / frame 13 = img 228 / frame 14 = img 252
     const int img = (id == 1) ? 225 : (id == 2) ? 228 : 252;
     Draw(img, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF3Render::RenderLoad(f32 t) {
@@ -677,6 +768,8 @@ void FNaF3Render::RenderLoad(f32 t) {
     // v2.67: the frame draws NO text in the original (the bars/dots park
     // off-screen and the events move them in) — the "LOADING" debug line
     // is gone.
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- the cutscenes frame (16) ------------------------------------------
@@ -784,6 +877,8 @@ void FNaF3Render::RenderCutscene(const FNaF3Game& game, f32 time) {
     Draw(268, -40.0f, (f32)((int)(time * 30.0f) % 800) - 16.0f, 1104.0f, 32.0f, 0x30FFFFFF);
     Draw(1001, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     Draw(291, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- the six minigames (frames 19-24) -----------------------------------
@@ -969,6 +1064,8 @@ void FNaF3Render::RenderMinigame(const FNaF3Game& game, f32 time) {
     if (mg.won) Draw(775, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     // v2.67: no hint text in the original minigames (the BB/frame layouts
     // carry none) — the "A/UP: jump X: leave" debug line is gone.
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- the extras menu (frame 25) -----------------------------------------
@@ -1014,7 +1111,7 @@ void FNaF3Render::RenderExtras(const FNaF3Game& game, f32 time) {
         };
         Draw(kViewer[ex.viewer], 412.0f, 120.0f, 200.0f, 220.0f, 0xFFFFFFFF);
         if (m_text)
-            m_text->DrawText((int)(416.0f * kScaleX), (int)(694.0f * kScaleY),
+            m_text->DrawText((int)((416.0f * kScale + kOffsetX)), (int)(694.0f * kScale),
                              kNames[ex.viewer], 0xFFFFFFFF);
     } else if (ex.row == 1 && game.IsGoodEnd()) {
         // "play game" plate (img 436) at its dump spot; the pick name sits
@@ -1026,7 +1123,7 @@ void FNaF3Render::RenderExtras(const FNaF3Game& game, f32 time) {
             "Stage01", "Glitch Minigame"
         };
         if (m_text)
-            m_text->DrawText((int)(416.0f * kScaleX), (int)(694.0f * kScaleY),
+            m_text->DrawText((int)((416.0f * kScale + kOffsetX)), (int)(694.0f * kScale),
                              kMg[ex.mgPick], 0xFFFFFFFF);
     } else if (ex.row == 2 && game.IsBeat6()) {
         // the jumpscare viewer (the six anims; play the pick as a hold)
@@ -1049,6 +1146,8 @@ void FNaF3Render::RenderExtras(const FNaF3Game& game, f32 time) {
                 DrawNat(352, 850.0f, kCheatY[i] + 4.0f, 0xFFFFFFFF);
         }
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 

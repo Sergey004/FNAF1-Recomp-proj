@@ -20,6 +20,7 @@ class FNaF3Render {
 public:
     void Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text);
 
+    void DrawBars();                              // the 4:3 pillarbox bars
     void RenderTitle(const FNaF3Game& game, f32 time);
     void RenderDisclaimer();                     // frame 0: the banner (img 329)
     void RenderNightStart(i32 night, f32 t);

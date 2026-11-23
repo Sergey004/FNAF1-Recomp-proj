@@ -89,6 +89,8 @@ PakLoader::PakLoader()
     : m_device(0)
     , m_textures(0)
     , m_numTextures(0)
+    , m_texHash(0)          // v2.102: name -> index hash
+    , m_texHashMask(-1)
     , m_sounds(0)
     , m_numSounds(0)
     , m_pakData(0)
@@ -440,6 +442,9 @@ void PakLoader::Unload()
         delete[] m_textures;
         m_textures = 0;
     }
+    delete[] m_texHash;     // v2.102
+    m_texHash = 0;
+    m_texHashMask = -1;
     if (m_sounds) {
         // data is inside m_pakData, not owned separately
         delete[] m_sounds;
@@ -617,6 +622,8 @@ bool PakLoader::Load(const char* pakPath, void* device)
         UploadTexture(i, m_pakData + dataOff);
         (void)mip;
     }
+
+    BuildTextureHash();     // v2.102: name -> index table (built once)
 
     // Sound entries: 8*4=32 bytes each
     for (int i = 0; i < m_numSounds; ++i) {
@@ -913,6 +920,7 @@ bool PakLoader::LoadStreaming(const char* pakPath, void* device)
         m_textures[i].dataSize = dataSize;
         m_textures[i].gpuReady = false;      // lazy: uploaded on first use
     }
+    BuildTextureHash();     // v2.102: name -> index table (built once)
     for (int i = 0; i < m_numSounds; ++i) {
         const u32 nameOff = LoadBE32(p); p += 4;
         const u32 dataOff = LoadBE32(p); p += 4;
@@ -1115,6 +1123,23 @@ int PakLoader::GetTextureCount() const { return m_numTextures; }
 PakLoadedTexture* PakLoader::GetTexture(int idx) { if(idx<0||idx>=m_numTextures) return 0; return &m_textures[idx]; }
 PakLoadedTexture* PakLoader::FindTexture(const char* name) {
     if(!name) return 0;
+    if (m_texHash && m_texHashMask >= 0) {
+        // v2.102: O(1) name lookup (the linear scan cost thousands of
+        // strcmp calls per visible sprite in FNaF World)
+        const u32 h = HashTextureName(name);
+        int slot = (int)(h & (u32)m_texHashMask);
+        for (int probe = 0; probe <= m_texHashMask; ++probe) {
+            const TexHashSlot& s = m_texHash[slot];
+            if (s.index < 0) return 0;                  // empty slot: not found
+            if (s.hash == h && strcmp(m_textures[s.index].name, name) == 0) {
+                if (m_streaming && !m_textures[s.index].gpuReady)
+                    EnsureTextureLoaded(s.index);        // v2.29
+                return &m_textures[s.index];
+            }
+            slot = (slot + 1) & m_texHashMask;
+        }
+        return 0;
+    }
     for(int i=0;i<m_numTextures;++i) {
         if(strcmp(m_textures[i].name, name)==0) {
             if (m_streaming && !m_textures[i].gpuReady) EnsureTextureLoaded(i);  // v2.29
@@ -1122,6 +1147,40 @@ PakLoadedTexture* PakLoader::FindTexture(const char* name) {
         }
     }
     return 0;
+}
+
+// v2.102: FNV-1a over the texture name
+u32 PakLoader::HashTextureName(const char* name) {
+    u32 h = 2166136261u;
+    for (const char* p = name; p && *p; ++p) {
+        h ^= (u32)(unsigned char)*p;
+        h *= 16777619u;
+    }
+    return h ? h : 1u;
+}
+
+// v2.102: build the name -> index table (open addressing, power-of-two size)
+void PakLoader::BuildTextureHash() {
+    delete[] m_texHash;
+    m_texHash = 0;
+    m_texHashMask = -1;
+    if (m_numTextures <= 0 || !m_textures) return;
+    int cap = 16;
+    while (cap < m_numTextures * 2) cap <<= 1;
+    m_texHash = new (std::nothrow) TexHashSlot[cap];
+    if (!m_texHash) return;                     // the linear scan stays as fallback
+    m_texHashMask = cap - 1;
+    for (int i = 0; i < cap; ++i) {
+        m_texHash[i].hash = 0;
+        m_texHash[i].index = -1;
+    }
+    for (int i = 0; i < m_numTextures; ++i) {
+        const u32 h = HashTextureName(m_textures[i].name);
+        int slot = (int)(h & (u32)m_texHashMask);
+        while (m_texHash[slot].index >= 0) slot = (slot + 1) & m_texHashMask;
+        m_texHash[slot].hash = h;
+        m_texHash[slot].index = i;
+    }
 }
 int PakLoader::GetSoundCount() const { return m_numSounds; }
 PakLoadedSound* PakLoader::GetSound(int idx) { if(idx<0||idx>=m_numSounds) return 0; return &m_sounds[idx]; }

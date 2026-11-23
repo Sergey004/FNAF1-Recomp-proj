@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""Regenerate FNaFWorldMap.h from the ctfak dump of FNaF World's "overworld"
+frame (6000x4000, 2207 instances).
+
+v2 of the generator: the quick backdrops (the ground/paths/water tiles - 714
+of them) now carry their real image id and size, taken from the JSON export
+(objects[].quickBackdrop = {image, width, height}). The first generator could
+not resolve them and wrote the 65535 "no image" marker, so the port drew a
+flat colour instead of the ground.
+
+Usage: python3 tools/gen_fwmap2.py "<dumps>/FNaF World" include/FNaFWorldMap.h
+(the chest/collision tables at the tail of the header are preserved from the
+previous generation - this script only rebuilds the instance table)
+"""
+import json
+import os
+import re
+import sys
+
+DUMPS = sys.argv[1]
+OUT = sys.argv[2]
+
+layout_path = os.path.join(DUMPS, "FrameLayout", "frame_5_overworld.txt")
+json_path = os.path.join(DUMPS, "JSON", "application.json")
+
+data = json.load(open(json_path, encoding="utf-8"))
+objs = data["objects"]
+frame = None
+for f in data["frames"]:
+    if "overworld" in f["name"].lower():
+        frame = f
+        break
+if frame is None:
+    raise SystemExit("overworld frame not found")
+
+# the layout dump: image + hotspot-derived origin + layer, in frame order
+rows = []
+for line in open(layout_path, encoding="utf-8", errors="ignore"):
+    p = line.split()
+    if len(p) >= 10 and (p[-8].endswith(".png") or p[-8] == "-"):
+        rows.append({
+            "objInfo": int(p[0]),
+            "name": " ".join(p[1:-9]),
+            "type": p[-10] if len(p) >= 10 else "",
+            "img": int(p[-9]) if p[-9].lstrip("-").isdigit() else -1,
+            "x": int(p[-7]), "y": int(p[-6]),
+            "hotX": int(p[-5]), "hotY": int(p[-4]),
+            "left": int(p[-3]), "top": int(p[-2]), "layer": int(p[-1]),
+        })
+
+# the frame's instance order (== the layout order) with the quick backdrop art
+out = []
+for idx, inst in enumerate(frame["instances"]):
+    oi = inst["objectInfo"]
+    obj = objs[oi]
+    row = rows[idx]
+    common = obj.get("common") or {}
+    nflags = common.get("newFlags") or {}
+    flags = common.get("flags") or {}
+    # v2.102: honour the start visibility - 242 of the World's actives are
+    # invisible at start (the magenta "+2" editor placeholders), and the
+    # original never draws them.
+    if nflags.get("VisibleAtStart", True) is False:
+        continue
+    if flags.get("DoNotCreateAtStart", False):
+        continue
+    qb = obj.get("quickBackdrop")
+    bd = obj.get("backdrop")
+    if qb:
+        img = int(qb.get("image", -1))
+        w = int(qb.get("width", 0))
+        h = int(qb.get("height", 0))
+        if img < 0:
+            continue
+        out.append((img, row["left"], row["top"], w, h, inst.get("layer", 0), 0, 1,
+                    obj.get("name", "quick backdrop"), idx))
+    elif bd:
+        img = int(bd.get("image", -1))
+        if img < 0:
+            continue
+        out.append((img, row["left"], row["top"], int(bd.get("width", 0)),
+                    int(bd.get("height", 0)), inst.get("layer", 0), 0, 2,
+                    obj.get("name", "backdrop"), idx))
+    elif row["img"] >= 0:
+        out.append((row["img"], row["left"], row["top"], 0, 0, inst.get("layer", 0),
+                    0, 0, obj.get("name", row["name"]), idx))
+
+# the draw order inside a layer: Fusion paints the backdrops, then the quick
+# backdrops, then the sprites - the frame's own instance order is not that
+# order (the World's layer 1 mixes all three kinds).
+KIND_RANK = {2: 0, 1: 1, 0: 2}
+out.sort(key=lambda e: (e[5], KIND_RANK[e[7]], e[9]))
+
+# the old header's collision flags are keyed by (img, left, top)
+old_solid = {}
+old_path = os.path.join(os.path.dirname(OUT), "..", "include", "FNaFWorldMap.h")
+if os.path.exists(old_path):
+    txt = open(old_path, encoding="utf-8").read()
+    for m in re.finditer(r'\{\s*(\d+),\s*(-?\d+),\s*(-?\d+),\s*(\d+),\s*(\d+)\s*\}', txt):
+        old_solid[(int(m.group(1)), int(m.group(2)), int(m.group(3)))] = int(m.group(5))
+
+final = []
+for img, left, top, w, h, layer, solid, quick, name, idx in out:
+    solid = old_solid.get((img, left, top), solid)
+    final.append((img, left, top, w, h, layer, solid, quick, name))
+
+lines = []
+lines.append("/**")
+lines.append(" * FNaFWorldMap.h — GENERATED data, do not edit by hand.")
+lines.append(" * Source: ctfak dump frame 5 \"overworld\" (6000x4000, 2207 instances)")
+lines.append(" * + PNG IHDR sizes from the same dump. 50 px tiles, 120x80 grid.")
+lines.append(" * Instances keep the frame's own order (the Fusion draw order); the")
+lines.append(" * quick backdrops (the ground/paths/water, 714 of them) carry their")
+lines.append(" * image id and size from the JSON export — the first generator left")
+lines.append(" * them as 65535 \"no image\", so the port drew a flat colour instead")
+lines.append(" * of the ground.")
+lines.append(" * Collision: name-classified solids; small objects block their base cell,")
+lines.append(" * wide ones the full rect (generated by gen_fwmap2.py).")
+lines.append(" * VS2010/C++03.")
+lines.append(" */")
+lines.append("#ifndef FNAF_FNAFWORLD_MAP_H")
+lines.append("#define FNAF_FNAFWORLD_MAP_H")
+lines.append("")
+lines.append("namespace fnaf {")
+lines.append("")
+lines.append("static const int kFwMapW = 120;")
+lines.append("static const int kFwMapH = 80;")
+lines.append("static const int kFwTile = 50;")
+lines.append("")
+lines.append("struct FwMapInst { unsigned short img; short left; short top;")
+lines.append("                  unsigned short w, h;")
+lines.append("                  unsigned char layer; unsigned char solid;")
+lines.append("                  unsigned char kind; };  // 0 sprite, 1 quick")
+lines.append("                                             // backdrop (tiled),")
+lines.append("                                             // 2 backdrop (rect)")
+lines.append("static const FwMapInst kFwMapInsts[] = {")
+for img, left, top, w, h, layer, solid, quick, name in final:
+    lines.append("    { %5d, %6d, %6d, %5d, %5d, %d, %d, %d }, // %s"
+                 % (img, left, top, w, h, layer, solid, quick, name))
+lines.append("};")
+lines.append("")
+lines.append("static const int kFwMapInstCount = (int)(sizeof(kFwMapInsts)/sizeof(kFwMapInsts[0]));")
+lines.append("")
+lines.append("} // namespace fnaf")
+lines.append("")
+lines.append("#endif // FNAF_FNAFWORLD_MAP_H")
+lines.append("")
+
+open(OUT, "w", encoding="utf-8", newline="\n").write("\n".join(lines))
+print("wrote %s: %d entries (%d quick backdrops, %d backdrops, %d sprites)"
+      % (OUT, len(final), sum(1 for e in final if e[7] == 1),
+         sum(1 for e in final if e[7] == 2),
+         sum(1 for e in final if e[7] == 0)))

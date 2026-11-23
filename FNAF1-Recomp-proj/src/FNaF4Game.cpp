@@ -404,14 +404,23 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
             break;
     }
 
-    // the jumpscare anim runs over any screen; it ends on the death flow
+    // the jumpscare anim runs over any screen; it ends on the death flow.
+    // v2.107: the dump's LEVEL frame jumps to the TITLE screen when the
+    // jumpscare animation finishes (g204-207 for 'jumpscare' seq 0/12/13/
+    // 14, g289/301/302 for the bedroom attacks) - there is NO jump to the
+    // blood 'game over' frame (4) from the level: that frame is reached
+    // from the extras/cutscenes/night-win/test/demo frames, i.e. it is the
+    // custom-night failure screen. The anims are 26 cells at speed 50 =
+    // 30 fps -> 0.867 s (the port used 1.5 s).
     if (m_attackT > 0.0f) {
         m_attackT += dt;
-        if (m_attackT >= 1.5f) {                        // g204-207
+        if (m_attackT >= 26.0f / 30.0f) {                // g204-207
             m_attackT = 0.0f;
             m_attackImg = 0;
             m_gameover = false;
-            RequestScreen(SCR_GAMEOVER);                    // V1 = slot 1 = game over
+            m_shadow = 0;
+            m_saveDirty = true;
+            RequestScreen(SCR_TITLE);
             m_cardT = 0.0f;
         }
     }

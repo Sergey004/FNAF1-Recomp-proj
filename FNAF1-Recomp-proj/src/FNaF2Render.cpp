@@ -14,11 +14,29 @@
 
 namespace fnaf {
 
-// frame 1024x768 -> 720p pillarbox: scale 0.9375, 160 px bars
-// frame 1024x768 -> FULL-STRETCH 1280x720 (PC-window behaviour):
-// X scale 1.25, Y scale 0.9375, no bars
-static const f32 kScaleX = 1280.0f / 1024.0f;   // 1.25
-static const f32 kScaleY = 720.0f / 768.0f;     // 0.9375
+// v2.104: the ORIGINAL FNAF2 window is 1024x768 (4:3) — the Xbox 360
+// pillarboxes it in 1280x720 (160 px bars on the sides). The port used to
+// full-stretch it (X 1.25 / Y 0.9375), which made every sprite 33% too
+// wide: the camera-menu buttons came out wider than tall and the map was
+// squashed — the "crooked menu". Uniform scale + bars restores the
+// original's proportions.
+static const f32 kScale = 720.0f / 768.0f;                        // 0.9375
+static const f32 kOffsetX = (1280.0f - 1024.0f * kScale) * 0.5f;   // 160
+// the perspective pass warps the CAPTURE in screen space, so the room has
+// to fill the whole capture while it is drawn; the bars are painted after
+// the warp. This flag switches the helpers back to the old full stretch.
+static const f32 kStretchX = 1280.0f / 1024.0f;                    // 1.25
+static bool s_rawCapture = false;
+
+// v2.104: the 4:3 pillarbox bars. The original FNAF2 window is 1024x768,
+// so the Xbox 360 shows black bars on the sides; the port now keeps the
+// original's proportions and paints the bars over everything the frame drew
+// outside the 960-wide content area.
+void FNaF2Render::DrawBars() {
+    if (!m_batch) return;
+    m_batch->DrawSolid(0.0f, 0.0f, kOffsetX, 720.0f, 0xFF000000u);
+    m_batch->DrawSolid(1280.0f - kOffsetX, 0.0f, kOffsetX, 720.0f, 0xFF000000u);
+}
 
 void FNaF2Render::Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text) {
     m_pak = pak; m_batch = batch; m_text = text;
@@ -45,8 +63,12 @@ void FNaF2Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
     // title glyphs); plain 0..1 sampling stretched that junk into the quad.
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
-                  fw * kScaleX, fh * kScaleY, 0.0f, 0.0f, u1, v1, color);
+    if (s_rawCapture)
+        m_batch->Draw(t->texture, fx * kStretchX, fy * kScale,
+                      fw * kStretchX, fh * kScale, 0.0f, 0.0f, u1, v1, color);
+    else
+        m_batch->Draw(t->texture, (fx * kScale + kOffsetX), (fy * kScale),
+                      (fw * kScale), (fh * kScale), 0.0f, 0.0f, u1, v1, color);
 }
 
 // native-size draw (counters/glyphs and plates whose dims live in the pak)
@@ -57,9 +79,14 @@ void FNaF2Render::DrawNat(int handle, float fx, float fy, u32 color) {
     if (!t || !t->texture || !m_batch) return;
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
-                  (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY,
-                  0.0f, 0.0f, u1, v1, color);
+    if (s_rawCapture)
+        m_batch->Draw(t->texture, fx * kStretchX, fy * kScale,
+                      (f32)t->origWidth * kStretchX, (f32)t->origHeight * kScale,
+                      0.0f, 0.0f, u1, v1, color);
+    else
+        m_batch->Draw(t->texture, (fx * kScale + kOffsetX), (fy * kScale),
+                      (f32)t->origWidth * kScale, (f32)t->origHeight * kScale,
+                      0.0f, 0.0f, u1, v1, color);
 }
 
 // v2.67: a Clickteam counter rendered from its CNTR glyph list — the dump's
@@ -89,8 +116,8 @@ void FNaF2Render::DrawCounterNat(int value, const int* strip, float fx, float fy
         PakLoadedTexture* t = m_pak->FindTexture(name);
         const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
         const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-        m_batch->Draw(t->texture, x * kScaleX, (fy - (f32)t->origHeight) * kScaleY,
-                      (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY,
+        m_batch->Draw(t->texture, (x * kScale + kOffsetX), ((fy - (f32)t->origHeight) * kScale),
+                      (f32)t->origWidth * kScale, (f32)t->origHeight * kScale,
                       0.0f, 0.0f, u1, v1, color);
         x += (f32)t->origWidth + 1.0f;
     }
@@ -98,16 +125,21 @@ void FNaF2Render::DrawCounterNat(int value, const int* strip, float fx, float fy
 
 void FNaF2Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
                             float pan, u32 color) {
-    const f32 sx = (wx - pan) * kScaleX;
-    if (sx >= 1280.0f || sx + fw * kScaleX <= 0.0f) return;   // off-window
+    const f32 sx = s_rawCapture ? ((wx - pan) * kStretchX)
+                                : ((wx - pan) * kScale + kOffsetX);
+    if (sx >= 1280.0f || sx + (fw * kScale) <= 0.0f) return;   // off-window
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, sx, wy * kScaleY, fw * kScaleX, fh * kScaleY,
-                  0.0f, 0.0f, u1, v1, color);
+    if (s_rawCapture)
+        m_batch->Draw(t->texture, sx, (wy * kScale), (fw * kStretchX), (fh * kScale),
+                      0.0f, 0.0f, u1, v1, color);
+    else
+        m_batch->Draw(t->texture, sx, (wy * kScale), (fw * kScale), (fh * kScale),
+                      0.0f, 0.0f, u1, v1, color);
 }
 
 int FNaF2Render::StaticFrame(f32 time) const {
@@ -125,6 +157,8 @@ void FNaF2Render::RenderDisclaimer(const FNaF2Game& game) {
     // the banner (the old debug-font paragraphs were invented).
     (void)game;
     Draw(574, 268.0f, 278.0f, 535.0f, 121.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- title (frame 1 "title", 1024x768) --------------------------------
@@ -240,9 +274,11 @@ void FNaF2Render::RenderTitle(const FNaF2Game& game, f32 time) {
     // data." (334,732), img_253 "©2014 Scott Cawthon v 1.033" (790,730 —
     // the frame_1 "Active 6" instance; the old debug-font (c) line is gone).
     // The "Demo" tag (img_487) stays hidden in the full game (DEMO? == 0).
-    DrawNat(294,  25.0f, 733.0f, 0xFFFFFFFF);
+    DrawNat(294,  26.0f, 738.0f, 0xFFFFFFFF);   // v2.102: dump left/top
     DrawNat(631, 334.0f, 732.0f, 0xFFFFFFFF);
     DrawNat(253, 790.0f, 735.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- office (frame 3 "Frame 1", 1600x768, panning window) -------------
@@ -260,11 +296,14 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         if (img > 0) {
             char name[32];
             Snprintf(name, sizeof(name), "img_%d", img);
-            PakLoadedTexture* t = m_pak->FindTexture(name);
+                PakLoadedTexture* t = m_pak->FindTexture(name);
             if (t && t->texture) {
-                const f32 w = (t->origWidth  > 0) ? (f32)t->origWidth  : 1024.0f;
-                const f32 h = (t->origHeight > 0) ? (f32)t->origHeight : 768.0f;
-                m_batch->Draw(t->texture, 0.0f, 0.0f, w * kScaleX, h * kScaleY, 0xFFFFFFFF);
+                // v2.102: the scene cells are the SAME 1600x768 panorama as
+                // the dark office (the dump's 'Active 16' animation cells),
+                // so they have to scroll with the room — drawn un-panned
+                // they showed the panorama's left edge, i.e. "another
+                // office" pasted over the one the player is looking at.
+                DrawWorld(img, 0.0f, 0.0f, 1600.0f, 768.0f, pan, 0xFFFFFFFF);
             }
             hallView = true;
         }
@@ -309,14 +348,17 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
     DrawWorld(608, 1038.0f, 476.0f, 117.0f, 172.0f, pan, worldCol);  // toy bonnie
     DrawWorld(555, 1122.0f, 509.0f,  84.0f, 147.0f, pan, worldCol);  // cupcake
     DrawWorld(611, 1218.0f, 522.0f, 129.0f, 156.0f, pan, worldCol);  // golden fred
-    // v2.74: the desk pumpkin (dump obj 219 = img 503 @ (810,605), layer 1,
-    // 161x149)
+    // v2.102: the desk pumpkin — the dump's obj 219 (img 503) sits at
+    // left/top (730,531), not at the instance point the old comment used
     if (halloween)
-        DrawWorld(503, 810.0f, 605.0f, 161.0f, 149.0f, pan, 0xFFFFFFFF);
-    // v2.66: the monitor-flip arrow strips (dump: 119 white @ (251,725),
-    // 95 pink @ (737,724) — the bottom-center raise zone)
-    DrawWorld(119, 251.0f, 725.0f, 500.0f, 40.0f, pan, worldCol);
-    DrawWorld( 95, 737.0f, 724.0f, 500.0f, 40.0f, pan, worldCol);
+        DrawWorld(503, 730.0f, 531.0f, 161.0f, 149.0f, pan, 0xFFFFFFFF);
+    // v2.102: the monitor-flip arrow strips are LAYER 4 objects in the
+    // dump ("flip mask button" img 119 @ left 3, top 706; "flip panel
+    // button" img 95 @ left 489, top 705) — layer 4 is the screen-fixed UI
+    // layer, so they must NOT scroll with the room panorama. The old
+    // DrawWorld(..., pan) made them slide away with the office.
+    DrawNat(119,   3.0f, 706.0f, worldCol);   // the mask button
+    DrawNat( 95, 489.0f, 705.0f, worldCol);   // the panel button
     }   // end of the panned room (skipped during hall views)
 
     // layer 2 — v2.59: office sprites from the encounter pipeline
@@ -393,6 +435,8 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         const bool angry = game.GetMusicGauge() <= 200.0f;
         Draw(angry ? 497 : 495, 40.0f, 120.0f, 220.0f, 220.0f, 0xFFFFFFFF);
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- camera monitor (viewing 1..12) ------------------------------------
@@ -436,15 +480,20 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
     // v2.67: the per-cam name plates are the dump's OWN images 19..30
     // ("Active 3".."Active 14" objects on the same layer, each riding its
     // button) — the debug-font numbers are gone.
-    Draw(2, 727.0f, 499.0f, 416.0f, 312.0f, 0xFFFFFFFF);
+    // v2.102: the draw origin is the instance point MINUS the image
+    // hotspot: the map panel img_2 @ (727,499) hot (182,152) -> (545,347),
+    // the cam buttons img_16/17 hot (30,20) -> the point minus (30,20).
+    // The port used the instance points, so the whole map sat 182/152 px
+    // (and the buttons 30/20 px) off.
+    Draw(2, 545.0f, 347.0f, 416.0f, 312.0f, 0xFFFFFFFF);
     {
         static const struct { int cam; float x, y; } kButtons[12] = {
-            { 1,  602.0f, 557.0f }, { 2,  734.0f, 558.0f },
-            { 3,  602.0f, 491.0f }, { 4,  737.0f, 491.0f },
-            { 5,  608.0f, 651.0f }, { 6,  723.0f, 651.0f },
-            { 7,  758.0f, 431.0f }, { 8,  603.0f, 420.0f },
-            { 9,  915.0f, 390.0f }, { 10, 847.0f, 509.0f },
-            { 11, 950.0f, 465.0f }, { 12, 933.0f, 558.0f },
+            { 1,  572.0f, 537.0f }, { 2,  704.0f, 538.0f },
+            { 3,  572.0f, 471.0f }, { 4,  707.0f, 471.0f },
+            { 5,  578.0f, 631.0f }, { 6,  693.0f, 631.0f },
+            { 7,  728.0f, 411.0f }, { 8,  573.0f, 400.0f },
+            { 9,  885.0f, 370.0f }, { 10, 817.0f, 489.0f },
+            { 11, 920.0f, 445.0f }, { 12, 903.0f, 538.0f },
         };
         for (int i = 0; i < 12; ++i) {
             Draw(kButtons[i].cam == v ? 17 : 16,
@@ -504,6 +553,8 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
     // v2.66: the FNAF2 monitor shows no text in the original — no cam
     // label, no clock, no battery (the map's own buttons carry the state;
     // the per-cam labels are dumped images to wire in the label pass).
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 // v2.59: the jumpscare — "attack animation" values 12..21 (anim per attacker,
 // dump g440-449) drawn full-screen over whatever is underneath. Frame lists
@@ -544,6 +595,8 @@ void FNaF2Render::DrawAttack(const FNaF2Game& game) {
 void FNaF2Render::RenderAd() {
     // frame 8: the HELP WANTED newspaper, fullscreen
     Draw(272, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderCard(const FNaF2Game& game) {
@@ -556,11 +609,15 @@ void FNaF2Render::RenderCard(const FNaF2Game& game) {
     const i32 n = game.GetNight();
     const i32 cell = kNightCell[(n < 1) ? 0 : (n > 7 ? 6 : n - 1)];
     Draw(cell, 395.0f, 316.0f, 235.0f, 116.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderStatic() {
     // frame 4: the post-night static (img 361 fullscreen)
     Draw(361, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderNextDay(const FNaF2Game& game) {
@@ -574,6 +631,8 @@ void FNaF2Render::RenderNextDay(const FNaF2Game& game) {
     if (fi < 0) fi = 0;
     if (fi > 17) fi = 17;                                // hold the last cell
     Draw(kRoll[fi], 415.0f, 363.0f, 57.0f, 86.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // v2.76: the frame transition overlay — a black fullscreen quad (the dump's
@@ -592,7 +651,8 @@ void FNaF2Render::RenderDream(const FNaF2Game& game, f32 time) {
     // flicker and the slow blackout. v2.66: the dump's OWN perspective
     // wraps this layer (frame 13 "Perspective" obj 300 @ (0,0): object
     // 1024x768, EDATA zoom=200 curve=4) — the dream's mild bend.
-    m_batch->BeginSceneCapture(0xFF000000);
+    s_rawCapture = true;                    // the warp samples the capture
+    m_batch->BeginSceneCapture(0xFF000000); // in screen space
     const f32 pan = game.GetDreamPan();
     DrawWorld(616, 0.0f, 0.0f, 2500.0f, 768.0f, pan, 0xFFFFFFFF);
     // v2.75: the "mask" object (dump frame 13, layer 1, instance (-74,-50),
@@ -619,6 +679,7 @@ void FNaF2Render::RenderDream(const FNaF2Game& game, f32 time) {
             DrawWorld(626, 2170.0f, 330.0f, 260.0f, 420.0f, pan, 0xFFFFFFFF);
     }
     m_batch->EndSceneCapture();
+    s_rawCapture = false;
     {   // vc100 (XDK) has no braced-init args: explicit local
         SpriteBatch::PerspGeom g;
         g.objW = 1024.0f; g.objH = 768.0f; g.orgX = 0.0f; g.orgY = 0.0f;
@@ -659,6 +720,8 @@ void FNaF2Render::RenderDream(const FNaF2Game& game, f32 time) {
         const u32 a = (u32)game.GetBlackout();
         Draw(225, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderError(bool second) {
@@ -669,11 +732,15 @@ void FNaF2Render::RenderError(bool second) {
     // (the user's "IT'S ME was stretched" report).
     if (second) Draw(630, 30.0f, 12.0f, 43.0f, 13.0f, 0xFFFFFFFF);
     else        Draw(628, 20.0f, 16.0f, 105.0f, 19.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderEnd(i32 which) {
     const i32 img = (which == 5) ? 587 : (which == 6) ? 590 : 622;
     Draw(img, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
@@ -737,7 +804,7 @@ void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
         };
         const i32 mode = game.GetCustomMode();
         if (mode >= 1 && mode <= 10 && m_text)
-            m_text->DrawText((int)(69.0f * kScaleX), (int)(676.0f * kScaleY),
+            m_text->DrawText((int)((69.0f * kScale + kOffsetX)), (int)(676.0f * kScale),
                              kModes[mode - 1], 0xFFB0B0B0);
         if (mode >= 1 && mode <= 10 && game.GetChallengeBeat(mode - 1)) {
             // dump: "did challenge" + "did challenge 2" toggle TOGETHER —
@@ -747,17 +814,26 @@ void FNaF2Render::RenderCustomize(const FNaF2Game& game) {
         }
     }
     Draw(546, 823.0f, 696.0f, 186.0f, 58.0f, 0xFFFFFFFF);  // READY
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderRare(i32 which) {
     const i32 img = (which == 1) ? 625 : (which == 2) ? 623 : 627;
     Draw(img, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderGameOver() {
     // frame 6: the withered Freddy face + the "Game Over" plate
     Draw(226, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-    Draw(228, 180.0f, 700.0f, 320.0f, 48.0f, 0xFFFFFFFF);
+    // v2.102: the dump's 'Active' img_228 sits at the instance (180,700)
+    // with the hot spot (-244,-10) -> the draw origin is (424,710), and
+    // the plate's own size is 206x27.
+    DrawNat(228, 424.0f, 710.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- the 8-bit minigames ------------------------------------------------
@@ -805,6 +881,8 @@ void FNaF2Render::RenderEightBit(const FNaF2Game& game) {
     Draw(245, (f32)mg.px - 50.0f, (f32)mg.py - 55.0f, 99.0f, 100.0f, 0xFFFFFFFF);
     // the WASD hint rides above the player for the first 5 s (group 104)
     if (mg.t < 5.0f) Draw(646, (f32)mg.px - 40.0f, (f32)mg.py - 130.0f, 84.0f, 30.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderMgLoad() {
@@ -812,6 +890,8 @@ void FNaF2Render::RenderMgLoad() {
     Draw(636, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     Draw(678, 0.0f, 300.0f, 1076.0f, 40.0f, 0xFFFFFFFF);
     Draw(680, 0.0f, 420.0f, 1076.0f, 40.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
@@ -928,6 +1008,8 @@ void FNaF2Render::RenderMinigame(const FNaF2Game& game) {
         if (a > 0u)
             Draw(649, 0.0f, 0.0f, 1024.0f, 768.0f, (a << 24) | 0x00FFFFFFu);
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF2Render::RenderEndBars() {
@@ -935,6 +1017,8 @@ void FNaF2Render::RenderEndBars() {
     Draw(636, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     Draw(678, 0.0f, 300.0f, 1076.0f, 40.0f, 0xFFFFFFFF);
     Draw(680, 0.0f, 420.0f, 1076.0f, 40.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 } // namespace fnaf

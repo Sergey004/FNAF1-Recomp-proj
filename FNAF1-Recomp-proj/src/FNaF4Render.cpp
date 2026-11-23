@@ -33,8 +33,24 @@ u32         Fnaf4CsLineColor(i32 row);
 const char* Fnaf4EndLineText(i32 row);
 u32         Fnaf4EndLineColor(i32 row);
 
-static const f32 kScaleX = 1280.0f / 1024.0f;   // full-stretch 16:9
-static const f32 kScaleY = 720.0f / 768.0f;
+// v2.104: the original window is 1024x768 (4:3) — the Xbox 360 pillarboxes
+// it in 1280x720 (160 px bars). The port used to full-stretch it (X 1.25 /
+// Y 0.9375), which made every sprite 33% too wide (the camera menu looked
+// "crooked"). Uniform scale + bars restores the original proportions.
+static const f32 kScale = 720.0f / 768.0f;                        // 0.9375
+static const f32 kOffsetX = (1280.0f - 1024.0f * kScale) * 0.5f;   // 160
+// the perspective pass warps the CAPTURE in screen space, so the room has
+// to fill the whole capture while it is drawn; the bars are painted after.
+static const f32 kStretchX = 1280.0f / 1024.0f;                    // 1.25
+static bool s_rawCapture = false;
+
+// v2.104: the 4:3 pillarbox bars — the original window is 1024x768, so
+// the Xbox 360 shows black bars on the sides.
+void FNaF4Render::DrawBars() {
+    if (!m_batch) return;
+    m_batch->DrawSolid(0.0f, 0.0f, kOffsetX, 720.0f, 0xFF000000u);
+    m_batch->DrawSolid(1280.0f - kOffsetX, 0.0f, kOffsetX, 720.0f, 0xFF000000u);
+}
 
 void FNaF4Render::Init(PakLoader* pak, SpriteBatch* batch, TextRenderer* text) {
     m_pak = pak; m_batch = batch; m_text = text;
@@ -50,8 +66,12 @@ void FNaF4Render::Draw(int handle, float fx, float fy, float fw, float fh, u32 c
     // sampling pulled that junk into the quad (F2 title "Continue" syndrome).
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
-                  fw * kScaleX, fh * kScaleY, 0.0f, 0.0f, u1, v1, color);
+    if (s_rawCapture)
+        m_batch->Draw(t->texture, fx * kStretchX, fy * kScale,
+                      fw * kStretchX, fh * kScale, 0.0f, 0.0f, u1, v1, color);
+    else
+        m_batch->Draw(t->texture, (fx * kScale + kOffsetX), (fy * kScale),
+                      (fw * kScale), (fh * kScale), 0.0f, 0.0f, u1, v1, color);
 }
 
 // v2.67: native-size draw from the pak cell (plates / glyph strips)
@@ -62,9 +82,14 @@ void FNaF4Render::DrawNat(int handle, float fx, float fy, u32 color) {
     if (!t || !t->texture || !m_batch) return;
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, fx * kScaleX, fy * kScaleY,
-                  (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY,
-                  0.0f, 0.0f, u1, v1, color);
+    if (s_rawCapture)
+        m_batch->Draw(t->texture, fx * kStretchX, fy * kScale,
+                      (f32)t->origWidth * kStretchX, (f32)t->origHeight * kScale,
+                      0.0f, 0.0f, u1, v1, color);
+    else
+        m_batch->Draw(t->texture, (fx * kScale + kOffsetX), (fy * kScale),
+                      (f32)t->origWidth * kScale, (f32)t->origHeight * kScale,
+                      0.0f, 0.0f, u1, v1, color);
 }
 
 // v2.67: Clickteam counter from its CNTR strip (alphabet 0-9-+.e cells);
@@ -92,8 +117,8 @@ void FNaF4Render::DrawCounterNat(int value, const int* strip, float fx, float fy
         PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
         const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
         const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-        m_batch->Draw(t->texture, x * kScaleX, (fy - (f32)t->origHeight) * kScaleY,
-                      (f32)t->origWidth * kScaleX, (f32)t->origHeight * kScaleY,
+        m_batch->Draw(t->texture, (x * kScale + kOffsetX), ((fy - (f32)t->origHeight) * kScale),
+                      (f32)t->origWidth * kScale, (f32)t->origHeight * kScale,
                       0.0f, 0.0f, u1, v1, color);
         x += (f32)t->origWidth + 1.0f;
     }
@@ -101,15 +126,16 @@ void FNaF4Render::DrawCounterNat(int value, const int* strip, float fx, float fy
 
 void FNaF4Render::DrawWorld(int handle, float wx, float wy, float fw, float fh,
                             float pan, u32 color) {
-    const f32 sx = (wx - pan) * kScaleX;
-    if (sx >= 1280.0f || sx + fw * kScaleX <= 0.0f) return;
+    const f32 sx = s_rawCapture ? ((wx - pan) * kStretchX)
+                                : ((wx - pan) * kScale + kOffsetX);
+    if (sx >= 1280.0f || sx + (fw * kScale) <= 0.0f) return;
     char name[32];
     Snprintf(name, sizeof(name), "img_%d", handle);
     PakLoadedTexture* t = m_pak ? m_pak->FindTexture(name) : 0;
     if (!t || !t->texture || !m_batch) return;
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    m_batch->Draw(t->texture, sx, wy * kScaleY, fw * kScaleX, fh * kScaleY,
+    m_batch->Draw(t->texture, sx, (wy * kScale), (fw * kScale), (fh * kScale),
                   0.0f, 0.0f, u1, v1, color);
 }
 
@@ -122,6 +148,8 @@ void FNaF4Render::RenderDisclaimer() {
     // v2.74: the layout's hotspot-corrected left/top is (252,288) — the old
     // draw used the raw instance origin (248,284), 4 px off.
     Draw(962, 252.0f, 288.0f, 551.0f, 92.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // v2.74: frame 14 "test" (the test-room skip) and frame 15 (the nightmare
@@ -133,11 +161,15 @@ void FNaF4Render::RenderTest() {
     Draw(1178, 302.0f, 193.0f, 549.0f,  65.0f, 0xFFFFFFFF);
     Draw(1180, 302.0f, 373.0f, 582.0f,  40.0f, 0xFFFFFFFF);
     Draw(1184, 460.0f, 653.0f, 144.0f,  15.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderNJScare() {
     if (!m_batch || !m_pak) return;
     Draw(1186, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderTitle(f32 time, i32 optionSelected, bool beat5) {
@@ -173,6 +205,8 @@ void FNaF4Render::RenderTitle(f32 time, i32 optionSelected, bool beat5) {
     DrawNat(257, 398.0f, 733.0f, 0xFFFFFFFF);
     DrawNat(964, 773.0f, 733.0f, 0xFFFFFFFF);
     DrawNat(317, 979.0f, 712.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- the between-night cards -------------------------------------------
@@ -193,12 +227,16 @@ void FNaF4Render::RenderNightStart(i32 night) {
                                          692, 693, 694, 695, 696, 697, 698 };
     DrawCounterNat(night, kNightStrip, 212.0f, 93.0f, 0xFFFFFFFF);
     DrawNat(656, 960.0f, 706.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderNightWin() {
     // frame 5 "night win": the frame draws ONLY the four num cells + the
     // colon (see RenderNightWinDigits) over black — nothing else (the old
     // "6 AM / night complete" debug caption is gone).
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- bedroom (frame 3 "level", 1300x768) --------------------------------
@@ -312,12 +350,17 @@ void FNaF4Render::RenderBedroom(const FNaF4Game& game, f32 time, f32 pan) {
     if (game.GetHour() == 0 && game.GetClock() < 8.0f) {
         const f32 k = 1.0f - game.GetClock() / 8.0f;
         const u32 a = (u32)(255.0f * (k > 1.0f ? 1.0f : k));
-        Draw(1183, 20.0f, 15.0f, 300.0f, 79.0f, (a << 24) | 0xFFFFFFFFu);
-        Draw(1175, 512.0f, 294.0f, 401.0f, 188.0f, (a << 24) | 0xFFFFFFFFu);
+        // v2.102: the draw origin is the instance point minus the hot
+        // spot: 'Active 3' img_1183 @ (20,15) hot (0,-5) -> (20,20);
+        // 'door warning' img_1175 @ (512,294) hot (200,94) -> (312,200).
+        Draw(1183,  20.0f,  20.0f, 300.0f, 79.0f, (a << 24) | 0xFFFFFFFFu);
+        Draw(1175, 312.0f, 200.0f, 401.0f, 188.0f, (a << 24) | 0xFFFFFFFFu);
     }
     // v2.67: the forced-closet state is shown by its own art (the
     // no-look-away closet views above); the "FLASH THE CLOSET" caption was
     // ours, not the game's — gone.
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // ---- the jumpscare / bite overlays ---------------------------------------
@@ -341,12 +384,16 @@ void FNaF4Render::RenderGameOver() {
     // (img 78) under the white flash (img 260). No words in the original.
     Draw( 78, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
     Draw(260, 0.0f, 0.0f, 1024.0f, 768.0f, 0x30FFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderGameOver2() {
     // frame 8: the minigame catch hold (4 s) — the dump's own plate
     // "TOO BAD." (img 867, 308x47 @ (512,376))
     Draw(867, 512.0f, 376.0f, 308.0f, 47.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderIntro() {
@@ -354,6 +401,8 @@ void FNaF4Render::RenderIntro() {
     // dump's own title card (img 1267, 630x346 native, hotspot-corrected
     // (203,188)). The debug-font caption is gone.
     DrawNat(1267, 203.0f, 188.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderNightWinDigits(const FNaF4Game& game) {
@@ -371,6 +420,8 @@ void FNaF4Render::RenderNightWinDigits(const FNaF4Game& game) {
              0xFFFFFFFF);
     }
     Draw(678, 519.0f, 325.0f, 23.0f, 88.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderMinigame(const FNaF4Game& game) {
@@ -398,7 +449,8 @@ void FNaF4Render::RenderMinigame(const FNaF4Game& game) {
 
     // the plushtrap/BB sprite in the mid-hall positions
     if (!pt.won && !pt.scare && pt.hallPos >= 2 && pt.hallPos <= 7)
-        Draw(849, 892.0f, 478.0f, 67.0f, 24.0f, 0xFFFFFFFF);
+        // v2.102: 'plushtrap' img_849 @ (892,478) hot (15,15) -> (877,463)
+        Draw(849, 877.0f, 463.0f, 67.0f, 24.0f, 0xFFFFFFFF);
 
     // the win stamp ("great!", img 868) at its dump spot (395,285 native)
     if (pt.won) DrawNat(868, 395.0f, 285.0f, 0xFFFFFFFF);
@@ -431,6 +483,8 @@ void FNaF4Render::RenderMinigame(const FNaF4Game& game) {
             Draw(kHr[t], 963.0f, 88.0f, 46.0f, 78.0f, 0xFFFFFFFF);
         }
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderLockbox(const FNaF4Game& game) {
@@ -444,6 +498,8 @@ void FNaF4Render::RenderLockbox(const FNaF4Game& game) {
     DrawNat(750, 455.0f, 485.0f, 0xFFFFFFFF);
     DrawNat(750, 544.0f, 485.0f, 0xFFFFFFFF);
     DrawNat(733, 323.0f, 154.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderExtras(const FNaF4Game& game) {
@@ -463,6 +519,8 @@ void FNaF4Render::RenderExtras(const FNaF4Game& game) {
     for (int i = 0; i < 10; ++i)
         DrawNat(kImg[i], kX[i], kY[i], (ex.row == i) ? 0xFFFF8080 : 0xFFFFFFFF);
     (void)kX; (void)kY;
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
@@ -490,6 +548,8 @@ void FNaF4Render::RenderCutscene(const FNaF4Game& game) {
             m_text->DrawText(150, 110, line, Fnaf4CsLineColor(cs.curLine));
     }
     if (cs.done) Draw(976, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 // v2.76: the frame transition overlay — a black fullscreen quad (the dump's
@@ -531,6 +591,8 @@ void FNaF4Render::RenderEnding(const FNaF4Game& game) {
             if (n >= len) DrawNat(1084, 900.0f, 200.0f, 0xFFFFFFFF);
         }
     }
+
+    DrawBars();          // v2.104: the 4:3 pillarbox bars
 }
 
 } // namespace fnaf

@@ -184,10 +184,33 @@ void FNaFWorldRender::RenderTitle(const FNaFWorldGame& game, f32 time) {
 //     img in runs (83 tree rocks in a row), so a 1-entry cache absorbs
 //     most lookups (visible instances are also culled before lookup)
 // ------------------------------------------------------------
+// v2.102: per-image texture cache. The scenery asks for the same ~320
+// images every frame; the old code formatted "img_%d" and ran the pak name
+// lookup per visible sprite (the pak has 7660 textures and the lookup was a
+// linear strcmp scan). The cache is keyed by the image id and reset when
+// the pak changes.
+static PakLoadedTexture* WorldTexture(PakLoader* pak, int img)
+{
+    struct Slot { int img; PakLoadedTexture* tex; };
+    static Slot s_slots[4096];
+    static PakLoader* s_pak = 0;
+    static bool s_init = false;
+    if (!s_init || s_pak != pak) {
+        for (int i = 0; i < 4096; ++i) { s_slots[i].img = -1; s_slots[i].tex = 0; }
+        s_init = true;
+        s_pak = pak;
+    }
+    Slot& s = s_slots[img & 4095];
+    if (s.img == img) return s.tex;
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", img);
+    s.img = img;
+    s.tex = pak ? pak->FindTexture(name) : 0;
+    return s.tex;
+}
+
 void FNaFWorldRender::RenderWorld(const FNaFWorldGame& game) {
     if (!m_batch) return;
-    static int              s_lastImg = -1;
-    static PakLoadedTexture* s_lastTex = 0;
 
     // the zone ground: the exe attaches a full-screen backdrop sprite to
     // the camera and swaps it per zone (the "background N" family, all
@@ -228,27 +251,57 @@ void FNaFWorldRender::RenderWorld(const FNaFWorldGame& game) {
     // the actors, the rest in front (painter's by top)
     const f32 freddyTopPx = game.GetFreddyY() * (f32)kFwTile;
 
-    // pass 1: layer 0 (ground/decor) + layer 1 scenery BEHIND the actors
+    // pass 1: layer 0 (the quick backdrops = the ground/paths/water + the
+    // decor sprites) + layer 1 scenery BEHIND the actors.
+    // v2.102: the quick backdrops carry their image and size from the dump
+    // (the first generator left them as "no image", so the port drew a flat
+    // colour instead of the ground). Fusion TILES a quick backdrop's image
+    // over its rect — the dump's images are seamless tiles (the edge
+    // difference is as small as the interior one) and the rect sizes are
+    // not multiples of the tile, so the tile repeats and clips.
     for (int i = 0; i < kFwMapInstCount; ++i) {
         const FwMapInst& it = kFwMapInsts[i];
         if (it.img == 0xFFFF) continue;                       // no-image marker
-        if (it.left > (i32)camR + 64 || it.top > (i32)camB + 160) continue;   // sorted: cheap reject
+        // v2.102: layers 0-2 are the world (the ground, the scenery and the
+        // decor); layers 3+ are the party/boss UI overlays, which this port
+        // does not implement - they stay undrawn instead of showing stray
+        // buttons and bars everywhere.
+        if (it.layer > 2) continue;
         const bool behind = (it.layer == 0) || (it.top <= (i32)freddyTopPx);
         if (!behind) continue;
-        PakLoadedTexture* t;
-        if ((int)it.img == s_lastImg) {
-            t = s_lastTex;
-        } else {
-            char name[32];
-            Snprintf(name, sizeof(name), "img_%d", (int)it.img);
-            t = m_pak ? m_pak->FindTexture(name) : 0;
-            s_lastImg = it.img; s_lastTex = t;
-        }
+        PakLoadedTexture* t = WorldTexture(m_pak, (int)it.img);
         if (!t || !t->texture) continue;
-        const f32 w = (f32)t->origWidth, h = (f32)t->origHeight;
-        if (it.left + w < camL - 64 || it.top + h < camT - 64) continue;
         const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
         const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+        if (it.kind == 1) {
+            // the tiled ground: the tile grid over the backdrop's rect
+            const f32 tw = (f32)t->origWidth, th = (f32)t->origHeight;
+            const f32 qw = it.w ? (f32)it.w : tw;
+            const f32 qh = it.h ? (f32)it.h : th;
+            if (tw <= 0.0f || th <= 0.0f) continue;
+            if ((f32)it.left > camR || (f32)it.top > camB) continue;
+            if ((f32)it.left + qw < camL || (f32)it.top + qh < camT) continue;
+            const i32 cols = (i32)((qw + tw - 0.5f) / tw);
+            const i32 rows = (i32)((qh + th - 0.5f) / th);
+            for (i32 cy = 0; cy < rows; ++cy) {
+                for (i32 cx = 0; cx < cols; ++cx) {
+                    // point sampling: the ground is pixel art (the same
+                    // rule the layer-1 canopies use)
+                    m_batch->DrawPoint(t->texture,
+                                       ((f32)it.left + cx * tw - camL) * kSx,
+                                       ((f32)it.top + cy * th - camT) * kSy,
+                                       tw * kSx, th * kSy, 0.0f, 0.0f, u1, v1, 0xFFFFFFFF);
+                }
+            }
+            continue;
+        }
+        // a backdrop is drawn stretched over its own rect (the dump's size,
+        // which is NOT the texture's natural size - img 2409 is a 46x50
+        // tree silhouette); a sprite uses the texture's own size
+        const f32 w = it.kind == 2 && it.w ? (f32)it.w : (f32)t->origWidth;
+        const f32 h = it.kind == 2 && it.h ? (f32)it.h : (f32)t->origHeight;
+        if (it.left + w < camL - 64 || it.top + h < camT - 64) continue;
+        if ((f32)it.left > camR + 64 || (f32)it.top > camB + 160) continue;
         if (it.layer == 0) {
             m_batch->Draw(t->texture,
                           ((f32)it.left - camL) * kSx, ((f32)it.top - camT) * kSy,
@@ -307,25 +360,18 @@ void FNaFWorldRender::RenderWorld(const FNaFWorldGame& game) {
         }
     }
 
-    // pass 4: layer 1 scenery IN FRONT of the actors
+    // pass 4: the layer 1/2 scenery IN FRONT of the actors
     for (int i = 0; i < kFwMapInstCount; ++i) {
         const FwMapInst& it = kFwMapInsts[i];
-        if (it.layer != 1) continue;
+        if (it.layer < 1 || it.layer > 2) continue;
         if (it.img == 0xFFFF) continue;                       // no-image marker
         if (it.top <= (i32)freddyTopPx) continue;
-        if (it.left > (i32)camR + 64 || it.top > (i32)camB + 160) continue;   // sorted: cheap reject
-        PakLoadedTexture* t;
-        if ((int)it.img == s_lastImg) {
-            t = s_lastTex;
-        } else {
-            char name[32];
-            Snprintf(name, sizeof(name), "img_%d", (int)it.img);
-            t = m_pak ? m_pak->FindTexture(name) : 0;
-            s_lastImg = it.img; s_lastTex = t;
-        }
+        PakLoadedTexture* t = WorldTexture(m_pak, (int)it.img);
         if (!t || !t->texture) continue;
-        const f32 w = (f32)t->origWidth, h = (f32)t->origHeight;
+        const f32 w = it.kind == 2 && it.w ? (f32)it.w : (f32)t->origWidth;
+        const f32 h = it.kind == 2 && it.h ? (f32)it.h : (f32)t->origHeight;
         if (it.left + w < camL - 64 || it.top + h < camT - 64) continue;
+        if ((f32)it.left > camR + 64 || (f32)it.top > camB + 160) continue;
         const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
         const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
         m_batch->DrawPoint(t->texture,

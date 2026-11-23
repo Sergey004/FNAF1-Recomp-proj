@@ -1013,7 +1013,27 @@ void FNaF2Game::TickOffice(f32 dt, const FNaF2Inputs& in) {
     // gameover edge; the real game shows the face after the scare).
     if (m_scareT >= 0.0f) {
         m_scareT += dt;
-        if (m_scareT >= 0.75f) {
+        // v2.107: the dump's 'attack animation' sequences (the office
+        // groups g440-g449 set the sequence from the 'being attacked by'
+        // id): 12..21 are 12-16 cells at speed 40/50/60 -> 0.39-0.54 s.
+        // The port held the scare for 0.75 s; use the dump's per-attacker
+        // duration instead.
+        static const f32 kScareDur[13] = {
+            0.5f,
+            13.0f / 30.0f,   // id 1  -> seq 12 (13 cells @ 50)
+            16.0f / 30.0f,   // id 2  -> seq 13 (16 @ 50)
+            12.0f / 24.0f,   // id 3  -> seq 14 (12 @ 40)
+            14.0f / 36.0f,   // id 4  -> seq 15 (14 @ 60)
+            13.0f / 30.0f,   // id 5  -> seq 16 (13 @ 50)
+            13.0f / 24.0f,   // id 6  -> seq 17 (13 @ 40)
+            12.0f / 24.0f,   // id 7  -> seq 18 (12 @ 40)
+            16.0f / 30.0f,   // id 8  -> seq 19 (16 @ 50)
+            15.0f / 30.0f,   // id 9  -> seq 20 (15 @ 50)
+            0.5f, 0.5f,
+            13.0f / 24.0f    // id 12 -> seq 21 (13 @ 40)
+        };
+        const i32 aid = (m_attacker >= 0 && m_attacker < 13) ? m_attacker : 0;
+        if (m_scareT >= kScareDur[aid]) {
             RequestScreen(SCR_GAMEOVER);
             m_cardT = 0.0f;
             m_scareT = -1.0f;

@@ -3,6 +3,161 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.107 — re-checked the jumpscare -> Game Over transitions (all six games)
+
+Checked against the dumps (TRANSITIONS.txt + the events + the object
+animations):
+
+| game | dump | port | was |
+|---|---|---|---|
+| FNAF1 | office -> frame 4 "died"; the scare lengths come from the animations (1.03/0.83/0.65 s) | same | OK |
+| FNAF2 | "attack animation": 12-16 cells @ 40/50/60 fps = **0.39-0.54 s**, then the gameover frame (the dynamic jump) | 0.75 s | **fixed** |
+| FNAF3 | "jumpscare": 41 cells @ 36 fps = 1.14 s; a gameover frame exists | 5 s (scare + stare + flash) | left as is (the alt[6] chain has no reader in the frame) |
+| FNAF4 | the scare: 26 cells @ 30 fps = **0.87 s** -> the jump goes to the **title screen** (g204-207, g289/301/302). The level frame has NO jump to "game over": the blood frame 4 is reached from the extras/cutscenes/night-win/test/demo frames, i.e. it is the custom-night failure screen | 1.5 s -> the blood "game over" -> 7 s -> title | **fixed** |
+| Sister Location | the gameplay frames -> frame 15 "game over" -> frame 14 "death" (the death router) | same | OK |
+| FNaF World | overworld -> frame 6 "game over" (5 s, the "death" sample) | same | OK |
+
+- **FNAF4**: after the scare the port now goes straight to the title screen
+  (the dump: all ten level-frame jumps are static, eight of them to
+  "titlescreen"), clearing shadow/save; the scare lasts 0.87 s (26 cells at
+  30 fps).
+- **FNAF2**: the scare duration now comes from the dump's per-attacker
+  table ("being attacked by" ids 1..9, 12 -> sequences 12..21).
+
+## v2.106 — FNAF3: the monitor feed is now the real animation cell
+
+- **The port drew "two monitors" instead of one.** The renderer painted the
+  bezel (img 75, the "monitor" object), the empty screen (img 104) and a
+  small piece on top. But FNaF3Game::FeedImg returns the **animation
+  SEQUENCE numbers** of the "camera screen" object (objInfo 105), while the
+  renderer looked them up as **image handles** ("img_17" instead of "the
+  cell of sequence 17") — so unrelated art showed up on the feed.
+- The sequence is now resolved to its cell (the new
+  FNaF3Game::ScreenCell table: seq 0 = img 104 the empty screen, seq
+  12..61 = the camera views, all 825x650 apart from two tiny overlays
+  seq 20/22). The cell fills the monitor's screen area (825x650 at
+  228,58); the tiny overlays sit centred on it.
+- Per the dump, the FNAF3 monitor is TWO objects in ONE frame (level,
+  layer 0): "monitor" (objInfo 67, img 75, 873x679 — the bezel) and
+  "camera screen" (objInfo 105, origin (-412,-324) — the screen whose
+  sequence the g90-102 events switch per camera). Both are centred on the
+  world origin; the HUD (buttons/plates) sits on layers 3-4.
+
+## v2.105 — FNAF3: the office perspective pivot from the dump (it was over-twisted)
+
+- **The FNAF3 office bend is authentic** — the level frame carries a
+  "Perspective" extension object (objInfo 60 at (-8,-8), layer 2,
+  PANORAMA/HORIZONTAL, zoom 150, object 1048x790) and the ctfak applies it
+  in its own dump render ("Perspective applied after layer 2"). It is not
+  "on triggers": it is a constant layer effect, and the reaction to LT/RT
+  (the pan) comes from the layer scrolling while the bend stays anchored
+  to the screen — the original does the same.
+- **But the port bent it off-centre.** The pivot is orgY + objH/2 =
+  -8 + 790/2 = **387**, while the port used **355** — FNAF1's value
+  (-22 + 754/2) copied over by mistake. The vertical compression was
+  therefore asymmetric (the top pulled harder than the bottom), which made
+  the office look over-twisted, especially while panning with the
+  triggers. Fixed to 387 (FNAF1's 355 and FNAF2's 384 were already right,
+  verified against the dumps).
+- The bend formula itself matches the ctfak sign for sign
+  (fB = 1 - zoom/objH; fC = 1 + (fB-1)*curve*(u-0.5)^2) - only the pivot
+  differed. The monitor view stays on the UI layer: it is drawn OUTSIDE the
+  office's perspective capture, so the feed is flat and only the room
+  bends.
+- **Where the original renders the monitors (dump facts):** in the SAME
+  frame as the office (frame 3 "Frame 1"), on **layer 0** - the object
+  "camera screen" (objInfo 105, origin (-412,-324)) switches its animation
+  sequence to the selected camera's cells (events g90-102 set the sequence;
+  seq 0 = img 104 the empty screen, seq 12..61 = the camera views), and
+  the bezel is the "monitor" object (objInfo 67, img 75, 873x679). The HUD
+  (cam buttons, plates) sits on layers 3-4, and the "Perspective" object
+  on layer 2. So per the dump the feed is under the perspective and bends
+  with the room; the port keeps it flat (UI layer) by request.
+
+## v2.104 — FNAF2/3/4: 4:3 restored (pillarbox) — the "crooked" camera menu
+
+- **Why the FNAF2 camera menu looked crooked — the 4:3 stretch.** The
+  original (and the dump) window is 1024x768, and the port stretched it to
+  1280x720 (X 1.25 / Y 0.9375): every sprite was 33% too wide, the cam
+  buttons (60x40 in the dump) came out wider than tall and the map panel was
+  squashed. The Xbox 360 pillarboxes 4:3 games with 160 px bars — now the
+  port does the same: a uniform 0.9375 scale plus the bars. FNAF2, FNAF3 and
+  FNAF4 are affected (all three have a 1024x768 window).
+- The perspective pass (FNAF2 "dream", FNAF3 office) warps the CAPTURE in
+  screen space, so the room is drawn with the old stretch while the capture
+  is live and the bars are painted after the warp — otherwise the bend
+  would sample the wrong region.
+- The bars are drawn at the end of every screen (DrawBars) — 18 FNAF2, 21
+  FNAF3 and 16 FNAF4 screens; verified with the harness: 75 frames, clean
+  bars, and the FNAF3 vent map still sits exactly where it was (offset 0).
+
+## v2.103 — a position audit of the port against the dumps (FNAF2 → FNAF4)
+
+- **New check method**: every port draw is compared against the FrameLayout
+  dump (image + position, where `left/top` = the instance point minus the
+  image hotspot). It found a whole series of mismatches of one kind — the
+  port drew at the INSTANCE point instead of the image origin, so the art
+  was shifted by the hotspot.
+- **FNAF2**: the map panel (img_2) and the 12 cam buttons (img_16/17) moved
+  to their real spots — the map was (182,152) px off, the buttons (30,20) px;
+  the "Game Over" plate (img_228) was 244 px off; the Halloween pumpkin
+  (img_503) by (80,74) px; the title footer plate (img_294) by 5 px.
+- **FNAF3**: Shadow Freddy no longer replaces a camera feed — in the dump it
+  is the office object "shadow freddy" (img_290, 273x545 @ left -1, top 226,
+  layer 1), visible when its alterable rolls 1 (group 613 hides it when
+  alt0 != 1, group 617 shows it when alt0 == 1). The port painted the
+  monitor-FLIP cells (59..63, the "flip in"/"flip out" animations) over cams
+  2/10 instead. Plus the end-screen plate (img_505) is now dump-correct.
+- **FNAF4**: the "DOOR WARNING" plate (img_1175) was (200,94) px off, the
+  tutorial plate (img_1183) 5 px off, and the Plushtrap sprite in the
+  minigame (img_849) by (15,15) px.
+- Known deviations (recorded): Sister Location's rooms are drawn without the
+  perspective pass (dump: zoom 300, 1280x720 layer, curve 4) and without the
+  room animation (16 cells, 50 fps) — deferred, it needs the layer wrapped
+  in a scene capture; FNAF3 still has no monitor-flip animation (10 frames
+  at 1/50 s).
+
+## v2.102 — FNaF World: performance + graphics; FNAF2: buttons and flashlight
+
+- **Performance: the pak texture lookup is now O(1).** FindTexture was a
+  linear strcmp scan over the whole pak table (7660 textures in FNaF World),
+  and the World renderer calls it for EVERY visible sprite every frame (the
+  trees/rocks/walls come in long runs) — that was the frame-time hog. The
+  pak now builds a name hash table (FNV-1a, open addressing) at load time.
+  FNaFWorldRender additionally caches "image id -> texture", so the pak
+  call and the "img_%d" formatting left the frame entirely.
+- **World graphics: the ground is back.** The "overworld" frame holds 701
+  quick backdrops (the ground, paths, water, flowers); the first map
+  generator could not resolve their images and wrote the 65535 "no image"
+  marker, so the port drew a flat fill. The image and size now come from
+  the JSON export, and Fusion tiles the seamless tile over the backdrop
+  rect (verified: the edge differences are as small as the interior ones) —
+  the tiles are drawn as a grid with POINT sampling.
+- **World graphics: the 632 backdrops are drawn at their own rect size**
+  (img_2409 "tree" is 46x50, not the texture's size), and the order inside
+  a layer is Fusion's: backdrop -> quick backdrop -> sprite. The frame's
+  instance order mixed all three kinds.
+- **World graphics: the 242 invisible objects are gone** (VisibleAtStart =
+  false — the magenta editor placeholders "+2", "+ 5" and friends). The CTF
+  editor draws them in magenta; the game never shows them.
+- **World graphics: layers 0-2 are drawn** (ground, scenery, decor). Layers
+  3-10 are the party/boss UI, which this port does not implement — they
+  would only put stray buttons all over the map.
+- The map generator now lives in the repo: tools/gen_fwmap2.py.
+- **FNAF2: the monitor buttons no longer slide with the office.** In the
+  dump they are layer-4 (screen-fixed) objects: "flip mask button" img_119
+  (left 3, top 706) and "flip panel button" img_95 (left 489, top 705). The
+  port drew them through DrawWorld(..., pan), i.e. shifted with the room
+  panorama; they are now drawn at fixed screen coordinates (verified: the
+  same pixels at pan 0 and pan 300).
+- **FNAF2: the flashlight no longer "draws another office on top".** The
+  lit scene (Active 16, animation cell 36 -> img_123) is the SAME 1600x768
+  panorama with the hall lit, so it has to scroll with the room. The port
+  drew it un-panned, so the panorama's left edge showed up — "another
+  office". The scene now goes through DrawWorld with the same pan
+  (verified: it matches img_123 cropped at the pan — diff 3.1 against 15.7
+  for the un-panned variant).
+
 ## v2.101 — CTFAK: Y compare + alterable operand; the rest of the games audited
 
 - **(2,-16) is the Y-position compare** (the mirror of the already supported

@@ -331,6 +331,9 @@ public:
 
     // feed image table (dump "camera screen" act #17 values): empty/Springtrap
     static i32 FeedImg(i32 cam, bool springtrap);
+    // v2.106: the animation sequence -> its first cell (the dump's
+    // 'camera screen' object); 0 = no view.
+    static i32 ScreenCell(i32 sequence);
     // is Springtrap currently visible on this cam? (the feed draws his frame)
     bool   SpringtrapOnCam(i32 cam) const;
 

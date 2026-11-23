@@ -115,6 +115,16 @@ private:
     void* m_device;
     PakLoadedTexture* m_textures;
     int m_numTextures;
+    // v2.102: name -> texture index hash. FindTexture used to be a linear
+    // strcmp scan over the whole pak table (7660 textures in FNaF World),
+    // and the World renderer asks for a texture per visible scenery sprite
+    // every frame — that scan alone was the frame-time hog. The hash is
+    // built once after the texture table is parsed.
+    struct TexHashSlot { u32 hash; int index; };
+    TexHashSlot* m_texHash;
+    int m_texHashMask;      // capacity - 1 (the capacity is a power of two)
+    void BuildTextureHash();
+    static u32 HashTextureName(const char* name);
     PakLoadedSound* m_sounds;
     int m_numSounds;
     u8* m_pakData; // keep file in memory for audio

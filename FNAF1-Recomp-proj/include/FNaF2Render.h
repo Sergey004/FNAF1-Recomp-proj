@@ -48,6 +48,7 @@ public:
 
     // v2.59: the jumpscare overlay (attack animation 12..21) — draw AFTER
     // the office/monitor, full-screen.
+    void DrawBars();                              // the 4:3 pillarbox bars
     void DrawAttack(const FNaF2Game& game);
 
     // v2.76: the frame transition overlay (the dump's black STDT/FADE).

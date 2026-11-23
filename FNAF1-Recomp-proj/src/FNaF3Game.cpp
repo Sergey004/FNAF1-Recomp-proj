@@ -278,11 +278,30 @@ void FNaF3Game::SfxStop(const char* s) {
 }
 
 // dump "camera screen" act #17 feed table: empty / Springtrap per cam
+// v2.106: the tables below are the 'camera screen' object's ANIMATION
+// SEQUENCES (the dump's groups g90-g102 set the sequence per camera), not
+// image handles - the port used them as handles and drew unrelated art.
 i32 FNaF3Game::FeedImg(i32 cam, bool springtrap) {
     static const i32 kEmpty[16] = { 0, 17, 14, 15, 16, 21, 12, 13, 23, 24, 25, 45, 46, 47, 48, 49 };
     static const i32 kSt[16]    = { 0, 30, 43, 36, 37, 44, 41, 42, 38, 39, 40, 50, 51, 52, 53, 54 };
     if (cam < 1 || cam > 15) return 0;
     return springtrap ? kSt[cam] : kEmpty[cam];
+}
+
+// v2.106: sequence -> the first animation cell (the dump's 'camera screen'
+// object, objInfo 105: seq 0 = img 104 the empty screen, seq 12..61 = the
+// camera views, all 825x650 except the two tiny overlays seq 20/22).
+i32 FNaF3Game::ScreenCell(i32 sequence) {
+    static const i32 kCell[62] = {
+    104, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    98, 100, 97, 104, 105, 106, 107, 103, 108, 109, 111, 112,
+    115, 116, 117, 119, 121, 122, 295, 124, 127, 130, 131, 132,
+    134, 135, 136, 139, 140, 141, 187, 146, 148, 623, 624, 628,
+    824, 818, 829, 831, 835, 841, 832, 38, 297, 387, 229, 303,
+    304, 319,
+    };
+    if (sequence < 0 || sequence >= 62) return 0;
+    return kCell[sequence];
 }
 
 static bool RoomIsVent(i32 r) {

@@ -303,6 +303,9 @@ void FNaF2Module::Render() {
         case FNaF2Game::SCR_ENDBARS:    m_render.RenderEndBars(); break;
         case FNaF2Game::SCR_RAREEXIT:   m_render.RenderEndBars(); break;
     }
+    // v2.104: the 4:3 pillarbox bars (the original window is 1024x768) —
+    // painted over everything the screen drew outside the content area.
+    m_render.DrawBars();
     // v2.76: the frame transition (the dump's black STDT/FADE) — LAST, so
     // it covers the whole frame (and outside the perspective capture).
     m_render.DrawFade(m_game.GetFadeAlpha());
