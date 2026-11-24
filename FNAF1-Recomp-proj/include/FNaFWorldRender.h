@@ -42,6 +42,11 @@ public:
 
     // frame 5 "overworld" — the exe 6000x4000 map, painter's order
     void RenderWorld(const FNaFWorldGame& game);
+    // v2.109: the Freddy in Space 1 minigame inside FNaF World
+    // (exe frame 38 "In Space", 8000x4800) - the art comes from the
+    // generated scene table (FWorldSpaceScenes.h).
+    void RenderInSpace(const FNaFWorldGame& game, f32 time);
+    void RenderInSpaceTitle(const FNaFWorldGame& game, f32 time);
 
     // SCR_BATTLE placeholder (the step-3 Battle_Rework port replaces it)
     void RenderBattle(const FNaFWorldGame& game);
@@ -50,6 +55,8 @@ public:
     void DrawFade(f32 alpha);
 
 private:
+    // v2.109: draw one dump frame of the In Space minigame
+    void DrawSpaceScene(int frameIndex, f32 camL, f32 camT);
     // SLRender's draw helpers verbatim (index -> "img_N" -> UV-clamped quad)
     void D(int handle, f32 x, f32 y, f32 w, f32 h, u32 color);
     void DN(int handle, f32 x, f32 y, u32 color);

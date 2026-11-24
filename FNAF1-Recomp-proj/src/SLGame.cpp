@@ -80,6 +80,12 @@ void SLGame::ResetToTitle() {
     m_notch = 0;
     m_ventGoing = 0;
     m_stepSndT = 0.0f;
+    // v2.122: these three were never initialised: Ballora's side-change
+    // roll, the 100 ms walk tick and the EXTRAS jumpscare preview (a
+    // garbage m_previewT > 0 would fire a preview right after the boot).
+    m_sideT = 0.0f;
+    m_walkTickT = 0.0f;
+    m_previewT = 0.0f;
     m_distance = 0;
     m_moving = false;
     m_contWalkT = 0.0f;

@@ -3,6 +3,435 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.122 — Sister Location: the graph audit + three uninitialised fields
+
+- **The screen graph was checked against `TRANSITIONS.txt`** - all 36 frames
+  are covered by the port's enum and the timings match (load 200 ms, to vent
+  100, game over 20000, win night 10000, custom death 3000, Girl Voice
+  900/1000/3000). The frames lie here (the fake jumpscares and the loop of
+  frame 14 "death"), so the death chain was checked separately: the scare ->
+  game over (20 s) -> death -> the respawn with the event preset
+  81/111/57/512 ✓ per docs §6.
+- **Three fields were never initialised:** `m_sideT` (Ballora's side-change
+  roll), `m_walkTickT` (the 100 ms walk tick) and `m_previewT` (the Extras
+  jumpscare preview). The same bug class as FNAF4: on the console the
+  module is a zeroed static, but garbage in `m_previewT` (> 0) would fire a
+  fake jumpscare right after the boot.
+- FNAF2 and FNAF3 were checked the same way - every field is initialised
+  there.
+- Verified: XDK cl.exe - all 40 files clean; the full xex link succeeds;
+  the SL harness runs without crashes.
+
+## v2.121 — FNAF4: the audit (graph, room, AI, audio) + two uninitialised counters
+
+- **The screen graph was checked against `TRANSITIONS.txt`** - all 19 frames
+  are covered (except frame 16 "demo", which we deliberately do not do), and
+  the timings match (disclaimer 2000 ms, what night 2100, game over 7000,
+  game over 2 4000, lockbox 20000, ending 1000, nightmare jumpscare 5000,
+  night win 10000, intro to plushtrap 6000).
+- **After the night jumpscare the port went to the extras, but the dump
+  goes to frame 11 "load extras" -> frame 9 "lockbox" -> game over.**
+  Fixed.
+- **The intro before the BB minigame lasts 10 s, the one before the
+  plushtrap 6 s** (the dump's frames 17 and 6) - the port used 6 s for
+  both.
+- **The darkness art's offset in the bedroom.** The darkness art (img
+  45/57/160) is drawn at (-649,-383) (the instance (0,0) minus the hotspot
+  (649,383)), but the port drew it at (0,0) - 649 px too far right, so the
+  lit band ended up on the wrong side. The room base is at (1,1) per the
+  dump.
+- **The shadow nights' AI (the dump's g406-g409):** shadow == 1 -> 15/15/15
+  with Freddy 6, shadow == 2 -> 20/20/20 with Freddy 6; at hour 4 Fredbear
+  takes the house (20) and they all go to 0. The port knew nothing about
+  this. The "all nightmare" mode (g471): Fredbear 20, the rest 0, the
+  Freddy counter 0, shadow = 2 (it used Fredbear 12).
+- **The office audio per the dump** (frame 3, group 1): the crickets on ch2
+  (volume 50), breathing1 on ch20, minimonsters on ch21, kitchen on **ch25**
+  (it was ch19), fredbear on ch27. In the minigames (the dump's frames
+  7/18, group 43) the dump sets the CHANNEL VOLUMES (ch2 = 10, ch3 = 30,
+  ch5 = 100) and plays ONE crickets loop on ch2 - the port played three
+  loops.
+- **Two counters were never initialised:** `m_freddyCounter` (Freddy's
+  hallucination timer) and `m_endTick` (the ending's letter tick). On the
+  console the module is a zeroed static, so it never showed; in the
+  harness the object lives on the stack -> the garbage was >= 80 -> an
+  **instant Freddy hallucination** (the harness caught it: nights 2/3/4/7
+  died 0.9 s in). The counters are now initialised and reset per night (in
+  the dump the counters start at 0).
+- **A run through the seven nights** (the new harness mode `fnaf4nights`):
+  with no player input the nights end in a death after 5.2 / 2.7 / 1.9 /
+  1.4 min, night 5 reaches 6 AM (there the dump's normal AIs are 0), nights
+  6-7 after 68 s. The difficulty curve is monotonic, no stalls.
+- XDK cl.exe - all 40 files clean; the full xex link succeeds.
+
+## v2.120 — FNAF3: the full audit (graph, AI, phantoms, saves, nights)
+
+- **The screen graph was checked against `TRANSITIONS.txt`** - all 26 frames
+  are covered and every timing matches (disclaimer 2000 ms, ad 9000, static
+  5000, gameover 1000/5000, bad end 15000, good end 59000, the end 2 15000,
+  rare1/2/3 5000, demo end 10000, cutscenes 100...500). No discrepancies.
+- **The AI schedule matches the dump** (the groups 503-508): the AI = the
+  night number for nights 2-5 and 7 for night 6+; night 1 = 0 (in the dump
+  that is the expression "night number op(4) 1", and 0 matches the real
+  game - you cannot die on night 1).
+- **The night phantoms match the dump** (the groups 548-550): night >= 2 ->
+  BB and Mangle, >= 3 -> plus Golden Freddy and Chica, >= 4 -> plus the
+  Puppet. The port's thresholds match one for one.
+- **The saves were checked against the dump's INI keys**: level, cine,
+  beat6, goodend, 4thstar, bb, cake, k1-k4, fast, vents, hyper, nocams,
+  term - the same set (k5 and beat7 are only zeroed in the dump and never
+  read). The "beatgame" key (the 6th night in the menu) is restored by the
+  port as level > 5 - equivalent, since the same "next day" writes the
+  level.
+- **A run through all six nights** (the new harness mode `fnaf3nights`):
+  nights 1, 3, 5 and 6 reach 6 AM, nights 2 and 4 end in a death (the
+  harness does not play: it watches no cameras and seals no vents). No
+  stalls, no crashes.
+- XDK cl.exe - all 40 files clean; the full xex link succeeds.
+
+## v2.119 — FNAF3: the office sprites at the dump's coordinates
+
+- **The FNAF3 office positions were placed by eye.** Checked against frame
+  3's FrameLayout (2000x768, 223 instances):
+  - **"inwindow"** (Springtrap at the window, img_206): was `(1180,25)` ->
+    now `(1327,57)` - the dump's instance (1476,414) minus the hotspot
+    (149,357);
+  - **"head"** (the head in the doorway, img_529): was `(1000,400)` -> now
+    `(131,182)` - the instance (128,292) minus the hotspot (-3,110);
+  - **"blackout"** (img_676): was `(-11,-3)` -> now `(-7,-5)` per the
+    instance.
+- The window is on the right and the head on the left: they come into view
+  when the camera pans that way (the dump's scroll range 512..1488 = 0..976
+  in the port's convention; the speed 8 px/tick = 480 px/s matches).
+- **Left as a deviation:** "chica 2", "foxy", "run past" and "fwalk" are
+  CHILD objects (the parents "asd" and "inwindow") and the dump stores their
+  position relative to the parent; which point of the parent the offset is
+  measured from (its instance point or its draw origin) cannot be derived
+  unambiguously from the dump, so the port keeps its own (visible) spots.
+  The port also has no states for "paperpal1/2" (the drawings on the wall).
+
+## v2.118 — FNAF3: the jumpscare is an animation, not one still
+
+- **The FNAF3 jumpscare showed ONE picture.** Per the dump the objects
+  "jumpscare" (objInfo 128) and "jumpscare 2" (objInfo 223) are animations
+  of **41 cells** at speed 60 (36 fps), and every cell has its own size AND
+  its own hotspot. The port drew img_778/img_792 stretched to 900x870 /
+  900x645.
+- **The new table `include/FNaF3Scares.h`** (generated by
+  `tools/gen_scares.py`): per cell the image, the draw origin and the
+  natural size. The origin = the create position minus that cell's hotspot
+  (the creates: "jumpscare" at (0,0) and "jumpscare 2" at (1024,0) relative
+  to "00 anchor 2", which sits at the world origin).
+- **The scare length now follows the dump:** 41 cells / 36 fps = **1.139 s**
+  (it was 1.6 s).
+- **ctfak: the image hotspots are dumped now** — `Images/hotspots.txt`
+  (`<handle> <w> <h> <hotX> <hotY>`). Before, a hotspot was only visible in
+  the FrameLayout, and only for the images some instance uses.
+- Verified with the harness: the three captured scare frames differ (139k
+  and 207k pixels) - the animation runs. XDK cl.exe - all 40 files clean.
+
+## v2.117 — FNAF2: the new Foxy's route + a run through all six nights
+
+- **The new Foxy went the wrong way.** Per the dump (the groups 256-267):
+  cam 12 -> 11 -> 10 -> 7 -> the hall -> cam 2 -> (the "decide path"
+  counter) cam 6 or cam 01; from cam 6 he comes **into the office** (g263),
+  from cam 01 he goes back to cam 2 (g264, with the hall light off). In the
+  office it is the **mask** that saves you (g265/266: with the mask on he
+  leaves for cam 7); without it he attacks (g267: "who got you" = 5, the
+  attack id 8). The port sent him from cam 6/01 straight to the box,
+  skipping the office and the mask.
+- **An end-to-end run through the nights.** The harness gained a
+  `fnaf2nights` mode: every one of the six nights is simulated to its end
+  (6 AM / death / stall) and reported. Currently: nights 1-2 reach 6 AM,
+  nights 3-6 end in a death (the harness does not play: it holds no mask
+  and never checks the hall light); no stalls, no crashes.
+- Verified: XDK cl.exe - all 40 files clean.
+- **The demo mode (frame 26 "demo end") and frame 7 "wait" (the loading
+  spinner) are deliberately not done** — we do not need the attract reel
+  or the spinner. FNAF2 is closed with this.
+
+## v2.116 — FNAF2: the office volumes follow the dump (computer/fan)
+
+- **The computer hum and the fan did not change when the monitor went
+  up.** Per the dump (the groups 54/55): in the office the computer is
+  **silent** (ch3 = 0) and the fan is louder (ch6 = 40); with the monitor
+  up it is the other way round - the computer hums (ch3 = 70) and the fan
+  drops (ch6 = 25). The port kept 0/40 at all times.
+- The office loops themselves (In_The_Depths_C ch1, buzzlight ch2,
+  CMPTR_Low_Tech_Stat ch3, fansound ch6, deepbreaths ch8, stare ch9,
+  Music_Box_Melody_Playful ch13, elec garble ch16, jackinthebox ch18,
+  popstatic ch30, With_S2 ch31) are started by the module per the group
+  31 - checked against the dump, the names and the channels match (all 11
+  samples exist in the pak's `Sounds/`).
+- Verified: XDK cl.exe - all 40 files clean; the harness - no regressions.
+
+## v2.115 — FNAF2: Golden Freddy and the Paper Pals (the dump's office objects)
+
+- **Golden Freddy did not work in the port.** Per the dump he is not a
+  "hallucination" but a **yellow bear in the office**: the object
+  "yellowbear" (objInfo 179, img_520 505x505) is created by an event at
+  (562,494) relative to the room -> it is drawn from (310,242), it is shown
+  in the office while nothing is dangerous (g610), and **the flashlight
+  gives it away** (g613: the "viewing hall light" counter == 1, i.e. the
+  light is on in the office) -> Golden Freddy attacks. The condition for it
+  to appear is the golden's AI > 20 (g201) with the monitor up; the port's
+  golden Freddy was dead code (his slot never moved).
+- **The Paper Pals** ("paper pals", objInfo 121) wait in cam 4 and come to
+  the office when you watch that camera (g277); their drawing "paperpal"
+  (objInfo 164, img_326 187x313) is then shown in the office at (1024,130)
+  - the instance (972,192) minus the hotspot (-52,62). The port had no such
+  object at all.
+- Verified: XDK cl.exe - all 40 files clean; the harness - no regressions.
+
+## v2.114 — FNAF2: every jumpscare showed the wrong art + "Mangle" was the new Foxy
+
+- **The jumpscare showed the wrong character.** The port used the
+  CHARACTER INDEX as the attack id, but per the dump "being attacked by"
+  has its own numbers (the groups 421-439) and the animation sequence =
+  11 + id (the groups 440-449):
+  | id | character | seq |
+  |---|---|---|
+  | 1 | old freddy | 12 |
+  | 2 | old bonnie | 13 |
+  | 3 | old chica | 14 |
+  | 4 | old foxy | 15 |
+  | 5 | toy bonnie | 16 |
+  | 6 | toy chica | 17 |
+  | 7 | toy freddy | 18 |
+  | 8 | **new foxy** | 19 |
+  | 9 | sock puppet | 20 |
+  | 12 | golden freddy | 21 |
+  The old code was `m_scareAnim = 11 + index`, so old Freddy (index 0) got
+  **no animation at all**, Bonnie got Freddy's art, BB got the new Foxy's
+  art, the puppet got Golden Freddy's art. DispatchAttack now maps the
+  character to the dump's id through that table.
+- **The port's "Mangle" was the dump's "new foxy".** Its AI schedule
+  matched the groups 520-528 exactly (the port's `C_MANGLE` received
+  precisely the new Foxy's values: 3 on night 2, 5 on night 4, 1/10 on
+  night 5, 3/10 on night 6). The slot is renamed `C_NEW_FOXY` and the
+  comments are fixed.
+- **The new Foxy's sprite in the camera feeds** (the dump's "Active 20",
+  objInfo 149): the instance point sits at the world origin with the
+  hotspot (-637,0), so the art starts at x=637 and pans with the feed; the
+  cell follows the camera: cam 11 -> img 218 (899x389), cam 10 -> img 217
+  (606x398), cam 01/07 -> img 78 (750x313), cam 2 -> img 219 (332x591).
+  The port used to draw those cells in the office as "Mangle on the
+  ceiling" (and the state that drove the draw was never set anyway).
+- **BB can no longer kill you.** The groups that set "being attacked by"
+  (421-439) never mention the balloon boy: he only blocks the lights and
+  scares you (g177/178/180: the mask sends him back to cam 01). He is out
+  of the box race now.
+- **The AI schedule was checked against the dump** (the groups 517-528) —
+  for every modelled character the port matches it; only the new Foxy was
+  missing (added by renaming the slot).
+- Verified: XDK cl.exe - all 40 files clean; the harness shots changed
+  exactly where expected (the desk and the mask), no regressions.
+
+## v2.113 — FNAF2: the desk plushies don't appear at the start
+
+- **The desk was "full" from the first second** — the port drew the whole
+  plushie row unconditionally. Per the dump **every** desk plushie has
+  `VisibleAtStart = false` (the table fan is the only desk object that is
+  up from the start).
+- **How they appear:** group 654 (always) fills the "cupcake" object's
+  alterables from the INI keys `c1`..`c10`, and groups 655-663 show a
+  plushie when `viewing == 0` (the office) and its alterable == 1:
+  | alterable | INI key | plushie |
+  |---|---|---|
+  | 1 | c2 | toy bonnie |
+  | 2 | c3 | bonnie |
+  | 3 | c4 | BB |
+  | 4 | c5 | foxy |
+  | 5 | c6 | chica |
+  | 6 | c7 | freddy plush |
+  | 7 | c8 | cupcake |
+  | 8 | c9 | mic |
+  | 9 | c10 | golden fred |
+- **The flags were already in the port** — the "freddy2" save stores
+  `c1`..`c10` (`GameProgressF2::c[10]`, the key c(i+1) ↔ c[i]); the
+  renderer just ignored them. Now it honours them: on a fresh save all the
+  flags are 0, so **the desk is bare**, and a plushie shows up after its
+  challenge (Custom Night) is beaten.
+- Verified with the harness: the office shots changed by exactly the plushie
+  row (f2_03_office_down - 49031 px, f2_03b_office_pan0 - 29384 px); the
+  other shots are untouched. XDK cl.exe - all 40 files clean.
+
+## v2.112 — FNAF2's office: the encounter sprites from the dump (not by eye)
+
+- **The office was checked against frame 3 "Frame 1"'s FrameLayout** (184
+  instances). The static art matched the dump exactly - both the positions
+  and the natural sizes (the desk row, the lights, the flashlight buttons,
+  the lamps, the pumpkin). The **encounter sprites, however, were placed by
+  hand and squashed**:
+  - **Freddy under the table** (objInfo 144): was `(620,320) 480x300` -> now
+    `(814,2) 521x768` - the dump's instance (1074,769) minus the hotspot
+    (260,767); the events only show/hide it (groups 355-357), they never
+    move it;
+  - **BB in the office** (objInfo 161): was `(700,300) 380x320` -> now
+    `(259,256) 379x442` (the instance (430,466) minus the hotspot
+    (171,210));
+  - **Toy Bonnie** (objInfo 139 "Active 19", a CHILD of the table fan -
+    parentHandle 95): was `(620,260) 520x340` -> now `(302,253) 645x895`.
+- **The worn mask drew the wrong art**: the port put the PHYSICAL mask
+  from the desk (objInfo 104, img_125 1224x918, its instance (163,801) -
+  below the screen) over the whole view. Per the dump the worn state is
+  the **last cell of the "mask come down" animation = img_88** (the
+  full-screen 1024x768 frame). Fixed.
+- **The danger darkening** ("blackout" img_225) was stretched over the
+  whole 1600px panorama; the dump moves it to (0,0) relative to the
+  QuickBackdrop and its natural size is 1048x787. Fixed.
+- **The "Mangle on the ceiling" office draw was removed**: "Active 20" is
+  **Foxy in the CAMERA FEEDS** (group 372 hides it in the office, groups
+  373-377 show it only in the cams: cam 11 -> img 218, cam 10 -> 217,
+  cam 01/07 -> 78, cam 2 -> 219), and the state that drove the draw was
+  never set anyway (dead code). Foxy's sprite in the feed gets wired in
+  the next part.
+- **ctfak: the events listing now prints the create position**
+  (`create x94 "Active 19" at (1308,-334) rel "table fan"`) - without it
+  there was no way to see where the dump creates an object.
+- **Verified**: the 25 harness shots (title, ad, card, the office in three
+  pans, the monitor, cam 11, customize, dream, the fades) are **pixel for
+  pixel the same**, except for the new "mask worn" shot (f2_03d_mask),
+  where the art changed as intended. XDK cl.exe - all 40 files clean.
+- **Still open for the office:** "yellowbear" (img_520, created by an
+  event at (562,494) relative to the room) and "paperpal" (img_326) - the
+  port has no states for them yet; Foxy's sprite in the cams (part 3).
+
+## v2.111 — dev.ini: a parser that falls back to the default (the feature is back on master)
+
+- **The dev.ini parser was lost with its branch.** The v2.82 implementation
+  lived only in `old-fw-attempt` (the branch off 7bb8190) and never made
+  it into master - the current code had no `dev.ini` at all. It is back on
+  master now.
+- **The old parser never fell back to the default, it just turned
+  everything off.** It could only switch flags ON (`if (!on) continue;`
+  and no notion of a default), so any unread or misunderstood key silently
+  left the feature off. Now every flag has its **code default**, and the
+  config only ever CHANGES what it names: a missing key, a key without a
+  value or one with an unknown value keeps the default.
+- **Explicit `0`/`off`/`false`/`no` values now work** (before, `console=0`
+  was simply ignored). The accepted values are `1/0`, `true/false`,
+  `yes/no`, `on/off`, `enable/disable`, case-insensitively.
+- **The debug console is OFF by default** (`g_showConsole` is now `false`):
+  it used to take half the screen for every player. It is enabled with
+  `console=1` in dev.ini or with the toggle in the DEV menu (entry 8). The
+  other dev flags stay off by default, as before.
+- **The spaces around `=` are fixed** (`console = 1`): the old parser
+  trimmed the end of the line but NOT the tail of the key, so such lines
+  never matched.
+- **It is looked for next to the game only:** `game:\dev.ini` (the XEX's
+  own directory). Nowhere else - a dev.ini on a dashboard volume or in the
+  current directory must not silently configure the game. A missing file
+  is not an error: every flag keeps its default.
+- **The flags:** `console` (the debug console), `devmenu` (the DEV menu),
+  `god` (god mode), `analog` (analog doors), `holdlights` (lights as a
+  hold), `browser` (the sprite browser), `tuner` (the perspective tuner).
+- **The parser moved into `include/DevIni.h`** (header-only) so it can be
+  checked on the PC: `tools/test_devini.cpp`, 41 checks, 0
+  failures (empty file, explicit 0, the word forms, the key case, the
+  spaces, the comments, the malformed lines, CRLF, a repeated key, the
+  flags' independence).
+- The version banner in `main.cpp` moved to v2.111; the log prints which
+  file was read and which values were applied (`-1` = the default was
+  kept).
+- Verified: XDK cl.exe - all 40 files clean, the xex link succeeds.
+
+## v2.110 — the new games' scenes: layer order, visibility, FIS2's black screens
+
+- **FIS2's screens were black** (the harness: the title 0.7% non-black
+  pixels, the stage select 0.04%, the level 1.6%). The cause: the scene
+  generator only read the FrameLayout dump and painted the instances in the
+  dump's order instead of the layer order, and it ignored the objects'
+  start visibility.
+- **The `tools/gen_scenes.py` generator was rewritten**: it now also reads
+  the ctfak JSON export (`JSON/application.json`) and applies the rules
+  Fusion applies at frame start:
+  - **the draw order is the layer order** (the dump lists the instances in
+    object order, which put the top layer under the bottom one);
+  - an object with `VisibleAtStart = false` is not drawn;
+  - **Counter objects are not drawn** — the dump hands them a single digit
+    (the number is text, not art);
+  - blank images (the "no image" placeholder) are skipped;
+  - **a full-frame opaque BLACK image is the frame's fade-to-black overlay**
+    (in FIS2 that is img 660: 720x480, entirely black) - it carries no art
+    and it blacked the screen out, so it is skipped.
+- **FIS2's title logo** — in the dump it lives in frame 1 "intro" (the seven
+  overlapping images 3668/3670/3675/3590/3589/3676/720), while frame 2
+  "title screen" starts empty (its art scrolls in through the events:
+  "Active 7" from x=-1810, "Active 8" up, "Active 9" down - that animation
+  comes with the gameplay). The title screen now draws the "intro" frame
+  plus the "title screen" frame.
+- **A JSON export was added for FIS2 and Fury's Rage** (ctfak's "Export
+  Structure as JSON") - without it the generator knew nothing about the
+  objects' visibility.
+- **Regenerated**: `FIS2Scenes.h` (15 frames, 3684 instances),
+  `FuryRageScenes.h` (6 frames, 61 instances) and `FWorldSpaceScenes.h`
+  (4 frames, 222 instances).
+- **Verified with the harness** (the share of non-black pixels): the FIS2
+  title 0.7% -> **22.3%** (the logo), the stage select 0.04% -> **60.3%**,
+  the level 1.6% -> **84.4%**; Fury's Rage 78/84/99%, FIS1 In Space inside
+  World 89%/68% - no regressions. All 40 port files compile clean with the
+  real XDK cl.exe, and the full xex link (XDK link.exe + the xbox libs)
+  succeeds.
+- **The new files were added to `FNAF1-Recomp-proj.vcxproj`** (FIS2Game/
+  Module/Render, FuryRageGame/Module/Render + the three scene headers) -
+  without that the modules never reached the VS build and the port did not
+  link.
+
+## v2.109 — FIS1 inside FNaF World (the "In Space" minigame)
+
+- **Freddy in Space 1 lives inside FNaF World** — the world.exe dump holds
+  the frames 37 "57 title", 38 "In Space" (8000x4800, 686 instances), 39
+  "Game Over" and 43 "earned new character". So no extra pak is needed:
+  the whole content is already in `fnafworld.pak`.
+- The World module gained the screens SCR_INSPACE / SCR_INSPACE_TITLE and
+  the level renderer: the art comes from the generated scene table
+  (`FWorldSpaceScenes.h`, 4 frames / 287 instances), the world scale is the
+  World's (800x480 -> 1280x720, x1.6/y1.5). Harness shots: fw_10_inspace_title,
+  fw_11_inspace.
+- The gameplay model is taken from the dump's events: the ship is "Active 2"
+  with the sequence picked by the "gun power" counter (0/12..19), X fires
+  ("shoot Active 2 speed 100", the shot1..shot9 sounds per gun level), and
+  the camera is the "follow" object (it tracks "current level", with the
+  vertical offsets 0/30/45). Implementing the gameplay is the next stage.
+
+## v2.108 — two new games: Freddy in Space 2 and Fury's Rage (the port starts)
+
+- **The ctfak no longer crashes on builds 292/293.** The cause:
+  `chunkName()` returned nullptr for an unknown chunk id while the caller
+  logged `std::string(...) + chunkName(id)` → strlen(nullptr) → SIGSEGV.
+  Builds 292/293 (Freddy in Space 2, Fury's Rage) add a frame chunk the
+  ctfak did not know. Unknown chunks are now named "Unknown chunk"; both
+  games parse completely (FIS2: 15 frames, 5558 event groups, 4617
+  sprites; Fury's Rage: 7 frames, 607 groups).
+- **Pak names:** the RecompPack now maps "Freddy in Space 2" → `fis2.pak`
+  (the digit heuristic used to produce `fnaf2.pak`) and "Fury's Rage" →
+  `furysrage.pak`. Both packs are built: fis2 (4089 textures, 132 sounds,
+  390 MB), furysrage (1016 textures, 70 sounds, 543 MB).
+- **New scene-data generator** `tools/gen_scenes.py`: it turns a FrameLayout
+  dump into a header with the art of every screen (image, draw origin = the
+  instance point minus the hotspot, natural size, layer). Generated
+  `FuryRageScenes.h` (7 frames, 183 instances) and `FIS2Scenes.h`
+  (15 frames, 4617 instances).
+- **Fury's Rage module** (a beat-'em-up): `FuryRageGame` (the dump's screen
+  graph: start → title screen → character select → levels),
+  `FuryRageRender` (the dump's art, the 1920x1080 window → 1280x720 at a 2/3
+  scale), `FuryRageModule`, and the "fury_save" save (the c1/c2/c3 coins,
+  "hard mode?", the character, the level) in Progress.
+- **Freddy in Space 2 module** (a platformer): `FIS2Game` (disclaimer →
+  level complete → title screen → stage select → the six levels),
+  `FIS2Render` (the 720x480 window → a 1080x720 pillarbox, 100 px bars),
+  `FIS2Module`, and the "fis2_save" save.
+- Both modules are registered in AppRegistry (8 modules) and checked with the
+  offline harness: fury_00_title/fury_01_character/fury_02_levels and
+  fis2_00_title/fis2_01_stage/fis2_02_level.
+- **Next milestone (not done):** the gameplay. Fury's Rage needs the
+  beat-'em-up arena (the "levels" frame, 5920x5400, 153 instances, the
+  camera, the fighters and the hits); FIS2 needs its six platformer levels
+  (7200x4800, ~900 instances each, the physics, the jumps and the enemies).
+  The static art is already ported; the event-positioned sprites and the
+  game logic come next.
+
 ## v2.107 — re-checked the jumpscare -> Game Over transitions (all six games)
 
 Checked against the dumps (TRANSITIONS.txt + the events + the object

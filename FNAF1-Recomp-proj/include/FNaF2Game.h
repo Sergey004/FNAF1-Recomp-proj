@@ -2,7 +2,7 @@
  * FNaF2Game.h: v2.59 — FNAF2 game state, wave 1 (playable core).
  *
  * Implements docs/FNAF2_MECHANICS.md (the office frame digest, 751 groups):
- * 11 AI characters (old/toy Freddy/Bonnie/Chica, old Foxy, Mangle, BB,
+ * 11 AI characters (old/toy Freddy/Bonnie/Chica, old Foxy, new Foxy, BB,
  * Puppet, Golden) with the dump's 5 s opportunity rolls, per-night/hour
  * schedule, movement graphs (one node per arming), the danger pipeline
  * (time allowed -> got you stages -> the box), the mask, the flashlight
@@ -169,7 +169,7 @@ public:
     // characters (being attacked by ids: 1..9, 12 — dump G421-449)
     enum Char {
         C_OLD_FREDDY = 0, C_OLD_BONNIE, C_OLD_CHICA, C_OLD_FOXY,
-        C_TOY_BONNIE, C_TOY_CHICA, C_TOY_FREDDY, C_MANGLE,
+        C_TOY_BONNIE, C_TOY_CHICA, C_TOY_FREDDY, C_NEW_FOXY,
         C_BB, C_PUPPET, C_GOLDEN, C_COUNT
     };
     // rooms: cams 1..12 share the ids, halls/office/box are special
@@ -219,6 +219,17 @@ public:
     i32    GetBatteryLife()     const { return m_batteryLife; }
     i32    GetBatteryMax()      const { return m_batteryMax; }
     bool   IsLit()              const { return m_litQ != 0; }
+    // v2.115: the YELLOW BEAR — the dump's "yellowbear" (objInfo 179,
+    // img_520): it is created while the monitor is up (g201: the golden
+    // freddy's AI > 20) and shown in the office (g610). Lighting it with
+    // the flashlight is what gives the golden away (g613) -> the attack.
+    bool   HasYellowBear()      const { return m_yellowBear; }
+    // v2.115: the PAPER PALS — the dump's "paper pals" (objInfo 121)
+    // wait in cam 4 and come to the office when you look at that camera
+    // (g277); the drawing "paperpal" (objInfo 164) is then shown in the
+    // office (g481).
+    bool   HasPaperPals()       const { return m_paperPalsOffice; }
+    bool   IsInDanger()         const { return m_inDanger != 0; }
     i32    GetMaskState()       const { return m_maskState; }
     f32    GetMaskT()           const { return m_maskT; }
     bool   IsMasked()           const { return m_maskState == 2; }
@@ -251,6 +262,12 @@ public:
     bool   HasBBInOffice()      const { return m_chars[C_BB].room == R_BOX; }
     i32    GetMangleOfficeView()const { return m_mangleView; }
     bool   IsToyBonnieScare()   const { return m_toyBonnieScare; }
+    // v2.114: the room a character is in (the cams share the ids 1..12,
+    // the halls/office/box are the special ones) — the monitor renderer
+    // needs it for the per-cam character sprites.
+    i32    GetCharRoom(i32 ch)   const {
+        return (ch >= 0 && ch < C_COUNT) ? m_chars[ch].room : R_NONE;
+    }
     f32    GetMoveStatic()      const { return m_moveStatic; }      // 0..1 burst
     bool   IsMusicBoxDanger()   const { return m_musicDanger; }     // gauge<=400 & out
     f32    GetVentTimer(i32 side) const { return side == 0 ? m_ventLT : m_ventRT; }
@@ -339,6 +356,8 @@ private:
     bool   m_musicDanger;      // gauge<=400 && puppet left cam 11
     f32    m_musicWindT;       // windup2 every 0.5 s
     i32    m_inDanger;
+    bool   m_yellowBear;        // the golden's decoy in the office
+    bool   m_paperPalsOffice;   // the paper pals moved into the office
     i32    m_attacker;         // being attacked by (0 none)
     i32    m_timeAllowed;
     f32    m_timeLeft;

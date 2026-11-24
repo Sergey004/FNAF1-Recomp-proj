@@ -201,6 +201,31 @@ public:
     static bool LoadFW(GameProgressFW& p);
     static bool SaveFW(const GameProgressFW& p);
     static void WipeFW();
+
+    // v2.108 — Fury's Rage (the dump's title-screen counters: the three coin
+    // counts c1/c2/c3, the "hard mode?" flag, the selected character and
+    // the level). Container "fury_save".
+    struct GameProgressFuryRage {
+        i32 coins[3];      // the save's c1/c2/c3 counters
+        i32 hardMode;      // the save's "hard mode?" (2 = the badge shows)
+        i32 character;     // the selected character (0..3)
+        i32 level;         // the level reached
+        i32 playsel;       // the title selection ("playsel")
+        static void Reset(GameProgressFuryRage& p);
+        static bool Load(GameProgressFuryRage& p);
+        static bool Save(const GameProgressFuryRage& p);
+        static void Wipe();
+    };
+
+    // v2.108 — Freddy in Space 2 (the stage-select cursor). Container
+    // "fis2_save".
+    struct GameProgressFIS2 {
+        i32 stageSel;      // the dump's stage-select counter
+        static void Reset(GameProgressFIS2& p);
+        static bool Load(GameProgressFIS2& p);
+        static bool Save(const GameProgressFIS2& p);
+        static void Wipe();
+    };
 };
 
 } // namespace fnaf

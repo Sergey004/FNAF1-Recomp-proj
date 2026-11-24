@@ -121,6 +121,13 @@ void FNaF4Game::ResetToTitle() {
     for (i32 i = 0; i < 4; ++i) { m_winDigit[i] = 0; m_winVal[i] = 0; }
     m_digitT = 0.0f; m_winT = 0.0f; m_lockT = 0.0f;
     m_introT = 0.0f; m_goT = 0.0f; m_endT = 0.0f; m_endLine = 0; m_endLetterT = 0.0f;
+    // v2.121: these two were NEVER initialised: the Freddy counter (the
+    // hallucination timer) and the ending's letter tick. On the console the
+    // module is a zeroed static, but on any other host the stack garbage
+    // made Freddy's counter start >= 80 -> an instant hallucination attack
+    // (the harness caught it: nights 2/3/4/7 died 0.9 s in).
+    m_freddyCounter = 0;
+    m_endTick = 0;
     m_endLetters = 0;
     m_saveDirty = false;
     m_ptFlashPrev = false;
@@ -146,6 +153,8 @@ void FNaF4Game::InitNightState() {
     m_listening = 0;
 
     m_bonniePos = m_chicaPos = 0;
+    // v2.121: the dump starts every night with the counters at 0
+    m_freddyCounter = 0;
     m_laneRollT = 0.0f;
     m_bonnieIgnoreT = m_chicaIgnoreT = 0.0f;
     m_bonnieNearT = m_chicaNearT = 0.0f;
@@ -164,7 +173,6 @@ void FNaF4Game::InitNightState() {
     // Fredbear replaces everyone from hour 0. house map/radar handled by the
     // renderer's overlay (labeled approximation of the excluded objects)
     if (m_instaFoxy) { m_closetCounter = 3; }
-    if (m_allNightmare && m_fredbearAI == 0) m_fredbearAI = 12;
     if (m_madFreddy)   m_freddyCounter = 20;
     m_miniArt = rand() % 4;
     m_freddyT = 0.0f;
@@ -234,7 +242,28 @@ void FNaF4Game::ApplyNightAI() {
             }
             break;
     }
-    if (m_night < 5) m_fredbearAI = 0;
+    // v2.121: the shadow nights (the dump's g406-g409): the shadow == 1 sets
+    // the AIs to 15/15/15 with Freddy 6, the shadow == 2 to 20/20/20 with
+    // Freddy 6; at hour 4 Fredbear takes the house (20) and they all go to 0.
+    if (m_shadow != 0) {
+        const i32 lvl = (m_shadow == 1) ? 15 : 20;
+        m_bonnieAI = lvl; m_chicaAI = lvl; m_foxyAI = lvl; m_freddyAI = 6;
+        if (m_hour >= 4) {
+            m_bonnieAI = m_chicaAI = m_foxyAI = m_freddyAI = 0;
+            m_fredbearAI = 20;
+        }
+    }
+    // v2.121: the dump's group 471 ("all nightmare on" -> alterable[0] == 1):
+    // Fredbear AI = 20, Bonnie/Chica/Foxy/Freddy = 0, the Freddy counter = 0
+    // and the shadow = 2. It runs AFTER the shadow groups (g408), so it
+    // wins over them — hence it goes last here.
+    if (m_allNightmare) {
+        m_fredbearAI = 20;
+        m_bonnieAI = m_chicaAI = m_foxyAI = m_freddyAI = 0;
+        m_freddyCounter = 0;
+        m_shadow = 2;
+    }
+    if (m_night < 5 && !m_allNightmare) m_fredbearAI = 0;
     if (m_fredbearAI > 0) m_freddyCounter = 0;   // g433
 }
 
@@ -398,7 +427,10 @@ void FNaF4Game::Tick(f32 dt, const FNaF4Inputs& in) {
                 SfxStop("distortion");
                 m_shadow = 0;
                 m_saveDirty = true;
-                RequestScreen(SCR_EXTRAS);
+                // v2.121: the dump jumps to frame 11 "load extras" (which
+                // goes straight to frame 9 "lockbox" -> the game over) —
+                // the old build went to the extras menu instead.
+                RequestScreen(SCR_LOADX);
                 m_goT = 0.0f;
             }
             break;
@@ -572,13 +604,16 @@ void FNaF4Game::TickGameOver2(f32 dt) {
 }
 
 void FNaF4Game::TickIntro(f32 dt, const FNaF4Inputs& in) {
-    // frames 6/17: Deep_Ambience, 6 s / A -> Next (the minigame)
+    // frames 6/17: Deep_Ambience -> Next (the minigame). v2.121: the two
+    // intros differ in the dump — frame 6 "intro to plushtrap" waits 6000 ms,
+    // frame 17 (the BB intro) waits 10000 ms.
+    const f32 hold = (m_pt.game == 1) ? 10.0f : 6.0f;
     if (m_cardT == 0.0f) {
         SfxStop("snd_Deep_Ambience_With_Sc");
         Sfx("snd_Deep_Ambience_With_Sc", true, 1, 15);
     }
     m_cardT += dt;
-    if (m_cardT >= 6.0f || in.aPressed || in.bPressed) {
+    if (m_cardT >= hold || in.aPressed || in.bPressed) {
         m_cardT = 0.0f;
         StartMinigame(m_pt.game, m_minigamePlay);
     }
@@ -603,10 +638,12 @@ void FNaF4Game::StartMinigame(i32 game, bool fromExtras) {
     m_screen = game == 1 ? SCR_BB : SCR_PLUSH;
     m_cardT = 0.0f;
     SfxStop("snd_Deep_Ambience_With_Sc");
-    // g43: crickets ch2 (10) + ch3 (30) + ch5 (100)
-    Sfx("snd_crickets", true, 2, 10);
-    Sfx("snd_crickets", true, 3, 30);
-    Sfx("snd_crickets", true, 5, 100);
+    // v2.121: the dump's frames 7/18 group 43 sets the CHANNEL VOLUMES
+    // (ch2 = 10, ch3 = 30, ch5 = 100) and plays ONE crickets loop on ch2
+    // (with the volume 0 — it inherits ch2 = 10). The old build played
+    // three crickets loops instead.
+    ChVol(2, 10); ChVol(3, 30); ChVol(5, 100);
+    Sfx("snd_crickets", true, 2, 0);
 }
 
 void FNaF4Game::TickMinigame(f32 dt, const FNaF4Inputs& in) {

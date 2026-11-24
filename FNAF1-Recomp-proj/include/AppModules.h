@@ -26,6 +26,8 @@
 #include "SLGame.h"       // v2.65: Sister Location wave 1
 #include "SLRender.h"
 #include "FNaFWorldModule.h"   // v2.90: FNAF World (own pak/game/render)
+#include "FuryRageModule.h"     // v2.108: Fury's Rage (own pak/game/render)
+#include "FIS2Module.h"         // v2.108: Freddy in Space 2 (own pak/game/render)
 
 namespace fnaf {
 

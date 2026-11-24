@@ -327,27 +327,45 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
     const bool halloween = game.IsHalloween() && (game.GetViewing() == 0);
     if (halloween)
         DrawWorld(507,   0.0f,   0.0f, 1600.0f, 255.0f, pan, 0xFFFFFFFF);// "lights" strips
-    // v2.99: img_218 ("Active 20") is NOT a wall piece — the ctfak frame
-    // runtime audit proved it is Mangle's CAM-FEED sprite: dump group 372
-    // hides it while viewing==0 and groups 373-377 show it only when the
-    // monitor is up with Mangle at the viewed cam. RenderOffice runs ONLY
-    // with viewing==0, so it must never draw here; the monitor feed owns
-    // this sprite. The office Mangle stays the v2.66 GetMangleOfficeView()
-    // hanging frames further below.
+    // v2.114: img_218 ("Active 20") is NOT a wall piece — it is the NEW
+    // FOXY's CAM-FEED sprite: dump group 372 hides it while viewing == 0
+    // and groups 373-377 show it only when the monitor is up with him in
+    // the viewed cam. RenderOffice runs ONLY with viewing == 0, so it
+    // must never draw here; the monitor renderer owns this sprite.
     DrawWorld( 90, 105.0f, 361.0f,   92.0f, 141.0f, pan, 0xFFFFFFFF);// LEFT light button
     DrawWorld( 98, 1395.0f, 359.0f,  92.0f, 141.0f, pan, 0xFFFFFFFF);// RIGHT light button
 
-    // layer 1 — the desk (plushie row, fan, mic)
+    // layer 1 — the desk (the plushie row, the fan, the mic).
+    // v2.113: the dump has VisibleAtStart = FALSE for every plushie (the
+    // fan is the only desk object that is up from the start). Each one is
+    // shown by a group that reads the "cupcake" object's alterable, which
+    // group 654 fills from the INI keys c1..c10:
+    //   toy bonnie <- alterable[1] = c2      bonnie  <- alterable[2] = c3
+    //   BB          <- alterable[3] = c4      foxy    <- alterable[4] = c5
+    //   chica       <- alterable[5] = c6      freddy  <- alterable[6] = c7
+    //   cupcake     <- alterable[7] = c8      mic     <- alterable[8] = c9
+    //   golden fred <- alterable[9] = c10
+    // So on a fresh save (all the flags 0) the desk is BARE — the old
+    // build drew the whole row unconditionally.
     DrawWorld(293, 568.0f, 332.0f, 851.0f, 435.0f, pan, worldCol);   // table fan
-    DrawWorld(601, 656.0f, 480.0f, 113.0f, 149.0f, pan, worldCol);   // freddy plush
-    DrawWorld(604, 675.0f, 512.0f, 131.0f, 144.0f, pan, worldCol);   // chica
-    DrawWorld(603, 754.0f, 472.0f, 116.0f, 173.0f, pan, worldCol);   // bonnie
-    DrawWorld(606, 810.0f, 515.0f, 133.0f, 154.0f, pan, worldCol);   // foxy
-    DrawWorld(612, 870.0f, 613.0f, 236.0f,  86.0f, pan, worldCol);   // mic
-    DrawWorld(610, 991.0f, 517.0f, 122.0f, 147.0f, pan, worldCol);   // BB
-    DrawWorld(608, 1038.0f, 476.0f, 117.0f, 172.0f, pan, worldCol);  // toy bonnie
-    DrawWorld(555, 1122.0f, 509.0f,  84.0f, 147.0f, pan, worldCol);  // cupcake
-    DrawWorld(611, 1218.0f, 522.0f, 129.0f, 156.0f, pan, worldCol);  // golden fred
+    if (game.GetChallengeBeat(1))   // c2
+        DrawWorld(608, 1038.0f, 476.0f, 117.0f, 172.0f, pan, worldCol);  // toy bonnie
+    if (game.GetChallengeBeat(2))   // c3
+        DrawWorld(603, 754.0f, 472.0f, 116.0f, 173.0f, pan, worldCol);   // bonnie
+    if (game.GetChallengeBeat(3))   // c4
+        DrawWorld(610, 991.0f, 517.0f, 122.0f, 147.0f, pan, worldCol);   // BB
+    if (game.GetChallengeBeat(4))   // c5
+        DrawWorld(606, 810.0f, 515.0f, 133.0f, 154.0f, pan, worldCol);   // foxy
+    if (game.GetChallengeBeat(5))   // c6
+        DrawWorld(604, 675.0f, 512.0f, 131.0f, 144.0f, pan, worldCol);   // chica
+    if (game.GetChallengeBeat(6))   // c7
+        DrawWorld(601, 656.0f, 480.0f, 113.0f, 149.0f, pan, worldCol);   // freddy plush
+    if (game.GetChallengeBeat(7))   // c8
+        DrawWorld(555, 1122.0f, 509.0f,  84.0f, 147.0f, pan, worldCol);  // cupcake
+    if (game.GetChallengeBeat(8))   // c9
+        DrawWorld(612, 870.0f, 613.0f, 236.0f,  86.0f, pan, worldCol);   // mic
+    if (game.GetChallengeBeat(9))   // c10
+        DrawWorld(611, 1218.0f, 522.0f, 129.0f, 156.0f, pan, worldCol);  // golden fred
     // v2.102: the desk pumpkin — the dump's obj 219 (img 503) sits at
     // left/top (730,531), not at the instance point the old comment used
     if (halloween)
@@ -361,29 +379,58 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
     DrawNat( 95, 489.0f, 705.0f, worldCol);   // the panel button
     }   // end of the panned room (skipped during hall views)
 
-    // layer 2 — v2.59: office sprites from the encounter pipeline
+    // layer 2 — v2.112: office sprites from the encounter pipeline. Every
+    // position and size below is the dump's own (FrameLayout of frame 3
+    // "Frame 1" + the Images folder); the old values were hand-placed
+    // approximations that also SQUASHED the art (Freddy was 480x300
+    // instead of his 521x768 sprite).
+    //
+    // "freddy under table" (objInfo 144): the instance sits at (1074,769)
+    // with the hotspot (260,767) -> the draw origin is (814,2); the events
+    // only show/hide it (groups 355-357), they never move it.
     if (game.GetFreddyOfficeView())
-        DrawWorld(512, 620.0f, 320.0f, 480.0f, 300.0f, pan, 0xFFFFFFFF);  // Freddy under the table (pos approx)
+        DrawWorld(512, 814.0f, 2.0f, 521.0f, 768.0f, pan, 0xFFFFFFFF);
+    // "Active 19" (objInfo 139) is a CHILD of the table fan (parentHandle
+    // 95): its relative origin (-266,-513) against the fan's instance
+    // (568,766) lands at (302,253) — the toy Bonnie in the middle of the
+    // office. The port drew him squashed (520x340) at (620,260).
     if (game.IsToyBonnieScare())
-        DrawWorld(187, 620.0f, 260.0f, 520.0f, 340.0f, pan, 0xFFFFFFFF);  // toy Bonnie office pose
+        DrawWorld(187, 302.0f, 253.0f, 645.0f, 895.0f, pan, 0xFFFFFFFF);
+    // "Active 21" (objInfo 161) is BB in the office (the dump shows it in
+    // group 465 when "balloon boy" is in office): the instance (430,466)
+    // minus the hotspot (171,210) -> (259,256).
     if (game.HasBBInOffice())
-        DrawWorld(221, 700.0f, 300.0f, 380.0f, 320.0f, pan, 0xFFFFFFFF);  // BB at the desk
-    // v2.66: Mangle crawls the ceiling (dump "Active 20" anims: 0=218,
-    // 12=217, 13=219, 14=78 — the picks show her hull overhead); the game
-    // state drives which cell; the entry point = the office frame's
-    // wall-piece position
-    if (game.GetMangleOfficeView() > 0) {
-        static const i32 kMangleCells[3] = { 217, 219, 78 };  // hanging frames
-        const i32 pick = (game.GetMangleOfficeView() - 1) % 3;
-        DrawWorld(kMangleCells[pick], 460.0f, 60.0f, 480.0f, 240.0f, pan, 0xFF909090);
-    }
-    // danger darkening ("blackout" img_225): alpha ramps over the 300-frame window
+        DrawWorld(221, 259.0f, 256.0f, 379.0f, 442.0f, pan, 0xFFFFFFFF);
+    // v2.112/v2.114: the office does NOT show "Active 20" — the dump hides
+    // it while viewing == 0 (group 372) and shows it only in the CAMERA
+    // FEEDS with the new Foxy in them (groups 373-377: cam 11 -> cell 0 =
+    // img 218, cam 10 -> cell 12 = img 217, cam 01/07 -> cell 14 = img 78,
+    // cam 2 -> cell 13 = img 219). The old code drew those cells in the
+    // office as "Mangle on the ceiling" (and the state that drove it was
+    // never set anyway) — wrong character, wrong place. The sprite is
+    // drawn by the monitor renderer now.
+    // v2.115: the YELLOW BEAR — the dump's "yellowbear" (objInfo 179,
+    // img_520): created by the event at (562,494) relative to the room
+    // (so its draw origin is (310,242)) and shown in the office while
+    // nothing is dangerous (g610). Lighting it with the flashlight gives
+    // the golden freddy away (g613) -> the attack.
+    if (game.HasYellowBear() && game.GetViewing() == 0 && !game.IsInDanger())
+        DrawWorld(520, 310.0f, 242.0f, 505.0f, 505.0f, pan, 0xFFFFFFFF);
+    // v2.115: the paper pals' drawing — the dump's "paperpal" (objInfo
+    // 164, img_326) at its instance (972,192) minus the hotspot (-52,62)
+    // -> (1024,130); it is shown in the office once they arrive (g481).
+    if (game.HasPaperPals() && game.GetViewing() == 0 && !game.IsInDanger())
+        DrawWorld(326, 1024.0f, 130.0f, 187.0f, 313.0f, pan, 0xFFFFFFFF);
+    // danger darkening ("blackout" img_225): alpha ramps over the 300-frame
+    // window. v2.112: the dump moves it to (0,0) relative to the
+    // QuickBackdrop (group 380), and its natural size is 1048x787 — the
+    // old draw stretched it over the whole 1600-wide panorama.
     {
         const f32 df = game.GetDangerDark();
         if (df > 0.0f) {
             f32 a = df / 300.0f; if (a > 0.85f) a = 0.85f;
             const u32 A = (u32)(a * 255.0f);
-            DrawWorld(225, 0.0f, 0.0f, 1600.0f, 768.0f, pan, (A << 24) | 0x00FFFFFFu);
+            DrawWorld(225, 0.0f, 0.0f, 1048.0f, 787.0f, pan, (A << 24) | 0x00FFFFFFu);
         }
     }
 
@@ -398,6 +445,12 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
     (void)time;
 
     // v2.59: the mask overlay (dump "mask come down"/"mask"/"mask up")
+    // v2.112: the WORN state is the last cell of the "mask come down"
+    // animation — img 88, a full-screen 1024x768 frame. The old code drew
+    // img 125 there, but that is the PHYSICAL mask lying on the desk
+    // (objInfo 104, 1224x918, its instance sits at (163,801) — below the
+    // screen; the dump only moves it over the view when the attack
+    // starts, to (-100,-66) relative to the attack animation).
     {
         const i32 ms = game.GetMaskState();
         static const int kMaskDown[9] = { 140, 139, 138, 137, 136, 135, 134, 143, 88 };
@@ -406,7 +459,7 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
             int fi = (int)(game.GetMaskT() * 45.0f); if (fi > 8) fi = 8;
             Draw(kMaskDown[fi], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
         } else if (ms == 2) {
-            Draw(125, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+            Draw(88, 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
         } else if (ms == 3) {
             int fi = (int)(game.GetMaskT() * 45.0f); if (fi > 10) fi = 10;
             Draw(kMaskUp[fi], 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
@@ -473,6 +526,43 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
     // feed-switch interference burst
     if (sinceSwitch < 0.12f)
         Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+
+    // v2.114: the NEW FOXY in the camera feeds. The dump's "Active 20"
+    // (objInfo 149) is his sprite: its instance point sits at the world
+    // origin with the hotspot (-637,0), so the art starts at x=637 in the
+    // panorama (and pans with the feed). The groups pick the cell by the
+    // camera he is in:
+    //   cam 11 -> cell 0  = img 218 (899x389)
+    //   cam 10 -> cell 12 = img 217 (606x398)
+    //   cam 01 -> cell 14 = img 78  (750x313)
+    //   cam 07 -> cell 14 = img 78
+    //   cam 02 -> cell 13 = img 219 (332x591)
+    // and the sprite is hidden while the movement-static burst is up
+    // ("your view".alterable[1] != 0) — the burst is drawn over it
+    // (the static object is on a higher layer).
+    // NOTE: the port's C_NEW_FOXY slot IS the dump's "new foxy" (its AI
+    // schedule matches g520-g528 exactly) — he is the Foxy that walks the
+    // cams and comes down the west hall, not Mangle.
+    {
+        const i32 foxyRoom = game.GetCharRoom(FNaF2Game::C_NEW_FOXY);
+        i32 cell = 0;
+        switch (foxyRoom) {
+            case FNaF2Game::R_CAM11: cell = 0;  break;   // img 218
+            case FNaF2Game::R_CAM10: cell = 12; break;   // img 217
+            case FNaF2Game::R_CAM1:  cell = 14; break;   // img 78
+            case FNaF2Game::R_CAM7:  cell = 14; break;   // img 78
+            case FNaF2Game::R_CAM2:  cell = 13; break;   // img 219
+            default: cell = -1; break;
+        }
+        if (cell >= 0 && v == foxyRoom && game.GetMoveStatic() <= 0.0f) {
+            static const int kCellImg[3]  = { 218, 219, 217 };
+            static const int kCellW[3]    = { 899, 332, 606 };
+            static const int kCellH[3]    = { 389, 591, 398 };
+            const int idx = (cell == 0) ? 0 : (cell == 13 ? 1 : 2);
+            DrawWorld(kCellImg[idx], 637.0f, 0.0f, (f32)kCellW[idx],
+                      (f32)kCellH[idx], pan, 0xFFFFFFFF);
+        }
+    }
 
     // ---- the MAP (layer 3, screen-fixed): panel img_2 (416x312) at its
     // instance (727,499) + 12 buttons img_16/img_17 (60x40) at their

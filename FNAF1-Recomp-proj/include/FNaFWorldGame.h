@@ -89,7 +89,13 @@ public:
         // v2.91: exe frame 3 "file setup" — the exe's own slot/new-game flow
         // (stage 0: 3 slots -> stage 1: new game / continue -> stage 2: the
         // YES/NO confirm -> the overworld)
-        SCR_FILESETUP  = 6
+        SCR_FILESETUP  = 6,
+        // v2.109: exe frame 38 "In Space" — the Freddy in Space 1
+        // minigame that ships INSIDE FNaF World (the frames 37 "57 title",
+        // 39 "Game Over" and 43 "earned new character" come with it).
+        SCR_INSPACE   = 7,
+
+        SCR_INSPACE_TITLE = 8
     };
 
     FNaFWorldGame();
@@ -99,6 +105,11 @@ public:
 
     // The CFT screen change (our core's shared model, same as F2/SL).
     void RequestScreen(i32 target);
+
+    // v2.109: the Freddy in Space 1 minigame inside FNaF World (exe
+    // frame 38 "In Space"). The overworld's arcade machine routes here.
+    void StartInSpace() { RequestScreen(SCR_INSPACE); }
+    void StartInSpaceTitle() { RequestScreen(SCR_INSPACE_TITLE); }
     f32  GetFadeAlpha() const { return m_fade.Alpha(); }
 
     FNaFWorldAudioHooks audio;

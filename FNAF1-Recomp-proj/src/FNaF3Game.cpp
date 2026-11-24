@@ -1167,7 +1167,8 @@ void FNaF3Game::TickGotYou(f32 dt) {
 
     if (m_scareT > 0.0f) {
         m_scareT += dt;
-        if (m_scareT >= 1.6f) {
+        // v2.118: the dump's jumpscare is 41 cells at 36 fps = 1.139 s
+        if (m_scareT >= 41.0f / 36.0f) {
             // the office death jumps V3 = static (frame 4: stare + flash,
             // 5 s) -> gameover (frame 6) -> title. The "in-place restart"
             // reading of Group 606 was the bogus file-index name of V3.

@@ -68,6 +68,8 @@ static const SaveContainerSpec kSaveContainers[] = {
     { { "fn4", 0 },                  "fnaf4_save", "fn4",     L"Five Nights at Freddy's 4 Save" },
     { { "sl", 0 },                   "fnsl_save",  "sl",      L"Sister Location Save" },
     { { "fnafworld", 0 },            "fnfw_save",  "fnafworld", L"FNAF World Save" },
+    { { "fury", 0 },                 "fury_save",  "fury",     L"Fury's Rage Save" },
+    { { "fis2", 0 },                 "fis2_save",  "fis2",     L"Freddy in Space 2 Save" },
 };
 static const SaveContainerSpec* FindContainerForFile(const char* file) {
     for (int i = 0; i < (int)(sizeof(kSaveContainers) / sizeof(kSaveContainers[0])); ++i)
@@ -1134,6 +1136,146 @@ void Progress::WipeFW() {
     GameProgressFW p;
     ResetFW(p);
     SaveFW(p);
+}
+
+
+
+
+// ------------------------------------------------------------
+// v2.108 — Fury's Rage save (the dump's title counters).
+// ------------------------------------------------------------
+struct FurySaveBlob {
+    u32 magic;
+    u32 version;
+    i32 coins[3];
+    i32 hardMode;
+    i32 character;
+    i32 level;
+    i32 playsel;
+    u32 checksum;
+};
+static const u32 kFuryProgressMagic = 0x46555259u;   // "FURY"
+
+static u32 ComputeFuryChecksum(const FurySaveBlob& b) {
+    const u32* w = reinterpret_cast<const u32*>(&b);
+    const size_t count = offsetof(FurySaveBlob, checksum) / sizeof(u32);
+    u32 sum = 0;
+    for (size_t i = 0; i < count; ++i) sum ^= w[i];
+    return sum ^ 0x5A5A5A5Au;
+}
+
+void Progress::GameProgressFuryRage::Reset(GameProgressFuryRage& p) {
+    p.coins[0] = p.coins[1] = p.coins[2] = 0;
+    p.hardMode = 0;
+    p.character = 0;
+    p.level = 1;
+    p.playsel = 0;
+}
+
+bool Progress::GameProgressFuryRage::Load(GameProgressFuryRage& p) {
+    Reset(p);
+    FurySaveBlob b;
+    memset(&b, 0, sizeof(b));
+    FILE* f = StorageOpen("fury", "rb", false);
+    if (!f) return false;
+    size_t rd = fread(&b, 1, sizeof(b), f);
+    fclose(f);
+    StorageClose();
+    if (rd != sizeof(b)) return false;
+    if (b.magic != kFuryProgressMagic) return false;
+    if (b.checksum != ComputeFuryChecksum(b)) return false;
+    for (int i = 0; i < 3; ++i) p.coins[i] = b.coins[i];
+    p.hardMode = b.hardMode;
+    p.character = b.character;
+    p.level = b.level;
+    p.playsel = b.playsel;
+    return true;
+}
+
+bool Progress::GameProgressFuryRage::Save(const GameProgressFuryRage& pIn) {
+    FurySaveBlob b;
+    memset(&b, 0, sizeof(b));
+    b.magic = kFuryProgressMagic;
+    b.version = 1;
+    for (int i = 0; i < 3; ++i) b.coins[i] = pIn.coins[i];
+    b.hardMode = pIn.hardMode;
+    b.character = pIn.character;
+    b.level = pIn.level;
+    b.playsel = pIn.playsel;
+    b.checksum = ComputeFuryChecksum(b);
+    FILE* f = StorageOpen("fury", "wb", false);
+    if (!f) return false;
+    size_t wr = fwrite(&b, 1, sizeof(b), f);
+    fclose(f);
+    StorageClose();
+    return wr == sizeof(b);
+}
+
+void Progress::GameProgressFuryRage::Wipe() {
+    GameProgressFuryRage p;
+    Reset(p);
+    Save(p);
+}
+
+
+// ------------------------------------------------------------
+// v2.108 — Freddy in Space 2 save (the stage-select cursor).
+// ------------------------------------------------------------
+struct FIS2SaveBlob {
+    u32 magic;
+    u32 version;
+    i32 stageSel;
+    u32 checksum;
+};
+static const u32 kFis2ProgressMagic = 0x46495332u;   // "FIS2"
+
+static u32 ComputeFis2Checksum(const FIS2SaveBlob& b) {
+    const u32* w = reinterpret_cast<const u32*>(&b);
+    const size_t count = offsetof(FIS2SaveBlob, checksum) / sizeof(u32);
+    u32 sum = 0;
+    for (size_t i = 0; i < count; ++i) sum ^= w[i];
+    return sum ^ 0x5A5A5A5Au;
+}
+
+void Progress::GameProgressFIS2::Reset(GameProgressFIS2& p) {
+    p.stageSel = 0;
+}
+
+bool Progress::GameProgressFIS2::Load(GameProgressFIS2& p) {
+    Reset(p);
+    FIS2SaveBlob b;
+    memset(&b, 0, sizeof(b));
+    FILE* f = StorageOpen("fis2", "rb", false);
+    if (!f) return false;
+    size_t rd = fread(&b, 1, sizeof(b), f);
+    fclose(f);
+    StorageClose();
+    if (rd != sizeof(b)) return false;
+    if (b.magic != kFis2ProgressMagic) return false;
+    if (b.checksum != ComputeFis2Checksum(b)) return false;
+    p.stageSel = b.stageSel;
+    return true;
+}
+
+bool Progress::GameProgressFIS2::Save(const GameProgressFIS2& pIn) {
+    FIS2SaveBlob b;
+    memset(&b, 0, sizeof(b));
+    b.magic = kFis2ProgressMagic;
+    b.version = 1;
+    b.stageSel = pIn.stageSel;
+    b.checksum = ComputeFis2Checksum(b);
+    FILE* f = StorageOpen("fis2", "wb", false);
+    if (!f) return false;
+    size_t wr = fwrite(&b, 1, sizeof(b), f);
+    fclose(f);
+    StorageClose();
+    return wr == sizeof(b);
+}
+
+void Progress::GameProgressFIS2::Wipe() {
+    GameProgressFIS2 p;
+    Reset(p);
+    Save(p);
 }
 
 } // namespace fnaf

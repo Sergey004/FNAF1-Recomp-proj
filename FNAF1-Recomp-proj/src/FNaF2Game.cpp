@@ -222,6 +222,8 @@ void FNaF2Game::InitNightState() {
     m_randomImage = 0;
     m_shadowT = -1.0f;
     m_freddyUnderTable = false;
+    m_yellowBear = false;
+    m_paperPalsOffice = false;
     m_mangleView = 0;
     m_toyBonnieScare = false;
     m_moveStatic = 0.0f;
@@ -229,12 +231,12 @@ void FNaF2Game::InitNightState() {
     m_aiRollT = 0.0f; m_boxRollT = 0.0f; m_puppetRollT = 0.0f; m_occT = 0.0f;
     m_officeOccupied = false;
     for (i32 i = 0; i < C_COUNT; ++i) m_chars[i] = CharState();
-    // start positions (g194): old trio cam 8, toys cam 9, mangle cam 12,
+    // start positions (g194): old trio cam 8, toys cam 9, new Foxy cam 12,
     // puppet cam 11, BB cam 10 (per the movement graphs' tails)
     m_chars[C_OLD_FREDDY].room = R_CAM8;  m_chars[C_OLD_BONNIE].room = R_CAM8;
     m_chars[C_OLD_CHICA].room  = R_CAM8;  m_chars[C_OLD_FOXY].room  = R_CAM8;
     m_chars[C_TOY_FREDDY].room = R_CAM9;  m_chars[C_TOY_BONNIE].room = R_CAM9;
-    m_chars[C_TOY_CHICA].room  = R_CAM9;  m_chars[C_MANGLE].room    = R_CAM12;
+    m_chars[C_TOY_CHICA].room  = R_CAM9;  m_chars[C_NEW_FOXY].room    = R_CAM12;
     m_chars[C_BB].room         = R_CAM10; m_chars[C_PUPPET].room     = R_CAM11;
     m_chars[C_GOLDEN].room     = R_NONE;
     // v2.62: night 7 = the custom night — the customize sliders ARE the AI
@@ -242,7 +244,7 @@ void FNaF2Game::InitNightState() {
     if (m_night >= 7) {
         static const i32 kMap[10] = {
             C_OLD_FREDDY, C_OLD_BONNIE, C_OLD_CHICA, C_OLD_FOXY, C_BB,
-            C_TOY_FREDDY, C_TOY_BONNIE, C_TOY_CHICA, C_MANGLE, C_GOLDEN
+            C_TOY_FREDDY, C_TOY_BONNIE, C_TOY_CHICA, C_NEW_FOXY, C_GOLDEN
         };
         for (i32 i = 0; i < 10; ++i)
             m_chars[kMap[i]].ai = m_customAI[i] < 0 ? 0 : (m_customAI[i] > 20 ? 20 : m_customAI[i]);
@@ -278,7 +280,7 @@ static void ApplySchedule(FNaF2Game::CharState* c, i32 night, i32 hour) {
             if (hour == 1) {
                 c[FNaF2Game::C_TOY_FREDDY].ai = 2; c[FNaF2Game::C_TOY_BONNIE].ai = 3;
                 c[FNaF2Game::C_OLD_FOXY].ai = 1;   c[FNaF2Game::C_BB].ai = 3;
-                c[FNaF2Game::C_MANGLE].ai = 3;     c[FNaF2Game::C_TOY_CHICA].ai = 3;
+                c[FNaF2Game::C_NEW_FOXY].ai = 3;     c[FNaF2Game::C_TOY_CHICA].ai = 3;
                 c[FNaF2Game::C_GOLDEN].ai = 1 + (rand() % 10);   // rnd, capped 10
             }
             break;
@@ -294,7 +296,7 @@ static void ApplySchedule(FNaF2Game::CharState* c, i32 night, i32 hour) {
             }
             break;
         case 4:
-            c[FNaF2Game::C_MANGLE].ai = 5;     c[FNaF2Game::C_BB].ai = 3;
+            c[FNaF2Game::C_NEW_FOXY].ai = 5;     c[FNaF2Game::C_BB].ai = 3;
             c[FNaF2Game::C_OLD_FOXY].ai = 7;   c[FNaF2Game::C_OLD_BONNIE].ai = 1;
             c[FNaF2Game::C_GOLDEN].ai = 1 + (rand() % 100);
             if (hour == 2) {
@@ -305,25 +307,25 @@ static void ApplySchedule(FNaF2Game::CharState* c, i32 night, i32 hour) {
         case 5:
             c[FNaF2Game::C_TOY_FREDDY].ai = 5; c[FNaF2Game::C_OLD_FREDDY].ai = 2;
             c[FNaF2Game::C_OLD_BONNIE].ai = 2; c[FNaF2Game::C_OLD_CHICA].ai = 2;
-            c[FNaF2Game::C_MANGLE].ai = 1;     c[FNaF2Game::C_BB].ai = 5;
+            c[FNaF2Game::C_NEW_FOXY].ai = 1;     c[FNaF2Game::C_BB].ai = 5;
             c[FNaF2Game::C_OLD_FOXY].ai = 5;   c[FNaF2Game::C_GOLDEN].ai = 1 + (rand() % 100);
             c[FNaF2Game::C_TOY_BONNIE].ai = 2; c[FNaF2Game::C_TOY_CHICA].ai = 2;
             if (hour == 1) {
                 c[FNaF2Game::C_OLD_FREDDY].ai = 5; c[FNaF2Game::C_OLD_BONNIE].ai = 5;
                 c[FNaF2Game::C_OLD_CHICA].ai = 5;  c[FNaF2Game::C_OLD_FOXY].ai = 7;
-                c[FNaF2Game::C_MANGLE].ai = 10;    c[FNaF2Game::C_TOY_FREDDY].ai = 1;
+                c[FNaF2Game::C_NEW_FOXY].ai = 10;    c[FNaF2Game::C_TOY_FREDDY].ai = 1;
             }
             break;
         case 6:
             c[FNaF2Game::C_OLD_FREDDY].ai = 5; c[FNaF2Game::C_OLD_BONNIE].ai = 5;
-            c[FNaF2Game::C_OLD_CHICA].ai = 5;  c[FNaF2Game::C_MANGLE].ai = 3;
+            c[FNaF2Game::C_OLD_CHICA].ai = 5;  c[FNaF2Game::C_NEW_FOXY].ai = 3;
             c[FNaF2Game::C_BB].ai = 5;         c[FNaF2Game::C_OLD_FOXY].ai = 10;
             c[FNaF2Game::C_GOLDEN].ai = 1 + (rand() % 10);
             if (hour == 2) {
                 c[FNaF2Game::C_OLD_FREDDY].ai = 10; c[FNaF2Game::C_OLD_BONNIE].ai = 10;
                 c[FNaF2Game::C_OLD_CHICA].ai = 10;  c[FNaF2Game::C_TOY_BONNIE].ai = 5;
                 c[FNaF2Game::C_TOY_CHICA].ai = 5;   c[FNaF2Game::C_BB].ai = 9;
-                c[FNaF2Game::C_MANGLE].ai = 10;     c[FNaF2Game::C_TOY_FREDDY].ai = 5;
+                c[FNaF2Game::C_NEW_FOXY].ai = 10;     c[FNaF2Game::C_TOY_FREDDY].ai = 5;
                 c[FNaF2Game::C_GOLDEN].ai = 3;      c[FNaF2Game::C_OLD_FOXY].ai = 15;
             }
             break;
@@ -333,15 +335,56 @@ static void ApplySchedule(FNaF2Game::CharState* c, i32 night, i32 hour) {
 
 void FNaF2Game::DispatchAttack(i32 ch) {
     if (m_attacker != 0 || m_scareT >= 0.0f) return;
-    m_attacker = ch;
-    // attack animation value: 11 + attacker id (1..9); Golden (12) -> 21
-    m_scareAnim = (ch == C_GOLDEN) ? 21 : 11 + ch;
+    // v2.114: the dump's "being attacked by" ids — the groups 421-449 set
+    // them per character, and the animation sequence = 11 + id (g440-449):
+    //   1 old freddy, 2 old bonnie, 3 old chica, 4 old foxy,
+    //   5 toy bonnie, 6 toy chica, 7 toy freddy,
+    //   8 new foxy (the port's C_NEW_FOXY slot), 9 sock puppet,
+    //   12 golden freddy
+    // The old build used the CHARACTER INDEX as the id, so every scare
+    // showed the wrong character's art (old Freddy got none at all).
+    i32 id = 0;
+    switch (ch) {
+        case C_OLD_FREDDY: id = 1;  break;
+        case C_OLD_BONNIE: id = 2;  break;
+        case C_OLD_CHICA:  id = 3;  break;
+        case C_OLD_FOXY:   id = 4;  break;
+        case C_TOY_BONNIE: id = 5;  break;
+        case C_TOY_CHICA:  id = 6;  break;
+        case C_TOY_FREDDY: id = 7;  break;
+        case C_NEW_FOXY:     id = 8;  break;   // the dump's "new foxy"
+        case C_PUPPET:     id = 9;  break;
+        case C_GOLDEN:     id = 12; break;
+        default: id = 0; break;              // BB never kills (dump g421-439)
+    }
+    if (id == 0) return;
+    m_attacker = id;          // the dump's "being attacked by" value
+    m_scareAnim = 11 + id;
     m_scareT = 0.0f;
     Sfx("snd_Xscream3", false, 12, 100);
     // v2.91: slot 9 "You Failed" — the post-jumpscare event fires on every
     // death (the single DispatchAttack entry is the one choke point)
     if (audio.unlockAch) audio.unlockAch(9);
     if (ch == C_PUPPET) { /* puppet kill flag for the post-death frames */ }
+}
+
+// v2.114: the dump's "being attacked by" id -> the port's character slot.
+// The ids run 1..9 and 12, so the plain "id - 1" rule breaks for the
+// sock puppet (9) and golden freddy (12).
+static i32 AttackIdToChar(i32 id) {
+    switch (id) {
+        case 1:  return FNaF2Game::C_OLD_FREDDY;
+        case 2:  return FNaF2Game::C_OLD_BONNIE;
+        case 3:  return FNaF2Game::C_OLD_CHICA;
+        case 4:  return FNaF2Game::C_OLD_FOXY;
+        case 5:  return FNaF2Game::C_TOY_BONNIE;
+        case 6:  return FNaF2Game::C_TOY_CHICA;
+        case 7:  return FNaF2Game::C_TOY_FREDDY;
+        case 8:  return FNaF2Game::C_NEW_FOXY;
+        case 9:  return FNaF2Game::C_PUPPET;
+        case 12: return FNaF2Game::C_GOLDEN;
+        default: return -1;
+    }
 }
 
 // one movement-graph node per character (dump g239-300); returns false when
@@ -459,18 +502,36 @@ bool FNaF2Game::AdvanceCharStep(i32 ch) {
             }
             return false;
 
-        case C_MANGLE:
+        case C_NEW_FOXY:
+            // v2.117: the dump's route (the groups 256-266):
+            //   cam 12 -> cam 11 -> cam 10 -> cam 7 -> hall stage 1 -> cam 2
+            //   cam 2 -> (the "decide path" counter) cam 6 or cam 01
+            //   cam 6  -> the OFFICE (g263: "viewing" > 0)
+            //   cam 01 -> cam 2 (g264, the hall light must be off)
+            // and in the office the MASK is what saves you (g265/266: with
+            // the mask on he goes back to cam 7; without it he attacks,
+            // g267: the flip animation -> "got you box").
+            // The old build sent him from cam 6/01 straight to the box.
             if (c.room == R_CAM12) { c.room = R_CAM11; return true; }
             if (c.room == R_CAM11) { c.room = R_CAM10; return true; }
             if (c.room == R_CAM10) { c.room = R_CAM7;  return true; }
             if (c.room == R_CAM7)  { if (hallLit) return false; c.room = R_HALL1; return true; }
             if (c.room == R_HALL1) { if (hallLit) return false; c.room = R_CAM2;  return true; }
             if (c.room == R_CAM2)  { c.room = (rand() % 2 == 0) ? R_CAM6 : R_CAM1; return true; }
-            if (c.room == R_CAM6 || c.room == R_CAM1) {
-                // g267/268: waits for the monitor flip to finish, then the box
-                if (m_maskState != 0) return false;
-                c.room = R_BOX;
-                return true;
+            if (c.room == R_CAM6) {
+                if (!monUp || m_officeOccupied || m_inDanger) return false;
+                c.room = R_OFFICE; m_officeOccupied = true; return true;
+            }
+            if (c.room == R_CAM1) {
+                if (hallLit) return false;
+                c.room = R_CAM2; return true;
+            }
+            if (c.room == R_OFFICE) {
+                if (m_maskState == 2) {         // the mask sends him home
+                    m_officeOccupied = false;
+                    c.room = R_CAM7; return true;
+                }
+                return false;                   // the attack is dispatched below
             }
             return false;
 
@@ -524,7 +585,7 @@ void FNaF2Game::RetreatChar(i32 ch) {
                  (ch == C_TOY_FREDDY) ? R_CAM9  :
                  (ch == C_TOY_BONNIE) ? R_CAM6  :
                  (ch == C_TOY_CHICA)  ? R_CAM5  :
-                 (ch == C_MANGLE)     ? R_CAM7  : R_NONE;
+                 (ch == C_NEW_FOXY)     ? R_CAM7  : R_NONE;
     } else if (c.room == R_HALL1 || c.room == R_HALL2) {
         c.room = (ch == C_OLD_FREDDY) ? R_CAM3 : R_CAM8;
     }
@@ -566,7 +627,7 @@ void FNaF2Game::TickAI(f32 dt) {
             if (i == C_OLD_FOXY) {
                 // charge-weighted (g202): Random(21) + Random(5)*charge <= AI
                 hit = ((rand() % 21) + (rand() % 5) * (i32)foxy.alt3) <= c.ai;
-            } else if (i == C_MANGLE || i == C_BB || i == C_GOLDEN) {
+            } else if (i == C_NEW_FOXY || i == C_BB || i == C_GOLDEN) {
                 hit = ((rand() % 20) + 1) < c.ai;            // strict <
             } else {
                 hit = ((rand() % 20) + 1) <= c.ai;
@@ -587,7 +648,7 @@ void FNaF2Game::TickAI(f32 dt) {
             c.alt1 = 30;   // "stun time" beat (g315-322 approximation)
             continue;
         }
-        if (i == C_MANGLE && m_viewing == c.room) { c.alt0 = 0; continue; } // g222/223
+        if (i == C_NEW_FOXY && m_viewing == c.room) { c.alt0 = 0; continue; } // g222/223
         c.alt0 = 2;
         if (AdvanceCharStep(i)) {
             c.alt0 = 0;
@@ -631,9 +692,9 @@ void FNaF2Game::TickAI(f32 dt) {
     if (m_chars[C_OLD_FOXY].room == R_BOX && m_attacker == 0 && m_scareT < 0.0f) {
         DispatchAttack(C_OLD_FOXY);
     }
-    // Mangle at the box = attack (g267/268: who got you = 5)
-    if (m_chars[C_MANGLE].room == R_BOX && m_attacker == 0 && m_scareT < 0.0f) {
-        DispatchAttack(C_MANGLE);
+    // the NEW FOXY at the box = attack (g267/268: who got you = 5)
+    if (m_chars[C_NEW_FOXY].room == R_BOX && m_attacker == 0 && m_scareT < 0.0f) {
+        DispatchAttack(C_NEW_FOXY);
     }
     // Puppet at the box = attack (g439)
     if (m_chars[C_PUPPET].room == R_BOX && m_attacker == 0 && m_scareT < 0.0f) {
@@ -671,7 +732,14 @@ void FNaF2Game::TickDanger(f32 dt) {
             // g411: toy Bonnie + monitor UP -> straight to the box
             if (m_viewing != 0 && m_attacker == 0 && m_scareT < 0.0f) {
                 m_chars[ch].room = R_BOX;
-                DispatchAttack(5);
+                DispatchAttack(C_TOY_BONNIE);   // v2.114: the char, not the raw id
+            }
+        } else if (ch == C_NEW_FOXY) {
+            // v2.117: the new Foxy in the office (g267): without the mask
+            // he attacks (the dump's "who got you" = 5); the mask sends
+            // him back to cam 7 (handled in AdvanceCharStep).
+            if (m_maskState != 2 && m_attacker == 0 && m_scareT < 0.0f) {
+                DispatchAttack(C_NEW_FOXY);    // id 8 -> the seq 19 art
             }
         }
     }
@@ -686,8 +754,8 @@ void FNaF2Game::TickDanger(f32 dt) {
         if (m_maskState == 2) {
             m_gotYouStage = 0;
             m_inDanger = 0;
-            const i32 ch = m_attacker - 1;
-            if (m_attacker >= 1 && m_attacker <= 9) RetreatChar(ch);
+            const i32 ch = AttackIdToChar(m_attacker);
+            if (ch >= 0) RetreatChar(ch);
             m_attacker = 0;
             m_dangerFrames = 0.0f;
             return;
@@ -696,7 +764,7 @@ void FNaF2Game::TickDanger(f32 dt) {
         // the darkening overlay accumulates; at 300 -> check and move
         m_dangerFrames += dt * 60.0f;
         if (m_dangerFrames >= 300.0f) {
-            const i32 ch = m_attacker - 1;
+            const i32 ch = AttackIdToChar(m_attacker);
             if (m_maskState == 2 && (ch == C_OLD_FREDDY || ch == C_TOY_FREDDY)) {
                 // g592-595: masked box-escape 10%/s
                 if ((rand() % 100) < 10) {
@@ -716,12 +784,17 @@ void FNaF2Game::TickDanger(f32 dt) {
     }
 
     // the box race (g423-426 vs g592-595): per second 50% kill vs 10% escape
+    // v2.114: BB is NOT a killer in the dump — the groups that set "being
+    // attacked by" (g421-439) never mention the balloon boy; he only
+    // blocks the lights and scares you (g177/178/180: the mask sends him
+    // back to cam 01). So he is skipped in the race.
     m_boxRollT += dt;
     if (m_boxRollT >= 1.0f) {
         m_boxRollT -= 1.0f;
         for (i32 i = 0; i < C_COUNT; ++i) {
             if (m_chars[i].room != R_BOX) continue;
-            if (m_maskState == 2 && i <= C_TOY_FREDDY && i != C_OLD_FOXY && i != C_MANGLE && i != C_PUPPET) {
+            if (i == C_BB) continue;
+            if (m_maskState == 2 && i <= C_TOY_FREDDY && i != C_OLD_FOXY && i != C_NEW_FOXY && i != C_PUPPET) {
                 if ((rand() % 100) < 50) { DispatchAttack(i); return; }
                 if ((rand() % 100) < 10) { RetreatChar(i); continue; }
             } else {
@@ -794,12 +867,12 @@ void FNaF2Game::TickMask(f32 dt, bool wantMask) {
         if (on  && m_toxic < 20) m_toxic += 1;
         if (!on && m_toxic > 0)  m_toxic -= 1;
     }
-    // BB/Mangle mask-defense (g178/g265): 10% per second
+    // BB/new-Foxy mask-defense (g178/g265): 10% per second
     if (on) {
         m_boxRollT += 0.0f;   // (the box race is in TickDanger)
         for (i32 i = 0; i < C_COUNT; ++i) {
             if (m_chars[i].room != R_OFFICE) continue;
-            if ((i == C_BB || i == C_MANGLE || i == C_TOY_CHICA || i == C_TOY_BONNIE) &&
+            if ((i == C_BB || i == C_NEW_FOXY || i == C_TOY_CHICA || i == C_TOY_BONNIE) &&
                 (rand() % 100) < 10) {
                 RetreatChar(i);
             }
@@ -828,6 +901,24 @@ void FNaF2Game::TickLights(f32 dt, bool lightHeld, bool ventLHeld, bool ventRHel
     }
     // light hum (g52/53): buzzlight 60 lit / 0 off
     ChVol(2, m_litQ ? 60 : 0);
+
+    // v2.115: the GOLDEN FREDDY decoy. The dump's "yellowbear" (objInfo
+    // 179) is created while the monitor is UP (g201: the one-shot 5 s
+    // timer, the golden's AI > 20, viewing > 0) and is shown in the office
+    // (g610: viewing == 0 and not in danger). Lighting it with the
+    // flashlight is what gives it away (g613: the "viewing hall light"
+    // counter == 1) -> the golden freddy attacks.
+    if (!m_yellowBear && m_viewing != 0 && m_chars[C_GOLDEN].ai > 20)
+        m_yellowBear = true;   // the create is a one-shot in the dump
+    // v2.115: the paper pals wait in cam 4 and walk into the office when
+    // you watch that camera (g277: "your view" == cam 4 -> pos rel "in
+    // office"); the drawing is shown in the office (g481).
+    if (!m_paperPalsOffice && m_viewing == 4)
+        m_paperPalsOffice = true;
+    if (m_yellowBear && m_litQ && m_attacker == 0 && m_scareT < 0.0f) {
+        m_yellowBear = false;
+        DispatchAttack(C_GOLDEN);   // id 12 -> the seq 21 golden art
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -860,7 +951,7 @@ i32 FNaF2Game::ComputeSceneValue() {
     if (v == 6) {
         if (!lit) VAL(15);
         else {
-            if (AT(C_MANGLE,6)) VAL(81);
+            if (AT(C_NEW_FOXY,6)) VAL(81);
             else if (AT(C_OLD_CHICA,6)) VAL(68);
             else if (AT(C_TOY_BONNIE,6)) VAL(45);
             else VAL(16);
@@ -875,7 +966,7 @@ i32 FNaF2Game::ComputeSceneValue() {
     }
     if (v == 12) {
         if (!lit) VAL(19);
-        else { if (AT(C_MANGLE,12)) VAL(20); else VAL(80); }
+        else { if (AT(C_NEW_FOXY,12)) VAL(20); else VAL(80); }
     }
     if (v == 7) {
         if (!lit) { if (AT(C_TOY_CHICA,7)) { if (AT(C_OLD_BONNIE,7)) VAL(21); else VAL(48); } else VAL(21); }
@@ -948,7 +1039,7 @@ i32 FNaF2Game::ComputeSceneValue() {
         if (AT(C_GOLDEN, R_CAM8) && g.alt0 != 0) { VAL(93); return value; }  // manifested
         if (AT(C_OLD_BONNIE, R_HALL1)) { if (AT(C_OLD_FOXY, R_HALL1)) VAL(97); else VAL(58); return value; }
         if (AT(C_OLD_FOXY, R_HALL1)) { VAL(84); return value; }
-        if (AT(C_MANGLE, R_HALL1)) { VAL(76); return value; }
+        if (AT(C_NEW_FOXY, R_HALL1)) { VAL(76); return value; }
         if (AT(C_TOY_CHICA, R_HALL1)) { VAL(50); return value; }
         if (AT(C_TOY_FREDDY, R_HALL1)) { VAL(55); return value; }
         VAL(36);   // lit empty hall
@@ -985,6 +1076,12 @@ void FNaF2Game::TickOffice(f32 dt, const FNaF2Inputs& in) {
     // X winds the box on CAM 11; LT/RT hold the vent lights; D-pad cycles
     // the cameras; LB is the flashlight.
     // ---------------------------------------------------------------
+    // v2.116: the office ambience loops themselves live in the module
+    // (it owns the pak + the channel mixer); here we only follow the
+    // dump's g54/g55 — the computer hum is silent in the office and loud
+    // on the monitor, the fan is the other way round.
+    if (m_viewing == 0) { ChVol(3, 0);  ChVol(6, 40); }
+    else               { ChVol(3, 70); ChVol(6, 25); }
     if (in.aPressed && m_maskState == 0) {
         const bool raising = (m_viewing == 0);
         m_viewing = raising ? 9 : 0;   // raise -> cam 9 default (g149)
@@ -1479,7 +1576,7 @@ void FNaF2Game::TickDream(f32 dt, const FNaF2Inputs& in) {
 
 // the ten challenge presets (dump frame 12 groups 46-55), verbatim AI sets.
 // Slider order: [0]freddy [1]bonie [2]chica [3]foxy [4]BB [5]toyF [6]toyB
-// [7]toyC [8]mangle [9]golden.
+// [7]toyC [8]newFoxy [9]golden.
 void FNaF2Game::TickCustomize(f32 dt, const FNaF2Inputs& in) {
     (void)dt;
     if (m_cardT == 0.0f) {

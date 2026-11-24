@@ -27,6 +27,7 @@
 #include "AudioSystem.h"
 #include "AppRegistry.h"  // v2.28: AppModule contract + module table
 #include "AppModules.h"   // v2.28: full AppModule type (banner prints Name/PakName)
+#include "DevIni.h"       // v2.111: the dev.ini flag parser
 
 #include <xtl.h>
 #include <xinputdefs.h>   // XINPUT_KEYSTROKE / XINPUT_FLAG_KEYBOARD
@@ -47,7 +48,39 @@ static PakLoader         g_pak;
 static GameRender        g_render;
 static AudioSystem       g_audio;
 static bool              g_pakLoaded = false;
-static bool              g_showConsole = true;  // v2.17: DEV toggle for the on-screen debug console
+static bool              g_showConsole = false; // v2.111: the on-screen debug console is OFF by
+                                                // default (it took half the screen for every
+                                                // player) — dev.ini turns it on per console
+
+// ============================================================
+// v2.111: dev.ini — the per-console dev flags (the parser is in
+// include/DevIni.h; this is the file reader).
+// ============================================================
+// The file sits next to the XEX (game:\dev.ini) and is read once at boot.
+// EVERY flag has its code default, and a key that is not in the file — or
+// whose value is not understood — KEEPS that default: the config only
+// ever changes what it names.
+static DevIniFlags g_devIni;
+static bool         g_devIniLoaded = false;
+
+// Reads the dev.ini that sits NEXT TO THE GAME — the XEX's own directory
+// ("game:\"). Nowhere else: a dev.ini on some dashboard volume or in the
+// current directory must not silently configure the game. A missing file
+// is not an error — every flag simply keeps its default.
+static void ReadDevIni() {
+    static const char* const kPath = "game:\\dev.ini";
+    FILE* f = fopen(kPath, "rb");
+    if (!f) return;
+    const char* used = kPath;
+    g_devIniLoaded = true;
+    char buf[256];
+    while (fgets(buf, sizeof(buf), f))
+        DevIniParseLine(buf, g_devIni);
+    fclose(f);
+    printf("[dev] %s: console=%d devmenu=%d god=%d analog=%d holdlights=%d browser=%d tuner=%d\n",
+           used, g_devIni.console, g_devIni.devmenu, g_devIni.god, g_devIni.analog,
+           g_devIni.holdlights, g_devIni.browser, g_devIni.tuner);
+}
 static f32               g_goldenScareT = -1.0f;// v2.17: scare flash timer (-1 = off)
 static int               g_scareFlashImg = -1;   // v2.17: image handle for the scare flash
 static f32               g_itsmeT = -1.0f;       // v2.17: IT'S ME hallucination timer (-1 = off)
@@ -1179,6 +1212,21 @@ static i32 RunBootSelector() {
     return cursor;
 }
 
+// ============================================================
+// v2.111: apply the dev.ini flags — a key that the file does not
+// mention (or mentions with an unknown value) keeps the code default,
+// so the config only ever CHANGES what it names.
+// ============================================================
+static void ApplyDevIni() {
+    if (g_devIni.console    >= 0) g_showConsole   = (g_devIni.console    != 0);
+    if (g_devIni.devmenu    >= 0) g_devMode       = (g_devIni.devmenu    != 0);
+    if (g_devIni.god        >= 0) g_devGod        = (g_devIni.god        != 0);
+    if (g_devIni.analog     >= 0) g_devAnalogDoor = (g_devIni.analog     != 0);
+    if (g_devIni.holdlights >= 0) g_devHoldLights = (g_devIni.holdlights != 0);
+    if (g_devIni.browser    >= 0) g_browserMode   = (g_devIni.browser    != 0);
+    if (g_devIni.tuner      >= 0) g_tunerMode     = (g_devIni.tuner      != 0);
+}
+
 
 int main(int argc, char* argv[]){
     // v2.97: FIRST of all — return the Ring of Light if we die a CRT death
@@ -1187,7 +1235,11 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.107 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.111 built %s %s ===\n", __DATE__, __TIME__);
+    // v2.111: dev.ini (next to the XEX) — read once, before anything else.
+    // A missing file or a missing key leaves every flag at its default.
+    ReadDevIni();
+    ApplyDevIni();
 
     Game game;
     g_gameRef = &game;
@@ -1202,7 +1254,14 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.107 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.111 (%s %s)", __DATE__, __TIME__);
+    // v2.111: what dev.ini actually changed (-1 = the default was kept)
+    if (g_devIniLoaded) {
+        g_debugConsole.Print("dev.ini: console=%d devmenu=%d god=%d analog=%d hold=%d browser=%d tuner=%d",
+                             g_devIni.console, g_devIni.devmenu, g_devIni.god,
+                             g_devIni.analog, g_devIni.holdlights,
+                             g_devIni.browser, g_devIni.tuner);
+    }
     // v2.97: DECISIVE SMC diagnostic — right here the ring cycles
     // GREEN -> ORANGE -> RED -> dark using the exact Lightshow Sleep()
     // pattern. If the ring shows this, HalSendSMCMessage works in this

@@ -11,6 +11,7 @@
 #include "FNaFWorldRender.h"
 #include "FNaFWorldGame.h"
 #include "FNaFWorldMap.h"
+#include "FWorldSpaceScenes.h"
 #include "PakLoader.h"
 #include "SpriteBatch.h"
 #include "TextRenderer.h"
@@ -660,5 +661,51 @@ void FNaFWorldRender::DrawFade(f32 alpha) {
     const u32 a = (u32)(alpha * 255.0f);
     m_batch->DrawSolid(0.0f, 0.0f, 1280.0f, 720.0f, (a << 24) | 0x00000000);
 }
+// ------------------------------------------------------------
+// v2.109: the Freddy in Space 1 minigame inside FNaF World
+// (exe frame 38 "In Space", 8000x4800; the frames 37 "57 title",
+// 39 "Game Over" and 43 "earned new character" come with it).
+//
+// The level art comes from the generated scene table (FWorldSpaceScenes.h):
+// the backdrop, the stones, the power-ups and the scenery are static, the
+// ship/enemies/bullets are positioned by the events (the gameplay
+// milestone). The camera follows the ship (the dump's "follow" object).
+// The World's dump space is 800x480 -> screen 1280x720 (x1.6, y1.5).
+// ------------------------------------------------------------
+void FNaFWorldRender::DrawSpaceScene(int frameIndex, f32 camL, f32 camT) {
+    for (int i = 0; i < FWorldSpaceSceneFrameCount; ++i) {
+        const FWorldSpaceSceneFrame& f = FWorldSpaceSceneFrames[i];
+        if (f.index != frameIndex) continue;
+        for (int k = 0; k < f.count; ++k) {
+            const FWorldSpaceSceneInst& inst = FWorldSpaceScenes[f.first + k];
+            if (inst.img == 33) continue;          // the counter placeholder
+            if (inst.w <= 0 || inst.h <= 0) continue;
+            const f32 x = ((f32)inst.left - camL) * kSx;
+            const f32 y = ((f32)inst.top - camT) * kSy;
+            const f32 w = (f32)inst.w * kSx;
+            const f32 h = (f32)inst.h * kSy;
+            if (x > 1280.0f || y > 720.0f || x + w < 0.0f || y + h < 0.0f) continue;
+            DNS(inst.img, (f32)inst.left, (f32)inst.top, 0xFFFFFFFF);
+        }
+        return;
+    }
+}
+
+void FNaFWorldRender::RenderInSpace(const FNaFWorldGame& game, f32 time) {
+    (void)time;
+    if (!m_batch) return;
+    // the camera: the dump's "follow" object rides the current level; the
+    // shell keeps the camera at the level's origin
+    const f32 camL = 0.0f;
+    const f32 camT = 0.0f;
+    DrawSpaceScene(38, camL, camT);
+}
+
+void FNaFWorldRender::RenderInSpaceTitle(const FNaFWorldGame& game, f32 time) {
+    (void)game; (void)time;
+    if (!m_batch) return;
+    DrawSpaceScene(37, 0.0f, 0.0f);
+}
+
 
 } // namespace fnaf

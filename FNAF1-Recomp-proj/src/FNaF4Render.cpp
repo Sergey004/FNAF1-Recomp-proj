@@ -253,13 +253,20 @@ void FNaF4Render::RenderBedroom(const FNaF4Game& game, f32 time, f32 pan) {
     // idle bedroom is the dim img 16. The lit variants are separate
     // runtime layers: 'on4' img 547 (the closet light, g215) and 'off4'
     // img 539 (the turn-to-bed blackout, g209-212).
-    DrawWorld(16, 0.0f, 0.0f, 1300.0f, 768.0f, pan, 0xFFFFFFFF);
+    // v2.121: the base's draw origin is (1,1) (the instance (650,384) minus
+    // the hotspot (649,383)) — the port used (0,0).
+    DrawWorld(16, 1.0f, 1.0f, 1300.0f, 768.0f, pan, 0xFFFFFFFF);
 
-    // the walk darks (world-size overlays; first frames 45/160/57)
+    // the walk darks (the world-size overlays 45/57/160).
+    // v2.121: the dump puts them at (-649,-383) (the instance (0,0) minus
+    // the hotspot (649,383)) — NOT at (0,0). Their art carries the lit
+    // band at the image's own side ("dark left" is bright at the image's
+    // left), so the old offset put the lit band on the wrong side of the
+    // room: walking left left the left hall lit instead of dark.
     if (game.IsWalking()) {
         const f32 k = game.GetWalkT() / 0.45f;          // 1 -> 0
         const u32 a = (u32)(255.0f * (k > 0.5f ? (1.0f - k) * 2.0f : k * 2.0f));
-        DrawWorld(game.GetWalkDir(), 0.0f, 0.0f, 1300.0f, 768.0f, pan,
+        DrawWorld(game.GetWalkDir(), -649.0f, -383.0f, 1300.0f, 768.0f, pan,
                   (a << 24) | 0x00FFFFFFu);
     }
 

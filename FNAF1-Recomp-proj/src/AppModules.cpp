@@ -558,11 +558,16 @@ void FNaF4Module::Tick(f32 dt) {
         if (scr == (int)FNaF4Game::SCR_BEDROOM) {
             // the loops the game's volume hooks move (breathing/kitchen/
             // minimonsters/fredbear) + the night crickets
+            // v2.121: the dump's frame 3 group 1 (the office loop set):
+            // crickets on ch2 (the volume 0, then ch2 = 50), breathing1 on
+            // ch20, minimonsters on ch21, kitchen on ch25, fredbear on ch27
+            // (frame 3 group 360). The old build put the kitchen on ch19
+            // and the crickets on ch0 at 25.
             s_fn4Audio->PlayOnChannel(m_services.pak, "snd_breathing1",  true, 20); s_fn4Audio->SetChannelVolume(20, CFVolumeToDb(0));
-            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_kitchen",     true, 19); s_fn4Audio->SetChannelVolume(19, CFVolumeToDb(0));
+            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_kitchen",     true, 25); s_fn4Audio->SetChannelVolume(25, CFVolumeToDb(0));
             s_fn4Audio->PlayOnChannel(m_services.pak, "snd_minimonsters",true, 21); s_fn4Audio->SetChannelVolume(21, CFVolumeToDb(0));
             s_fn4Audio->PlayOnChannel(m_services.pak, "snd_fredbear",    true, 27); s_fn4Audio->SetChannelVolume(27, CFVolumeToDb(0));
-            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_crickets",    true, 0);  s_fn4Audio->SetChannelVolume(0,  CFVolumeToDb(25));
+            s_fn4Audio->PlayOnChannel(m_services.pak, "snd_crickets",    true, 2);  s_fn4Audio->SetChannelVolume(2,  CFVolumeToDb(50));
         } else if (m_prevAudioScreen == (int)FNaF4Game::SCR_BEDROOM) {
             s_fn4Audio->Stop("snd_breathing1"); s_fn4Audio->Stop("snd_kitchen");
             s_fn4Audio->Stop("snd_minimonsters"); s_fn4Audio->Stop("snd_fredbear");

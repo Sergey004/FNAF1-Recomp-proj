@@ -9,6 +9,7 @@
  */
 
 #include "FNaF3Render.h"
+#include "FNaF3Scares.h"
 #include "FNaF3Game.h"
 #include "PakLoader.h"
 #include "SpriteBatch.h"
@@ -317,9 +318,14 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
     if (game.IsShadowFreddy())
         DrawWorld(290, -1.0f, 226.0f, 273.0f, 545.0f, pan, 0xFFFFFFFF);
 
-    // Springtrap at the office window (img 206) — the stage-4 scare pose
+    // Springtrap at the office window (img 206) — the stage-4 scare pose.
+    // v2.119: the dump's "inwindow" (objInfo 125): the instance (1476,414)
+    // minus the hotspot (149,357) -> the draw origin (1327,57). It sits on
+    // the RIGHT of the 2000-px panorama, so it comes into view when the
+    // camera pans right (the dump's scroll range is 512..1488 = the view's
+    // left edge 0..976 in the port's convention).
     if (game.GetSpringtrapRoom() == FNaF3Game::R3_ST4)
-        DrawWorld(206, 1180.0f, 25.0f, 299.0f, 715.0f, pan, 0xFFFFFFFF);
+        DrawWorld(206, 1327.0f, 57.0f, 299.0f, 715.0f, pan, 0xFFFFFFFF);
 
     // the hall dash (img 207) — sweeps right-to-left while the timer runs
     if (game.GetRunPastT() > 0.0f) {
@@ -327,10 +333,13 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
         DrawWorld(207, 1300.0f - 600.0f * k, 0.0f, 250.0f, 768.0f, pan, 0xFFFFFFFF);
     }
 
-    // he is INSIDE (the GOT YOU markers): the head over the doorway
+    // he is INSIDE (the GOT YOU markers): the head over the doorway.
+    // v2.119: the dump's "head" (objInfo 132): the instance (128,292) minus
+    // the hotspot (-3,110) -> (131,182) — the LEFT side of the panorama
+    // (it comes into view when the camera pans left).
     if (game.GetSpringtrapRoom() == FNaF3Game::R3_GY ||
         game.GetSpringtrapRoom() == FNaF3Game::R3_GY2)
-        DrawWorld(529, 1000.0f, 400.0f, 164.0f, 220.0f, pan, 0xFFFFFFFF);
+        DrawWorld(529, 131.0f, 182.0f, 164.0f, 220.0f, pan, 0xFFFFFFFF);
 
     // Phantom Foxy in the office (img 302; DEVIATION: fixed spot)
     if (game.GetPhFoxy() != 0)
@@ -355,7 +364,8 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
     // the vent-error blackout (img 676) fades over everything
     if (game.GetBlackoutAlpha() > 0.5f) {
         const u32 a = (u32)game.GetBlackoutAlpha();
-        Draw(676, -11.0f, -3.0f, 1046.0f, 775.0f, (a << 24) | 0xFFFFFFFFu);
+        // v2.119: the dump's "blackout" (objInfo 155): the instance (-7,-5)
+        Draw(676, -7.0f, -5.0f, 1046.0f, 775.0f, (a << 24) | 0xFFFFFFFFu);
     }
 
     // the phantom-scare white flash (the dump's thin "fscare" bar stretched)
@@ -659,9 +669,22 @@ void FNaF3Render::RenderPanel(const FNaF3Game& game) {
 // ---- the office jumpscare ----------------------------------------------
 
 void FNaF3Render::DrawAttack(const FNaF3Game& game) {
+    // v2.118: the dump's jumpscares are ANIMATIONS, not one still: the
+    // objects "jumpscare" (objInfo 128) and "jumpscare 2" (objInfo 223)
+    // carry 41 cells each at speed 60 -> 36 fps. Every cell has its own
+    // size and hotspot, so the generated table stores the draw origin per
+    // cell (the create position minus the cell's hotspot).
     const i32 img = game.GetScareImg();
-    if (img == 778)      Draw(img, 128.0f, -80.0f, 900.0f, 870.0f, 0xFFFFFFFF);
-    else if (img == 792) Draw(img, 190.0f, -60.0f, 900.0f, 645.0f, 0xFFFFFFFF);
+    const FNaF3ScareCell* cells = 0;
+    int count = 0;
+    if (img == 778)      { cells = FNaF3Scare1; count = FNaF3Scare1Count; }
+    else if (img == 792) { cells = FNaF3Scare2; count = FNaF3Scare2Count; }
+    if (!cells || count <= 0) return;
+    int fi = (int)(game.GetScareTimer() * 36.0f);   // 36 fps (speed 60 * 0.6)
+    if (fi < 0) fi = 0;
+    if (fi >= count) fi = count - 1;
+    const FNaF3ScareCell& c = cells[fi];
+    Draw(c.img, (f32)c.left, (f32)c.top, (f32)c.w, (f32)c.h, 0xFFFFFFFF);
 }
 
 // ---- the dump's end screens (v2.62) ------------------------------------

@@ -257,6 +257,9 @@ public:
     bool   IsBigScare()       const { return m_bigScare; }      // him in the monitor
     i32    GetGotYou()        const { return m_gotYou; }        // 0/1/2
     f32    GetScareTimer()    const { return m_scareT; }
+    // v2.118: trigger the death animation by hand (the harness captures it;
+    // the in-game path is the AI pipeline).
+    void   DebugStartScare(i32 which) { m_scareImg = (which == 2) ? 792 : 778; m_scareT = 0.001f; }
     i32    GetScareImg()      const { return m_scareImg; }      // 778 / 792
 
     // cameras / monitor

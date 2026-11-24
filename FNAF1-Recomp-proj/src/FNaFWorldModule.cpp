@@ -131,6 +131,9 @@ void FNaFWorldModule::Render() {
                                             break;
         case FNaFWorldGame::SCR_BATTLE:     m_render.RenderBattle(m_game);       break;
         case FNaFWorldGame::SCR_GAMEOVER:   m_render.RenderGameOver();           break;
+        // v2.109: the Freddy in Space 1 minigame inside FNaF World
+        case FNaFWorldGame::SCR_INSPACE:     m_render.RenderInSpace(m_game, m_time); break;
+        case FNaFWorldGame::SCR_INSPACE_TITLE: m_render.RenderInSpaceTitle(m_game, m_time); break;
         default:                            m_render.RenderWorld(m_game);        break;
     }
     // the CFT frame transition — LAST, over everything
