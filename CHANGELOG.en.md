@@ -3,6 +3,21 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.129 — Fury's Rage: the character select from the dump
+
+- **The roster is Freddy / Monty / Roxanne / Chica.** This game has no
+  Bonnie and no Foxy — they were replaced by Monty and Roxanne. The
+  character ids, the card row and the stat panel now follow the dump's
+  frame 3 ("character select"): Freddy's card is image 752, Monty's 758,
+  Roxanne's 754 and Chica's 756, laid out left to right at x = 110 /
+  512 / 903 / 1303.
+- **The select screen is drawn like the dump.** The background (750), the
+  three *unselected* cards with the dump's own alpha (action 65 = 100, so
+  the row reads dimmed), the selected fighter's stat panel ("Active 6":
+  761 Freddy, 762 Monty, 763 Roxanne, 760 Chica) at (370, 605) and the
+  control hints (829) at (1548, 787). The old build drew the four cards
+  twice and painted Chica's panel on top of the background.
+
 ## v2.128 — Fury's Rage: beat-'em-up levels (step 1)
 
 - **Fury's Rage gameplay levels:** the arena now draws the dump's own

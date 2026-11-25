@@ -1,5 +1,5 @@
 /**
- * FuryRageGame.h: v2.108 — Fury's Rage module game logic.
+ * FuryRageGame.h: v2.129 — Fury's Rage module game logic.
  *
  * Clean-room port of the original Fury's Rage flow (the ctfak dump of
  * furys-rage.exe, build 293): the screen graph is the dump's
@@ -81,11 +81,15 @@ struct FuryFighter {
 
 class FuryRageGame {
 public:
+    // v2.129: the dump's roster is Freddy/Monty/Roxanne/Chica (this game
+    // has no Bonnie and no Foxy - they were replaced by Monty and Roxanne).
+    // The order is the card row of frame 3, left to right, and it matches the
+    // dump's "character" counter (1 = Freddy ... 4 = Chica) minus one.
     enum {
         CHAR_FREDDY = 0,
-        CHAR_BONNIE = 1,
-        CHAR_CHICA = 2,
-        CHAR_FOXY = 3,
+        CHAR_MONTY = 1,
+        CHAR_ROXANNE = 2,
+        CHAR_CHICA = 3,
         CHAR_COUNT
     };
 

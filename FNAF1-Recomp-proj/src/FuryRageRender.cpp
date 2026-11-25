@@ -1,10 +1,17 @@
 /**
- * FuryRageRender.cpp: v2.128 — Fury's Rage module renderer.
+ * FuryRageRender.cpp: v2.129 — Fury's Rage module renderer.
  *
  * Every screen is the dump's own art: the generated scene table carries the
  * image id, the draw origin (the instance point minus the hotspot) and the
  * natural size; the original window is 1920x1080 and the port renders
  * 1280x720, so the whole world scales by 2/3.
+ *
+ * v2.129: the character select is rebuilt from the dump's frame 3: the
+ * background (750), the three unselected fighter cards at the dump's
+ * coordinates with the dump's own alpha (action 65 = 100), the selected
+ * fighter's stat panel (Active 6: 761 Freddy / 762 Monty / 763 Roxanne /
+ * 760 Chica) at (370, 605) and the control hints (829). The roster is
+ * Freddy / Monty / Roxanne / Chica — this game has no Bonnie and no Foxy.
  *
  * v2.128: the beat-'em-up level now draws the generated map (FuryRageMap.h,
  * painter's order per layer) plus the fighter, enemies, and a HUD
@@ -87,21 +94,40 @@ void FuryRageRender::RenderTitle(const FuryRageGame& game) {
 }
 
 void FuryRageRender::RenderCharacterSelect(const FuryRageGame& game) {
-    DrawScene(FR_CHARACTER_SELECT);
-    // the four characters at their dump positions (x = 110, 512, 903, 1303;
-    // y = 170), with the cursor (img 760) on the selected one
-    static const struct { i32 img; f32 x, y; } kChars[4] = {
-        { 752, 110.0f, 170.0f },   // Freddy
-        { 754, 512.0f, 170.0f },   // Bonnie
-        { 758, 903.0f, 170.0f },   // Chica
-        { 756, 1303.0f, 170.0f },  // Foxy
+    // Frame 3 "character select" of the dump (1920x1080):
+    //   * "Active"        750 - the background
+    //   * "Active 2/5/3/4" - the four fighter cards (524x460) at
+    //                        x = 110 / 512 / 903 / 1303, y = 170
+    //   * "Active 6"      - the stat panel (1047x460) at (370, 605); its
+    //                        animation picks the panel of the chosen fighter
+    //   * "Active 8"      829 - the control hints (349x284) at (1548, 787)
+    // The events hide the card of the selected fighter (alpha 0) and show it
+    // big inside the panel instead, so the card row only carries the others.
+    Draw(750, 0.0f, 0.0f, 1920.0f, 1080.0f, 0xFFFFFFFF);
+
+    static const struct { i32 img; f32 x; } kCards[4] = {
+        { 752, 110.0f },   // Freddy
+        { 758, 512.0f },   // Monty
+        { 754, 903.0f },   // Roxanne
+        { 756, 1303.0f },  // Chica
     };
-    for (int i = 0; i < 4; ++i)
-        DrawNat(kChars[i].img, kChars[i].x, kChars[i].y, 0xFFFFFFFF);
-    // the selection cursor (the dump's "Active 6", img 760)
+    // "Active 6" animation 0..3 = Chica, Freddy, Monty, Roxanne
+    static const i32 kPanels[4] = { 761, 762, 763, 760 };
+
+    // The events set the unselected cards' alpha (action 65) to 100 - the
+    // dump's own frame renders them at 100/255, so the row reads as dimmed
+    // while the chosen fighter shows big in the panel.
+    const u32 kCardColor = 0x64FFFFFF;
+
     const int sel = game.GetCharSel();
+    for (int i = 0; i < 4; ++i) {
+        if (i == sel) continue;          // the dump hides the selected card
+        Draw(kCards[i].img, kCards[i].x, 170.0f, 524.0f, 460.0f, kCardColor);
+    }
     if (sel >= 0 && sel < 4)
-        DrawNat(760, kChars[sel].x, kChars[sel].y + 435.0f, 0xFFFFFFFF);
+        Draw(kPanels[sel], 370.0f, 605.0f, 1047.0f, 460.0f, 0xFFFFFFFF);
+
+    Draw(829, 1548.0f, 787.0f, 349.0f, 284.0f, 0xFFFFFFFF);
 }
 
 // dump-space -> screen-space for a level (camera-relative)
