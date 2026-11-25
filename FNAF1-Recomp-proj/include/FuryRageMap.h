@@ -24,8 +24,15 @@ struct FuryMapInst { unsigned short img; short left; short top;
                                              // backdrop (tiled),
                                              // 2 backdrop (rect)
 static const FuryMapInst kFuryMapInsts[] = {
+    {   442,      0,   1075,  3840,  1080, 0, 0, 1, 255 }, // Quick Backdrop 6
+    {   444,      5,   2160,  3840,  1080, 0, 0, 1, 255 }, // Quick Backdrop 4
+    {   448,      0,   3240,  7680,  1080, 0, 0, 1, 255 }, // Quick Backdrop 9
     {    60,      0,      0,  3840,  1080, 0, 0, 0, 255 }, // Active 3
     {   774,      0,   4325,  3840,  1080, 0, 0, 0, 255 }, // Active 12
+    {    62,      0,      0,  7680,  1080, 1, 0, 1, 255 }, // Quick Backdrop
+    {   438,      0,   1080,  7680,  1080, 1, 0, 1, 255 }, // Quick Backdrop 3
+    {   445,      0,   2160,  7680,  1080, 1, 0, 1, 255 }, // Quick Backdrop 7
+    {   447,      0,   3240,  7680,  1080, 1, 0, 1, 255 }, // Quick Backdrop 5
     {   777,      0,   4320,  3840,  1080, 1, 0, 0, 255 }, // Active 13
     {   729,   1085,    500,   281,   204, 2, 1, 0, 255 }, // crate
     {    31,    713,   -128,   191,    51, 2, 0, 0, 105 }, // Active 4
@@ -36,6 +43,10 @@ static const FuryMapInst kFuryMapInsts[] = {
     {   729,    870,    495,   281,   204, 2, 1, 0, 255 }, // crate
     {  1029,    712,     58,   850,   750, 2, 0, 0, 255 }, // giant animdude
     {   729,   3495,    505,   281,   204, 2, 1, 0, 255 }, // crate
+    {    64,      0,      0,  7680,  1080, 3, 0, 1, 255 }, // Quick Backdrop 2
+    {   443,      0,   1080,  7680,  1080, 3, 0, 1, 255 }, // Quick Backdrop 10
+    {   446,     10,   2160,  7680,  1080, 3, 0, 1, 255 }, // Quick Backdrop 8
+    {   449,      0,   3240,  7680,  1080, 3, 0, 1, 255 }, // Quick Backdrop 11
     {   776,      0,   4320,  3840,  1080, 3, 0, 2, 255 }, // Backdrop
     {   776,  -1470,   4320,  3840,  1080, 3, 0, 2, 255 }, // Backdrop
     {   362,     49,    113,    50,    50, 3, 0, 0, 255 }, // Lives 5

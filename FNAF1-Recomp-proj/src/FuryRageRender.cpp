@@ -148,9 +148,9 @@ static void FuryDrawMapInst(FuryRageRender* r, PakLoader* pak, SpriteBatch* batc
     if (!t || !t->texture) return;
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
-    // the object's own blend (the dump's alpha)
-    const u32 color = 0xFF000000u | ((u32)it.alpha << 16) |
-                      ((u32)it.alpha << 8) | (u32)it.alpha;
+    // the object's own blend (the dump's alpha): the texture is drawn with
+    // that opacity over what is already on the screen
+    const u32 color = ((u32)it.alpha << 24) | 0x00FFFFFFu;
     if (it.kind == 1) {
         // quick backdrop: tile the image over its rect
         const f32 tw = (f32)t->origWidth * kFuryScale;

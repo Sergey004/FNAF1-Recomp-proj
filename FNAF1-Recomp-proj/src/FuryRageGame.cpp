@@ -201,6 +201,7 @@ void FuryRageGame::ApplyProgress(const Progress::GameProgressFuryRage& p) {
     for (int i = 0; i < 3; ++i) m_coins[i] = p.coins[i];
     m_hardMode = (p.hardMode == 2);
     m_charSel = p.character;
+    if (m_charSel < 0 || m_charSel >= CHAR_COUNT) m_charSel = 0;
     m_titleSel = p.playsel;
 }
 
