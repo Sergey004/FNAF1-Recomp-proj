@@ -64,6 +64,21 @@ enum FuryRageScreen {
     FR_SCREEN_COUNT
 };
 
+// v2.128: gameplay state (side-scrolling beat 'em up).
+struct FuryFighter {
+    f32  x, y;          // tile coords (centre of hitbox)
+    f32  vx, vy;        // tile coords / s
+    i32  w, h;          // hitbox size in tiles (x100)
+    i32  charId;        // 0..3 character id
+    i32  img;           // pak image handle
+    i32  hp, maxHp;
+    f32  cd;            // attack cooldown remaining (s)
+    bool dead;
+    bool isEnemy;
+    FuryFighter() : x(0), y(0), vx(0), vy(0), w(0), h(0), charId(-1),
+                    img(-1), hp(0), maxHp(0), cd(0), dead(false), isEnemy(false) {}
+};
+
 class FuryRageGame {
 public:
     enum {
@@ -92,15 +107,34 @@ public:
     f32  GetFadeAlpha() const { return m_fade.alpha; }
     bool WantsExit() const { return m_wantsExit; }
 
-    // the save bridge
     bool IsSaveDirty() const { return m_saveDirty; }
     void ClearSaveDirty() { m_saveDirty = false; }
     void ApplyProgress(const Progress::GameProgressFuryRage& p);
+    void FillProgress(Progress::GameProgressFuryRage& p) const;   // v2.128
+    void WipeSave();                                           // v2.128
+
+    // ---- levels state ----
+    i32  GetWave() const { return m_wave; }
+    i32  GetScore() const { return m_score; }
+    i32  GetEnemyHp() const { return m_enemyHp; }   // current boss/hard enemy hp
+    i32  GetEnemyMaxHp() const { return m_enemyMaxHp; }
+
+    // ---- camera (tile coords, centre of view) ----
+    f32  GetCamX() const { return m_camX; }
+    f32  GetCamY() const { return m_camY; }
+
+    // ---- entity access for the renderer ----
+    const FuryFighter& GetPlayer() const { return m_player; }
+    i32  GetEnemyCount() const { return m_enemyCount; }
+    const FuryFighter& GetEnemy(i32 i) const { return m_enemies[i]; }
 
 private:
     void GoTo(int screen, f32 fadeTime);
     void UpdateTitle(f32 dt, const FuryRageInputs& in);
     void UpdateCharacterSelect(f32 dt, const FuryRageInputs& in);
+    void TickLevels(f32 dt, const FuryRageInputs& in);   // v2.128: gameplay
+    void FurySpawnEnemy(f32 x, f32 y, i32 img);
+    void FuryWaveNext();                                 // start the next wave
 
     int   m_screen;
     int   m_titleSel;      // the dump's "playsel" counter
@@ -111,6 +145,19 @@ private:
     bool  m_saveDirty;
     f32   m_holdT;         // the title/select confirmation hold
     ScreenFade m_fade;
+
+    // ---- gameplay (v2.128) ----
+    i32   m_wave;            // current wave number
+    i32   m_score;           // score
+    i32   m_enemyHp, m_enemyMaxHp;
+    f32   m_camX, m_camY;    // camera centre, tile coords
+    f32   m_waveT;           // time since wave start
+    bool  m_waveCleared;     // all enemies dead, camera may advance
+
+    FuryFighter  m_player;   // the fighter
+    static const int kMaxEnemies = 8;
+    FuryFighter  m_enemies[kMaxEnemies];
+    i32   m_enemyCount;
 };
 
 } // namespace fnaf

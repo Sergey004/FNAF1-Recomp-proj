@@ -351,11 +351,13 @@
     <ClInclude Include="include\FIS2Module.h" />
     <ClInclude Include="include\FIS2Render.h" />
     <ClInclude Include="include\FIS2Scenes.h" />
+    <ClInclude Include="include\FIS2Map.h" />
     <ClInclude Include="include\FWorldSpaceScenes.h" />
     <ClInclude Include="include\FuryRageGame.h" />
     <ClInclude Include="include\FuryRageModule.h" />
     <ClInclude Include="include\FuryRageRender.h" />
     <ClInclude Include="include\FuryRageScenes.h" />
+    <ClInclude Include="include\FuryRageMap.h" />
     <ClInclude Include="include\font_atlas.h" />
     <ClInclude Include="include\Game.h" />
     <ClInclude Include="include\GameRender.h" />

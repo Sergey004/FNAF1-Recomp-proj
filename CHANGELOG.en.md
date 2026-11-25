@@ -3,6 +3,29 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.128 — Fury's Rage: beat-'em-up levels (step 1)
+
+- **Fury's Rage gameplay levels:** the arena now draws the dump's own
+  background tiles (painter's order per layer) plus the fighter and
+  enemies relative to the camera. Movement is axis-separated against the
+  tile grid, melee attacks (A) damage enemies on hitbox overlap, and
+  enemies patrol and damage the player on touch. A wave director spawns
+  enemies and gates the camera until the wave is cleared. HUD shows
+  health, score, wave.
+- **Save bridge:** coins, hard mode, character selection and title
+  selection persist via `Progress::GameProgressFuryRage`.
+
+## v2.127 — Freddy in Space 2: shooter levels (step 1)
+
+- **FNaF World-style side-scrolling shooter levels:** the Foxy, Chica,
+  Bonnie, Puppet, Final Boss and Secret Boss levels now draw the dump's
+  map (backgrounds, ground tiles, props) plus Freddy, enemies, projectiles
+  and pickups relative to the camera. Movement is axis-separated against
+  the tile grid, shooting (A) fires projectiles that damage enemies, and
+  enemies patrol and damage the player on touch. HUD shows health, ammo,
+  coins, XP.
+- **Save bridge:** stage selection persists via `Progress::GameProgressFIS2`.
+
 ## v2.126 — FNaF World: RPG dialogue system (Dialogue.c step 4)
 
 - **Dialogue screen (SCR_DIALOGUE):** pressing A near an NPC (Freddy's Dad,
