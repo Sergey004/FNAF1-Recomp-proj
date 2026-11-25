@@ -88,11 +88,20 @@ void FuryRageRender::RenderTitle(const FuryRageGame& game) {
 
 void FuryRageRender::RenderCharacterSelect(const FuryRageGame& game) {
     DrawScene(FR_CHARACTER_SELECT);
-    // the selection cursor (the dump's "Active 6", moved by the events)
-    const f32 kX[4] = { 110.0f, 370.0f, 512.0f, 903.0f };
+    // the four characters at their dump positions (x = 110, 512, 903, 1303;
+    // y = 170), with the cursor (img 760) on the selected one
+    static const struct { i32 img; f32 x, y; } kChars[4] = {
+        { 752, 110.0f, 170.0f },   // Freddy
+        { 754, 512.0f, 170.0f },   // Bonnie
+        { 758, 903.0f, 170.0f },   // Chica
+        { 756, 1303.0f, 170.0f },  // Foxy
+    };
+    for (int i = 0; i < 4; ++i)
+        DrawNat(kChars[i].img, kChars[i].x, kChars[i].y, 0xFFFFFFFF);
+    // the selection cursor (the dump's "Active 6", img 760)
     const int sel = game.GetCharSel();
     if (sel >= 0 && sel < 4)
-        DrawNat(760, kX[sel], 605.0f, 0xFFFFFFFF);
+        DrawNat(760, kChars[sel].x, kChars[sel].y + 435.0f, 0xFFFFFFFF);
 }
 
 // dump-space -> screen-space for a level (camera-relative)
