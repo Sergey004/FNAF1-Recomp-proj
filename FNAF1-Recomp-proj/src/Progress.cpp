@@ -1027,7 +1027,7 @@ void Progress::WipeSL() {
 // fnfw_save (see kSaveContainers) + the local fallback via StorageOpen.
 // ------------------------------------------------------------
 static const u32 FW_PROGRESS_MAGIC   = 0x444C5746u;   // 'FWLD'
-static const u32 FW_PROGRESS_VERSION = 2;             // v2: party/inventory
+static const u32 FW_PROGRESS_VERSION = 3;             // v3: + RPG quest flags
 
 struct FWSaveBlob {                 // on-disk layout (POD, no padding surprises:
     u32 magic;                      // all members u32/i32)
@@ -1041,6 +1041,9 @@ struct FWSaveBlob {                 // on-disk layout (POD, no padding surprises
     u32 chipsOwned;
     u32 chipsEq;
     u32 bytesOwned;
+    // v3: RPG quest flags — dialogue state, NPCs met
+    u32 questFlags;
+    i32 dialogueSeen;
     u32 checksum;                   // xor of everything above ^ 0x5A5A5A5A
 };
 
@@ -1063,6 +1066,8 @@ void Progress::ResetFW(GameProgressFW& p) {
     p.chipsOwned = 0;
     p.chipsEq = 0xFFFFFFFFu;      // 4 x 0xFF = nothing equipped
     p.bytesOwned = 0;
+    p.questFlags = 0;
+    p.dialogueSeen = -1;          // no dialogue seen yet
 }
 
 bool Progress::LoadFW(GameProgressFW& p) {
@@ -1104,6 +1109,13 @@ bool Progress::LoadFW(GameProgressFW& p) {
         p.chipsOwned = b.chipsOwned;
         p.chipsEq    = b.chipsEq;
         p.bytesOwned = b.bytesOwned;
+        if (b.version >= 3) {
+            p.questFlags  = b.questFlags;
+            p.dialogueSeen = b.dialogueSeen;
+        } else {
+            p.questFlags  = 0;
+            p.dialogueSeen = -1;
+        }
     }
     return true;
 }
@@ -1122,6 +1134,8 @@ bool Progress::SaveFW(const GameProgressFW& pIn) {
     b.chipsOwned = pIn.chipsOwned;
     b.chipsEq    = pIn.chipsEq;
     b.bytesOwned = pIn.bytesOwned;
+    b.questFlags  = pIn.questFlags;
+    b.dialogueSeen = pIn.dialogueSeen;
     b.checksum  = ComputeFWChecksum(b);
 
     FILE* f = StorageOpen("fnafworld", "wb", true);

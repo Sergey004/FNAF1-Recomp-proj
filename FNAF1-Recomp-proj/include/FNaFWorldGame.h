@@ -174,6 +174,26 @@ public:
     i32  GetDamageCount() const { return 8; }
     void GetDamage(i32 i, f32& x, f32& y, i32& amount, f32& age, bool& enemyHit) const;
 
+    // ---- v2.126: dialogue system (Dialogue.c step 4) ----
+    // A simple tree-less dialogue: an id + per-NPC line list. The renderer
+    // draws the active dialogue box at the bottom of the screen; the game
+    // advances lines on A (and auto-advances after a short hold).
+    struct FwDialogue {
+        i32  id;             // dialogue id (questFlags bit id)
+        i32  npcX, npcY;     // NPC tile position (for proximity check)
+        i32  npcRadius;      // interaction radius in tiles
+        const char* const* lines; // null-terminated array of text lines
+        i32  lineCount;
+        i32  questFlag;      // questFlags bit set after first view (-1 = none)
+    };
+    // Returns true if an interaction was started (dialogue opened).
+    bool TryInteract(f32 px, f32 py);
+    i32  GetDialogueId() const { return m_dialogueId; }
+    i32  GetDialogueLine() const { return m_dialogueLine; }
+    i32  GetDialogueLineCount() const { return m_dialogueLineCount; }
+    const char* GetDialogueLineText(i32 line) const;
+    bool IsInDialogue() const { return m_dialogueId >= 0; }
+
     // ---- v2.91: the exe's file setup (frame 3) ----
     i32  GetFsStage()    const { return m_fsStage; }  // 0 slots / 1 new-cont / 2 YES-NO
     i32  GetFsSlot()     const { return m_fsSlot; }   // the selected slot 0..2
@@ -213,11 +233,14 @@ private:
     void TickMenu(f32 dt, const FNaFWorldInputs& in);       // exe frames 4/7/12
     void TickBattle(f32 dt, const FNaFWorldInputs& in);  // step-3 placeholder
     void TickGameOver(f32 dt, const FNaFWorldInputs& in);   // exe frame 6
+    void TickDialogue(f32 dt, const FNaFWorldInputs& in);  // v2.126
     void EnterArea(i32 areaId);              // theme switch + header reset
     void OpenChest(i32 i);
     bool CircleBlocked(f32 px, f32 py) const; // 4-corner hitbox vs the grid
     void Sfx(const char* s, bool loop, i32 ch, i32 vol);
     void SfxStop(const char* s);
+    void StartDialogue(i32 id);              // v2.126
+    void AdvanceDialogue();                  // v2.126
 
     Screen m_screen;
     ScreenFade m_fade;         // our core's CFT transition (v2.76 model)
@@ -246,6 +269,14 @@ private:
     i32    m_zoneLevel;
     u16    m_fazTokens;
     f32    m_stepSndT;              // the walk sound tick
+
+    // v2.126: dialogue state
+    i32    m_dialogueId;            // -1 = not in dialogue
+    i32    m_dialogueLine;          // current line 0..lineCount-1
+    i32    m_dialogueLineCount;
+    f32    m_dialogueT;             // time in current line (auto-advance)
+    bool   m_dialogueAcked;         // A was pressed this dialogue (prevents instant skip)
+    u32    m_questFlagsSeen;        // quest flags set this session (synced to save)
 
     // v2.91 step 2 overworld state (exe frame 5):
     i32    m_areaId;                // the exe 'area' counter (0/3/5/8/11)

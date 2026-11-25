@@ -83,6 +83,58 @@ const char* FNaFWorldGame::AreaTheme(i32 areaId) {
     }
 }
 
+// ------------------------------------------------------------
+// v2.126: dialogue data (Dialogue.c step 4).
+// Labeled: the real per-NPC text lives in the dump's event groups
+// (frame 5 "overworld", the Speaker acts on the NPC objects). These
+// placeholder lines mirror the original's tone until the event mine
+// names the exact samples and text.
+//
+// Each entry: { id, npcX, npcY, npcRadius, lines, lineCount, questFlag }
+// The questFlag bit is set in questFlags after the dialogue is first seen.
+// ------------------------------------------------------------------
+namespace {
+
+// Freddy's Dad (south-east hills, near the first chest cluster)
+static const char* kDlgDadLines[] = {
+    "Hey son, welcome to Fazbear Hills!",
+    "Watch out for the animatronics.",
+    "Don't stay out too late.",
+};
+static const FNaFWorldGame::FwDialogue kDlgDad = {
+    1, 45, 27, 2, kDlgDadLines, 3, 0,  // questFlag bit 0
+};
+
+// Chip vendor (north woods)
+static const char* kDlgChipLines[] = {
+    "Need a chip? I got plenty.",
+    "They help in battle.",
+    "Just 50 faz-tokens each.",
+};
+static const FNaFWorldGame::FwDialogue kDlgChip = {
+    2, 30, 15, 2, kDlgChipLines, 3, 1,  // questFlag bit 1
+};
+
+// Mysterious stranger (west edge)
+static const char* kDlgStrangerLines[] = {
+    "...",
+    "You shouldn't be here.",
+    "Turn back while you can.",
+};
+static const FNaFWorldGame::FwDialogue kDlgStranger = {
+    3, 5, 40, 2, kDlgStrangerLines, 3, 2,  // questFlag bit 2
+};
+
+// All dialogues, in id order
+static const FNaFWorldGame::FwDialogue* kAllDialogues[] = {
+    &kDlgDad,
+    &kDlgChip,
+    &kDlgStranger,
+};
+static const i32 kDialogueCount = 3;
+
+} // namespace
+
 const char* FNaFWorldGame::AreaName(i32 areaId) {
     switch (areaId) {
         case 3:  return "Choppy's Woods";
@@ -154,6 +206,13 @@ void FNaFWorldGame::ResetToTitle() {
     m_battleInit = false;
     m_dmgNext = 0;
     for (int i = 0; i < 8; ++i) { m_dmgAmt[i] = 0; m_dmgBorn[i] = -99.0f; m_dmgEnemy[i] = false; }
+    // v2.126: dialogue
+    m_dialogueId = -1;
+    m_dialogueLine = 0;
+    m_dialogueLineCount = 0;
+    m_dialogueT = 0.0f;
+    m_dialogueAcked = false;
+    m_questFlagsSeen = 0;
 
     m_fsStage = 0; m_fsSlot = 0; m_fsRow = 0; m_fsPick = 0; m_fsSaveLive = false;
 
@@ -258,6 +317,102 @@ void FNaFWorldGame::SfxStop(const char* s) {
     if (audio.stop) audio.stop(s);
 }
 
+// ------------------------------------------------------------
+// v2.126: dialogue system
+// ------------------------------------------------------------
+void FNaFWorldGame::StartDialogue(i32 id) {
+    const FwDialogue* d = 0;
+    for (i32 i = 0; i < kDialogueCount; ++i) {
+        if (kAllDialogues[i]->id == id) { d = kAllDialogues[i]; break; }
+    }
+    if (!d) return;
+    m_dialogueId = id;
+    m_dialogueLine = 0;
+    m_dialogueLineCount = d->lineCount;
+    m_dialogueT = 0.0f;
+    m_dialogueAcked = false;
+}
+
+void FNaFWorldGame::AdvanceDialogue() {
+    if (m_dialogueId < 0) return;
+    m_dialogueLine += 1;
+    if (m_dialogueLine >= m_dialogueLineCount) {
+        // dialogue finished -> set quest flag + return to world
+        const FwDialogue* d = 0;
+        for (i32 i = 0; i < kDialogueCount; ++i) {
+            if (kAllDialogues[i]->id == m_dialogueId) { d = kAllDialogues[i]; break; }
+        }
+        if (d && d->questFlag >= 0) {
+            u32 flagBit = 1u << d->questFlag;
+            if (!(m_questFlagsSeen & flagBit)) {
+                m_questFlagsSeen |= flagBit;
+                m_saveDirty = true;
+            }
+        }
+        m_dialogueId = -1;
+        m_dialogueLine = 0;
+        m_dialogueLineCount = 0;
+        RequestScreen(SCR_WORLD);
+    } else {
+        m_dialogueT = 0.0f;
+        m_dialogueAcked = false;
+    }
+}
+
+bool FNaFWorldGame::TryInteract(f32 px, f32 py) {
+    if (m_dialogueId >= 0) return false;   // already in dialogue
+    // find a dialogue NPC within interaction radius of Freddy
+    const FwDialogue* target = 0;
+    f32 bestD2 = 9e9f;
+    for (i32 i = 0; i < kDialogueCount; ++i) {
+        const FwDialogue* d = kAllDialogues[i];
+        const f32 dx = (f32)d->npcX - px;
+        const f32 dy = (f32)d->npcY - py;
+        const f32 d2 = dx*dx + dy*dy;
+        const f32 r2 = (f32)d->npcRadius * (f32)d->npcRadius;
+        if (d2 <= r2 && d2 < bestD2) { bestD2 = d2; target = d; }
+    }
+    if (!target) return false;
+    StartDialogue(target->id);
+    RequestScreen(SCR_DIALOGUE);
+    Sfx("Cartoon_Pop_01", false, 3, 80);
+    return true;
+}
+
+const char* FNaFWorldGame::GetDialogueLineText(i32 line) const {
+    if (line < 0 || line >= m_dialogueLineCount) return "";
+    const FwDialogue* d = 0;
+    for (i32 i = 0; i < kDialogueCount; ++i) {
+        if (kAllDialogues[i]->id == m_dialogueId) { d = kAllDialogues[i]; break; }
+    }
+    if (!d) return "";
+    return d->lines[line];
+}
+
+void FNaFWorldGame::TickDialogue(f32 dt, const FNaFWorldInputs& in) {
+    m_dialogueT += dt;
+    // auto-advance after a short hold per line (2 s)
+    if (!m_dialogueAcked && m_dialogueT >= 2.0f) {
+        m_dialogueAcked = true;
+        AdvanceDialogue();
+        return;
+    }
+    // A advances immediately (once per press)
+    if (in.aPressed && !m_dialogueAcked) {
+        m_dialogueAcked = true;
+        AdvanceDialogue();
+        return;
+    }
+    if (!in.aPressed) m_dialogueAcked = false;
+    // B backs out of dialogue early
+    if (in.bPressed) {
+        m_dialogueId = -1;
+        m_dialogueLine = 0;
+        m_dialogueLineCount = 0;
+        RequestScreen(SCR_WORLD);
+    }
+}
+
 // v2.76 model (shared with F2/SL): fade out the CURRENT screen, switch at the
 // end, fade the new one in. Durations from the dump frame Transition chunks.
 void FNaFWorldGame::RequestScreen(i32 target) {
@@ -286,6 +441,7 @@ void FNaFWorldGame::Tick(f32 dt, const FNaFWorldInputs& in) {
         case SCR_TITLE:      TickTitle(dt, in);      break;
         case SCR_FILESETUP:  TickFileSetup(dt, in);  break;   // exe frame 3
         case SCR_WORLD:      TickWorld(dt, in);      break;
+        case SCR_DIALOGUE:   TickDialogue(dt, in);   break;   // v2.126 dialogue
         case SCR_BATTLE:     TickBattle(dt, in);     break;   // step-3 placeholder
         case SCR_GAMEOVER:   TickGameOver(dt, in);   break;   // exe frame 6
         default:             m_cardT += dt;  break;  // step 4 screens hold
@@ -465,8 +621,12 @@ void FNaFWorldGame::TickWorld(f32 dt, const FNaFWorldInputs& in) {
         }
     }
 
-    // chests: A opens the nearest one within reach
-    if (in.aPressed) {
+    // v2.126: NPC dialogue takes priority over chests (you can't loot while
+    // talking). Interaction radius is ~1.5 tiles.
+    const bool talked = in.aPressed && TryInteract(m_freddyX + kFreddyW * 0.5f,
+                                                   m_freddyY + kFreddyH * 0.5f);
+    // chests: A opens the nearest one within reach (only if no dialogue started)
+    if (in.aPressed && !talked) {
         const f32 fx = m_camX * 50.0f, fy = m_camY * 50.0f;
         i32 best = -1; f32 bestD2 = kChestRadiusPx * kChestRadiusPx;
         for (i32 i = 0; i < kFwChestCount; ++i) {
@@ -779,6 +939,7 @@ void FNaFWorldGame::ApplyProgress(const Progress::GameProgressFW& p) {
     m_chipsOwned = p.chipsOwned;
     m_chipsEq    = p.chipsEq;
     m_bytesOwned = p.bytesOwned;
+    m_questFlagsSeen = p.questFlags;
     // World.c ResetWorld: position = Last_Location + 0.5 - size/2 (the save
     // stores the TILE the centre sits in, not the hitbox corner)
     m_freddyX = p.lastX + 0.5f - kFreddyW * 0.5f;
@@ -799,12 +960,15 @@ void FNaFWorldGame::FillProgress(Progress::GameProgressFW& p) const {
     p.chipsOwned = m_chipsOwned;
     p.chipsEq    = m_chipsEq;
     p.bytesOwned = m_bytesOwned;
+    p.questFlags  = m_questFlagsSeen;
+	p.dialogueSeen = m_dialogueId >= 0 ? m_dialogueId : -1;
 }
 
 void FNaFWorldGame::WipeSave() {
     Progress::WipeFW();
     m_zoneLevel = 1;  m_fazTokens = 0;
     m_lastX = 0.0f;   m_lastY = 0.0f;  m_lastZone = 0;
+    m_questFlagsSeen = 0;
 }
 
 } // namespace fnaf

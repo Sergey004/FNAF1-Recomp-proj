@@ -196,6 +196,10 @@ public:
         u32  chipsOwned;  // bitmask of collected chips (the chip chests)
         u32  chipsEq;     // 4 x 8-bit equipped chip id (0xFF = none)
         u32  bytesOwned;  // bitmask of collected bytes
+        // v2.126: RPG quest flags — dialogue state, NPCs met, chests opened
+        // beyond the per-chest bitmask (kept separately for the per-chest art).
+        u32  questFlags;  // bitmask: bit 0 = talked to Freddy's Dad, etc.
+        i32  dialogueSeen;// last dialogue id shown (for repeat guards)
     };
     static void ResetFW(GameProgressFW& p);
     static bool LoadFW(GameProgressFW& p);

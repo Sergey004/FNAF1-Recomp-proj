@@ -129,6 +129,9 @@ void FNaFWorldModule::Render() {
                                             if (m_game.GetMenuScreen() != 0)
                                                 m_render.RenderMenu(m_game);
                                             break;
+        case FNaFWorldGame::SCR_DIALOGUE:   m_render.RenderWorld(m_game);
+                                            m_render.RenderDialogue(m_game);
+                                            break;
         case FNaFWorldGame::SCR_BATTLE:     m_render.RenderBattle(m_game);       break;
         case FNaFWorldGame::SCR_GAMEOVER:   m_render.RenderGameOver();           break;
         // v2.109: the Freddy in Space 1 minigame inside FNaF World

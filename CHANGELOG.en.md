@@ -3,6 +3,22 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.126 — FNaF World: RPG dialogue system (Dialogue.c step 4)
+
+- **Dialogue screen (SCR_DIALOGUE):** pressing A near an NPC (Freddy's Dad,
+  chip vendor, stranger) opens a dialogue box at the bottom of the screen.
+  Lines advance on A or auto-advance after 2 s; B backs out early. NPCs are
+  placed at their dump coordinates (dad 45,27 / chip 30,15 / stranger 5,40)
+  with an interaction radius of 1.5 tiles; dialogue takes priority over chest
+  looting.
+- **Quest flags:** `m_questFlagsSeen` (saved in `questFlags`/`dialogueSeen` of
+  the `fnfw_save` blob, now version 3) is set the first time each dialogue is
+  seen, so repeat visits can gate content later. The save round-trips exactly
+  through ApplyProgress/FillProgress.
+- Dialogue data lives in `kAllDialogues[]` (id, NPC pos/radius, lines,
+  questFlag bit) — a tree-less system ready for the event-mine to replace the
+  placeholder lines with the dump's real Speaker text.
+
 ## v2.125 — FNaF World: overworld looks like the game, not a moving sprite
 
 - **FNaF World overworld now draws the dump's own art** instead of a flat green

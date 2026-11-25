@@ -525,6 +525,27 @@ void FNaFWorldRender::RenderMenu(const FNaFWorldGame& game) {
 }
 
 // ------------------------------------------------------------
+// v2.126: dialogue box — drawn over the world at the bottom of the screen.
+// 800x480 dump space, centre-bottom, semi-transparent dark backing.
+// ------------------------------------------------------------
+void FNaFWorldRender::RenderDialogue(const FNaFWorldGame& game) {
+    if (!m_batch || !m_text || !game.IsInDialogue()) return;
+    const i32 line = game.GetDialogueLine();
+    const char* txt = game.GetDialogueLineText(line);
+    if (!txt || !*txt) return;
+    // backing plate (dump space: 680x90 centred at 400,390 -> screen x1.6/y1.5)
+    m_batch->DrawSolid(128.0f, 585.0f, 1024.0f, 135.0f, 0xCC101418);
+    m_batch->DrawSolid(132.0f, 589.0f, 1016.0f, 127.0f, 0xFF101418);
+    // the text line (dump y=400 -> 600 screen, left-aligned with padding)
+    m_text->DrawText(180, 620, txt, 0xFFFFFFFF);
+    // "press A" hint
+    if (game.GetDialogueLine() + 1 < game.GetDialogueLineCount())
+        m_text->DrawText(1040, 680, "A: next", 0xFFB0B0B0);
+    else
+        m_text->DrawText(1040, 680, "A: close", 0xFFB0B0B0);
+}
+
+// ------------------------------------------------------------
 // exe frame 6 "game over" (v2.91): the single instance — img 3405 at its
 // layout point (153,134 in the 800x480 frame) over black.
 // ------------------------------------------------------------

@@ -42,6 +42,8 @@ public:
 
     // frame 5 "overworld" — the exe 6000x4000 map, painter's order
     void RenderWorld(const FNaFWorldGame& game);
+    // v2.126: dialogue box over the world
+    void RenderDialogue(const FNaFWorldGame& game);
     // v2.109: the Freddy in Space 1 minigame inside FNaF World
     // (exe frame 38 "In Space", 8000x4800) - the art comes from the
     // generated scene table (FWorldSpaceScenes.h).
