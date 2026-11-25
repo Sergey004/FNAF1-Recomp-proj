@@ -190,6 +190,24 @@ static void FuryDrawFighter(PakLoader* pak, SpriteBatch* batch, int img,
     batch->Draw(t->texture, cx - w * 0.5f, feet - h, w, h, 0.0f, 0.0f, u1, v1, color);
 }
 
+// The dump's child object "Active 6" carries the chosen fighter's picture;
+// it hangs off the player object with its own hotspot (161, 305).
+static void FuryDrawOverlay(PakLoader* pak, SpriteBatch* batch, int img,
+                             f32 worldX, f32 worldY, f32 camX, f32 camY, u32 color) {
+    if (!pak || !batch || img < 0) return;
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", img);
+    PakLoadedTexture* t = pak->FindTexture(name);
+    if (!t || !t->texture) return;
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+    const f32 w = (f32)t->origWidth * kFuryScale;
+    const f32 h = (f32)t->origHeight * kFuryScale;
+    const f32 x = (worldX - 161.0f) * kFuryScale - camX * (f32)kFuryTile * kFuryScale;
+    const f32 y = (worldY - 305.0f) * kFuryScale - camY * (f32)kFuryTile * kFuryScale;
+    batch->Draw(t->texture, x, y, w, h, 0.0f, 0.0f, u1, v1, color);
+}
+
 void FuryRageRender::RenderLevels(const FuryRageGame& game) {
     if (!m_batch) return;
     const f32 camX = game.GetCamX();
@@ -211,14 +229,14 @@ void FuryRageRender::RenderLevels(const FuryRageGame& game) {
     const FuryFighter& pl = game.GetPlayer();
     if (!pl.dead && pl.img >= 0) {
         // the fighter and the chosen character's picture (the dump's child
-        // object "Active 6") stand on the same spot
+        // object "Active 6")
+        const f32 fx = pl.x * (f32)kFuryTile;
+        const f32 fy = pl.y * (f32)kFuryTile + 31.0f;   // the feet
         FuryDrawFighter(m_pak, m_batch, pl.img,
                         pl.x * (f32)kFuryTile, pl.y * (f32)kFuryTile,
                         camX, camY, 0xFFFFFFFF);
         if (pl.overlay >= 0)
-            FuryDrawFighter(m_pak, m_batch, pl.overlay,
-                            pl.x * (f32)kFuryTile, pl.y * (f32)kFuryTile,
-                            camX, camY, 0xFFFFFFFF);
+            FuryDrawOverlay(m_pak, m_batch, pl.overlay, fx, fy, camX, camY, 0xFFFFFFFF);
     }
     for (i32 i = 0; i < game.GetEnemyCount(); ++i) {
         const FuryFighter& e = game.GetEnemy(i);

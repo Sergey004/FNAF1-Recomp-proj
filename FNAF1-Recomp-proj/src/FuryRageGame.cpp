@@ -222,6 +222,8 @@ void FuryRageGame::WipeSave() {
 }
 
 void FuryRageGame::GoTo(int screen, f32 fadeTime) {
+    // leaving the level resets its setup (the next entry starts over)
+    if (screen != FR_LEVELS) m_levelStarted = false;
     if (fadeTime <= 0.0f) {
         m_screen = screen;
         m_fade.Clear();
