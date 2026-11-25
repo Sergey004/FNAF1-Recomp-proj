@@ -1,5 +1,5 @@
 /**
- * FuryRageGame.h: v2.129 — Fury's Rage module game logic.
+ * FuryRageGame.h: v2.130 — Fury's Rage module game logic.
  *
  * Clean-room port of the original Fury's Rage flow (the ctfak dump of
  * furys-rage.exe, build 293): the screen graph is the dump's
@@ -70,13 +70,18 @@ struct FuryFighter {
     f32  vx, vy;        // tile coords / s
     i32  w, h;          // hitbox size in tiles (x100)
     i32  charId;        // 0..3 character id
-    i32  img;           // pak image handle
+    i32  img;           // pak image handle (the dump's animation frame)
+    i32  overlay;       // the chosen fighter's picture (the dump's child obj)
     i32  hp, maxHp;
     f32  cd;            // attack cooldown remaining (s)
+    f32  animT;         // the walk cycle timer
+    i32  walk;          // the walk cycle frame
+    f32  dmgAcc;        // the fractional damage accumulator
     bool dead;
     bool isEnemy;
     FuryFighter() : x(0), y(0), vx(0), vy(0), w(0), h(0), charId(-1),
-                    img(-1), hp(0), maxHp(0), cd(0), dead(false), isEnemy(false) {}
+                    img(-1), overlay(-1), hp(0), maxHp(0), cd(0), animT(0),
+                    walk(0), dmgAcc(0), dead(false), isEnemy(false) {}
 };
 
 class FuryRageGame {
@@ -137,7 +142,8 @@ private:
     void UpdateTitle(f32 dt, const FuryRageInputs& in);
     void UpdateCharacterSelect(f32 dt, const FuryRageInputs& in);
     void TickLevels(f32 dt, const FuryRageInputs& in);   // v2.128: gameplay
-    void FurySpawnEnemy(f32 x, f32 y, i32 img);
+    void FuryStartLevel();                               // v2.130: the dump's start
+    void FurySpawnEnemy(f32 x, f32 y, i32 img, i32 hp, f32 speed);
     void FuryWaveNext();                                 // start the next wave
 
     int   m_screen;
@@ -148,6 +154,7 @@ private:
     bool  m_wantsExit;
     bool  m_saveDirty;
     f32   m_holdT;         // the title/select confirmation hold
+    bool  m_levelStarted;  // v2.130: the level is set up once
     ScreenFade m_fade;
 
     // ---- gameplay (v2.128) ----

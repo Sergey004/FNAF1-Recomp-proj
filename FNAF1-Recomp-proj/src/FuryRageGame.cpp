@@ -1,5 +1,5 @@
 /**
- * FuryRageGame.cpp: v2.128 — Fury's Rage module game logic.
+ * FuryRageGame.cpp: v2.130 — Fury's Rage module game logic.
  *
  * The screen graph and the counters come from the ctfak dump of
  * furys-rage.exe (build 293): see the header for the transition table.
@@ -8,6 +8,14 @@
  *   * melee combat: hitbox/hurtbox, block, jump, attack cooldown
  *   * wave director: spawn enemies in waves, camera gate until wave cleared
  *   * levels: 4 stages + hard mode secret stage
+ *
+ * v2.130: the fighter is the dump's own: the walk cycle of the player
+ * object "Active" (10..17 to the right, 59.. to the left), the chosen
+ * fighter's picture on the child object "Active 6" (206 Freddy / 365 Monty
+ * / 364 Roxanne / 625 Chica), the "move box" as the hitbox, the dump's
+ * start position (540, 829) and the per-character step of the dump
+ * (groups 98..103). The enemies come from the dump's own table (14
+ * types with their picture, hp and speed).
  *
  * World constants (FuryRageMap.h): 50 px tiles.
  * VS2010/C++03.
@@ -33,6 +41,49 @@ static const i32  kFuryFighterH = 45;    // hitbox (x100) -> 0.45 tiles
 
 static const i32 kFuryMaxHp = 100;
 
+// ---- the dump's level data (frame 4 "levels") ----
+
+// The player object "Active": animation 0 is the walk cycle, direction 0
+// faces right and direction 16 faces left.
+static const i32 kFuryWalkRight[8] = { 10, 11, 12, 13, 14, 15, 16, 17 };
+static const i32 kFuryWalkLeft[8]  = { 59, 84, 18, 19, 20, 22, 23, 56 };
+
+// The child object "Active 6" carries the chosen fighter's picture: its
+// animation follows the "character" counter (Freddy, Monty, Roxanne,
+// Chica) - the dump's groups 316..319.
+static const i32 kFuryCharArt[4] = { 206, 365, 364, 625 };
+
+// The "move box" step of the dump (groups 98..103): Freddy and Roxanne
+// move 5 px per tick, Monty 4 px and Chica 6 px (30 ticks/s) -> tiles/s.
+static const f32 kFuryCharSpeed[4] = { 3.0f, 2.4f, 3.0f, 3.6f };
+
+// The enemy object "Active 5": 14 types, each with its own picture, hp and
+// speed (the dump's spawn groups 161.. and the type -> animation table).
+struct FuryEnemyDef { i32 img; i32 hp; i32 speed; };
+static const FuryEnemyDef kFuryEnemies[14] = {
+    {  72, 25, 25 },   //  1 PoisonFoxy
+    { 107, 20, 30 },   //  2 Thug Chica
+    { 129, 35, 20 },   //  3 Thuglife Chipper
+    { 182, 60, 15 },   //  4 Punk Mangle
+    { 300, 80, 15 },   //  5 H sisters
+    { 341, 80, 15 },   //  6 H sisters
+    { 390, 50, 30 },   //  7 Clown
+    { 439, 30, 40 },   //  8 mech
+    { 528, 40, 90 },   //  9 Vanny
+    { 582, 65, 20 },   // 10 fire girl
+    { 554, 25, 15 },   // 11 trap
+    { 456, 80, 12 },   // 12 Marionette
+    { 571, 20, 15 },   // 13 IceFreddy
+    { 985, 30, 10 },   // 14 Mechionette
+};
+
+// The dump's "move box" (the player's collision box) is 82x62 px and the
+// player starts at (540, 829) - the feet on the floor strip.
+static const f32 kFuryStartX = 511.0f / 50.0f;   // the box's centre
+static const f32 kFuryStartY = 791.0f / 50.0f;
+static const i32 kFuryBoxW = 164;                // 82 px (x100 of a tile)
+static const i32 kFuryBoxH = 124;                // 62 px
+
 // ---- helpers ----
 
 static bool FuryCircleBlocked(f32 px, f32 py) {
@@ -54,22 +105,22 @@ static bool FuryCircleBlocked(f32 px, f32 py) {
     return false;
 }
 
-void FuryRageGame::FurySpawnEnemy(f32 x, f32 y, i32 img) {
+void FuryRageGame::FurySpawnEnemy(f32 x, f32 y, i32 img, i32 hp, f32 speed) {
     for (i32 i = 0; i < m_enemyCount; ++i) {
-        if (m_enemies[i].dead) {
-            FuryFighter& e = m_enemies[i];
+        FuryFighter& e = m_enemies[i];
+        if (e.dead) {
             e.x = x; e.y = y; e.img = img; e.dead = false;
-            e.vx = kFurySpeed * 0.4f; e.vy = 0;
+            e.vx = -speed; e.vy = 0;
             e.w = kFuryFighterW; e.h = kFuryFighterH;
-            e.hp = e.maxHp = 40; e.cd = 0; return;
+            e.hp = e.maxHp = hp; e.cd = 0; e.animT = 0; return;
         }
     }
     if (m_enemyCount < kMaxEnemies) {
         FuryFighter& e = m_enemies[m_enemyCount++];
         e.x = x; e.y = y; e.img = img; e.dead = false;
-        e.vx = kFurySpeed * 0.4f; e.vy = 0;
+        e.vx = -speed; e.vy = 0;
         e.w = kFuryFighterW; e.h = kFuryFighterH;
-        e.hp = e.maxHp = 40; e.cd = 0;
+        e.hp = e.maxHp = hp; e.cd = 0; e.animT = 0;
     }
 }
 
@@ -78,10 +129,48 @@ void FuryRageGame::FuryWaveNext() {
     m_waveCleared = false;
     m_enemyCount = 0;
     for (i32 i = 0; i < kMaxEnemies; ++i) m_enemies[i].dead = true;
-    // place 2-3 enemies depending on wave
-    i32 count = 2 + (m_wave % 3);
-    (void)count;
-    FurySpawnEnemy(60.0f, 60.0f, 60);   // Active 3 style enemy
+    // The wave grows with the wave number; the enemies come from the
+    // dump's own table (types 1..14) in order.
+    const i32 count = 2 + (m_wave % 3);
+    for (i32 i = 0; i < count; ++i) {
+        const i32 type = (m_wave * 2 + i) % 14;
+        const FuryEnemyDef& d = kFuryEnemies[type];
+        const f32 x = m_player.x + 8.0f + (f32)i * 3.0f;
+        const f32 y = m_player.y;
+        // the dump's enemy speed is a step per tick; the port reads it as
+        // tiles per second (25 -> 1 tile/s)
+        FurySpawnEnemy(x, y, d.img, d.hp, (f32)d.speed * 0.04f);
+    }
+}
+
+// v2.130: the level starts with the dump's own fighter: the walk cycle of
+// "Active", the chosen fighter's picture on the child object "Active 6",
+// the "move box" as the hitbox and the dump's start position.
+void FuryRageGame::FuryStartLevel() {
+    m_wave = 0;
+    m_score = 0;
+    m_enemyHp = 0;
+    m_enemyMaxHp = 0;
+    m_player.charId = m_charSel;
+    m_player.img = kFuryWalkRight[0];
+    m_player.overlay = kFuryCharArt[m_charSel];
+    m_player.hp = m_player.maxHp = kFuryMaxHp;
+    m_player.w = kFuryBoxW;
+    m_player.h = kFuryBoxH;
+    m_player.x = kFuryStartX;
+    m_player.y = kFuryStartY;
+    m_player.vx = m_player.vy = 0;
+    m_player.cd = 0;
+    m_player.animT = 0;
+    m_player.dmgAcc = 0;
+    m_player.dead = false;
+    m_player.isEnemy = false;
+    m_camX = m_player.x;
+    m_camY = m_player.y;
+    m_waveCleared = false;
+    m_waveT = 0;
+    m_levelStarted = true;
+    FuryWaveNext();
 }
 
 // ---- constructor ----
@@ -89,6 +178,7 @@ void FuryRageGame::FuryWaveNext() {
 FuryRageGame::FuryRageGame()
     : m_screen(FR_START), m_titleSel(0), m_charSel(0), m_hardMode(false),
       m_wantsExit(false), m_saveDirty(false), m_holdT(0.0f),
+      m_levelStarted(false),
       m_wave(0), m_score(0), m_enemyHp(0), m_enemyMaxHp(0),
       m_camX(0.0f), m_camY(0.0f), m_waveT(0.0f), m_waveCleared(false),
       m_enemyCount(0) {
@@ -102,6 +192,7 @@ void FuryRageGame::ResetToStart() {
     m_charSel = 0;
     m_wantsExit = false;
     m_holdT = 0.0f;
+    m_levelStarted = false;
     m_fade.Init();
     GoTo(FR_TITLE, 0.0f);
 }
@@ -171,8 +262,9 @@ void FuryRageGame::UpdateCharacterSelect(f32 dt, const FuryRageInputs& in) {
 }
 
 void FuryRageGame::TickLevels(f32 dt, const FuryRageInputs& in) {
-    // ---- player movement (axis-separated, 2 tiles/s) ----
-    const f32 spd = kFurySpeed;
+    // ---- player movement (axis-separated; the dump's per-character step) ----
+    const i32 ci = (m_charSel >= 0 && m_charSel < CHAR_COUNT) ? m_charSel : 0;
+    const f32 spd = kFuryCharSpeed[ci];
     m_player.vx = 0.0f;
     m_player.vy = 0.0f;
     if (in.leftPressed)  m_player.vx = -spd;
@@ -195,18 +287,33 @@ void FuryRageGame::TickLevels(f32 dt, const FuryRageInputs& in) {
         m_player.vx = m_player.vy = 0.0f;
     }
 
+    // ---- the walk cycle of "Active" (animation 0, direction 0 / 16) ----
+    if (moving) {
+        m_player.animT += dt;
+        if (m_player.animT >= 0.12f) {
+            m_player.animT -= 0.12f;
+            m_player.walk = (m_player.walk + 1) & 7;
+        }
+        const i32* cyc = (face < 0.0f) ? kFuryWalkLeft : kFuryWalkRight;
+        m_player.img = cyc[m_player.walk];
+    } else {
+        m_player.animT = 0.0f;
+        m_player.img = (face < 0.0f) ? kFuryWalkLeft[0] : kFuryWalkRight[0];
+    }
+
     // ---- melee attack (A, cooldown) ----
     if (m_player.cd > 0.0f) m_player.cd -= dt;
     if (in.aPressed && m_player.cd <= 0.0f) {
         m_player.cd = kFuryAtkCd;
-        // melee hitbox in front of the fighter
-        const f32 hx = m_player.x + face;
+        // the dump's "punch box" is 83 px -> 1.66 tiles in front of the
+        // fighter
+        const f32 hx = m_player.x + face * 1.2f;
         const f32 hy = m_player.y;
         for (i32 i = 0; i < m_enemyCount; ++i) {
             FuryFighter& e = m_enemies[i];
             if (e.dead) continue;
             const f32 edx = e.x - hx, edy = e.y - hy;
-            if (edx*edx + edy*edy < 40.0f*40.0f) {
+            if (edx*edx + edy*edy < 1.7f*1.7f) {
                 e.hp -= 25;
                 m_score += 100;
                 if (e.hp <= 0) { e.hp = 0; e.dead = true; m_saveDirty = true; }
@@ -225,9 +332,15 @@ void FuryRageGame::TickLevels(f32 dt, const FuryRageInputs& in) {
             e.x -= e.vx * dt; e.vx = -e.vx;
         }
         const f32 edx = e.x - m_player.x, edy = e.y - m_player.y;
-        if (edx*edx + edy*edy < 40.0f*40.0f) {
-            m_player.hp -= (i32)(15.0f * dt);
-            if (m_player.hp < 0) m_player.hp = 0;
+        if (edx*edx + edy*edy < 1.7f*1.7f) {
+            // 15 hp per second while the enemy is on top of the player
+            m_player.dmgAcc += 15.0f * dt;
+            if (m_player.dmgAcc >= 1.0f) {
+                const i32 d = (i32)m_player.dmgAcc;
+                m_player.dmgAcc -= (f32)d;
+                m_player.hp -= d;
+                if (m_player.hp < 0) m_player.hp = 0;
+            }
         }
     }
 
@@ -246,13 +359,17 @@ void FuryRageGame::TickLevels(f32 dt, const FuryRageInputs& in) {
         }
     }
 
-    // ---- camera = player centre, clamped ----
-    m_camX = m_player.x;
-    m_camY = m_player.y;
+    // ---- camera = the player in the middle of the 1920x1080 view ----
+    const f32 halfW = 1920.0f / 2.0f / 50.0f;
+    const f32 halfH = 1080.0f / 2.0f / 50.0f;
+    m_camX = m_player.x - halfW;
+    m_camY = m_player.y - halfH;
     if (m_camX < 0.0f) m_camX = 0.0f;
     if (m_camY < 0.0f) m_camY = 0.0f;
-    if (m_camX > (f32)kFuryMapW) m_camX = (f32)kFuryMapW;
-    if (m_camY > (f32)kFuryMapH) m_camY = (f32)kFuryMapH;
+    if (m_camX > (f32)kFuryMapW - 2.0f * halfW) m_camX = (f32)kFuryMapW - 2.0f * halfW;
+    if (m_camY > (f32)kFuryMapH - 2.0f * halfH) m_camY = (f32)kFuryMapH - 2.0f * halfH;
+    if (m_camX < 0.0f) m_camX = 0.0f;
+    if (m_camY < 0.0f) m_camY = 0.0f;
 }
 
 // ---- public Tick ----
@@ -286,6 +403,7 @@ void FuryRageGame::Tick(f32 dt, const FuryRageInputs& in) {
             UpdateCharacterSelect(dt, in);
             break;
         case FR_LEVELS:
+            if (!m_levelStarted) FuryStartLevel();   // v2.130: the dump's start
             TickLevels(dt, in);
             break;
         default:

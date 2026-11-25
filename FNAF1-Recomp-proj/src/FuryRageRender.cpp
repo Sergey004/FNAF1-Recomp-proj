@@ -13,6 +13,11 @@
  * 760 Chica) at (370, 605) and the control hints (829). The roster is
  * Freddy / Monty / Roxanne / Chica — this game has no Bonnie and no Foxy.
  *
+ * v2.130: the level draws the map with the dump's own instances (the
+ * fade overlay and the invisible collision boxes stay out), the object's
+ * own blend as its alpha and the fighters in the dump's scale - the
+ * picture stands on the fighter's feet.
+ *
  * v2.128: the beat-'em-up level now draws the generated map (FuryRageMap.h,
  * painter's order per layer) plus the fighter, enemies, and a HUD
  * (health, score, wave) relative to the camera.
@@ -143,6 +148,9 @@ static void FuryDrawMapInst(FuryRageRender* r, PakLoader* pak, SpriteBatch* batc
     if (!t || !t->texture) return;
     const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+    // the object's own blend (the dump's alpha)
+    const u32 color = 0xFF000000u | ((u32)it.alpha << 16) |
+                      ((u32)it.alpha << 8) | (u32)it.alpha;
     if (it.kind == 1) {
         // quick backdrop: tile the image over its rect
         const f32 tw = (f32)t->origWidth * kFuryScale;
@@ -153,14 +161,33 @@ static void FuryDrawMapInst(FuryRageRender* r, PakLoader* pak, SpriteBatch* batc
         for (i32 cy = 0; cy < rows; ++cy) {
             for (i32 cx = 0; cx < cols; ++cx) {
                 batch->Draw(t->texture, drawX + cx * tw, drawY + cy * th,
-                            tw, th, 0.0f, 0.0f, u1, v1, 0xFFFFFFFF);
+                            tw, th, 0.0f, 0.0f, u1, v1, color);
             }
         }
     } else {
         const f32 w = (it.kind == 2 && it.w) ? drawW : (f32)t->origWidth * kFuryScale;
         const f32 h = (it.kind == 2 && it.h) ? drawH : (f32)t->origHeight * kFuryScale;
-        batch->Draw(t->texture, drawX, drawY, w, h, 0.0f, 0.0f, u1, v1, 0xFFFFFFFF);
+        batch->Draw(t->texture, drawX, drawY, w, h, 0.0f, 0.0f, u1, v1, color);
     }
+}
+
+// A fighter sprite in the dump's own scale: the picture stands on the
+// fighter's feet (the dump anchors it with the object's hotspot).
+static void FuryDrawFighter(PakLoader* pak, SpriteBatch* batch, int img,
+                            f32 worldX, f32 worldY, f32 camX, f32 camY, u32 color) {
+    if (!pak || !batch || img < 0) return;
+    char name[32];
+    Snprintf(name, sizeof(name), "img_%d", img);
+    PakLoadedTexture* t = pak->FindTexture(name);
+    if (!t || !t->texture) return;
+    const f32 u1 = t->alignedWidth  ? (f32)t->origWidth  / (f32)t->alignedWidth  : 1.0f;
+    const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
+    const f32 w = (f32)t->origWidth * kFuryScale;
+    const f32 h = (f32)t->origHeight * kFuryScale;
+    // the feet: the hitbox's lower edge
+    const f32 feet = worldY + 31.0f * kFuryScale - camY * (f32)kFuryTile * kFuryScale;
+    const f32 cx = worldX * kFuryScale - camX * (f32)kFuryTile * kFuryScale;
+    batch->Draw(t->texture, cx - w * 0.5f, feet - h, w, h, 0.0f, 0.0f, u1, v1, color);
 }
 
 void FuryRageRender::RenderLevels(const FuryRageGame& game) {
@@ -183,20 +210,22 @@ void FuryRageRender::RenderLevels(const FuryRageGame& game) {
     // ---- entities ----
     const FuryFighter& pl = game.GetPlayer();
     if (!pl.dead && pl.img >= 0) {
-        const f32 px = pl.x * kFuryScale - camX * (f32)kFuryTile * kFuryScale;
-        const f32 py = pl.y * kFuryScale - camY * (f32)kFuryTile * kFuryScale;
-        Draw(pl.img, px, py,
-             (f32)pl.w * (f32)kFuryTile * 0.01f * kFuryScale,
-             (f32)pl.h * (f32)kFuryTile * 0.01f * kFuryScale, 0xFFFFFFFF);
+        // the fighter and the chosen character's picture (the dump's child
+        // object "Active 6") stand on the same spot
+        FuryDrawFighter(m_pak, m_batch, pl.img,
+                        pl.x * (f32)kFuryTile, pl.y * (f32)kFuryTile,
+                        camX, camY, 0xFFFFFFFF);
+        if (pl.overlay >= 0)
+            FuryDrawFighter(m_pak, m_batch, pl.overlay,
+                            pl.x * (f32)kFuryTile, pl.y * (f32)kFuryTile,
+                            camX, camY, 0xFFFFFFFF);
     }
     for (i32 i = 0; i < game.GetEnemyCount(); ++i) {
         const FuryFighter& e = game.GetEnemy(i);
         if (e.dead || e.img < 0) continue;
-        const f32 ex = e.x * kFuryScale - camX * (f32)kFuryTile * kFuryScale;
-        const f32 ey = e.y * kFuryScale - camY * (f32)kFuryTile * kFuryScale;
-        Draw(e.img, ex, ey,
-             (f32)e.w * (f32)kFuryTile * 0.01f * kFuryScale,
-             (f32)e.h * (f32)kFuryTile * 0.01f * kFuryScale, 0xFFFFFFFF);
+        FuryDrawFighter(m_pak, m_batch, e.img,
+                        e.x * (f32)kFuryTile, e.y * (f32)kFuryTile,
+                        camX, camY, 0xFFFFFFFF);
     }
 
     // ---- HUD ----

@@ -3,6 +3,28 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.130 — Fury's Rage: the level plays with the dump's own fighters
+
+- **The level shows the dump's world.** The map generator now pairs the
+  dump's layout rows with the frame's instances the way the frame really
+  is (the rows were mismatched before, so the art carried the wrong
+  names), keeps the objects the dump marks visible and leaves out the
+  fade overlay (736) that used to paint the whole level black. Each
+  instance is drawn with the object's own blend as its alpha (the floor
+  is 105/255 in the dump).
+- **The fighter is the dump's fighter.** The player walks with the
+  animation 0 of the player object "Active" (10..17 to the right,
+  59.. to the left), the chosen fighter's picture rides on the child
+  object "Active 6" (206 Freddy / 365 Monty / 364 Roxanne / 625
+  Chica), the hitbox is the dump's "move box" (82x62 px), the level
+  starts at the dump's position (540, 829) and the player moves with
+  the dump's per-character step (groups 98..103: 4 px Monty, 5 px
+  Freddy and Roxanne, 6 px Chica).
+- **The enemies come from the dump's table.** The 14 enemy types with
+  their own picture, hp and speed (the spawn groups of the level) and
+  a wave of 2..4 of them; the melee reach is the dump's "punch box"
+  (83 px) and the player really takes damage now.
+
 ## v2.129 — Fury's Rage: the character select from the dump
 
 - **The roster is Freddy / Monty / Roxanne / Chica.** This game has no
