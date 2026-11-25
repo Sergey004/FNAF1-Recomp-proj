@@ -3,6 +3,20 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.125 — FNaF World: overworld looks like the game, not a moving sprite
+
+- **FNaF World overworld now draws the dump's own art** instead of a flat green
+  field with a single sprite walking over it. `tools/gen_fwmap2.py` v2 now
+  resolves every quick backdrop's real image id and size from the JSON export
+  (714 ground/path/water tiles), so the 6000x4000 map renders with trees,
+  stumps, rocks, flowers and mine walls at the dump's coordinates instead of
+  the fallback colour. The collision grid (RLE) and the 28 chests survived the
+  regeneration, and the leader walk cycle still rides the 11-frame anim table.
+- Title screen, file setup, splash and In Space minigame were already
+  dump-correct and are untouched. Battle stays a labeled placeholder (coloured
+  slots) until the exe's battle events are mined — the same convention as the
+  rest of the port.
+
 ## v2.124 — Sister Location: the rooms from the dump + the Baby's-room audio
 
 - **The room art now comes from the dump's own frame-start state** (the ctfak
