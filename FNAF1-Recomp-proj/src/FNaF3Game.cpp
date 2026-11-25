@@ -248,6 +248,7 @@ void FNaF3Game::InitNightState() {
 
     m_phBB = 0; m_phBBStare = 0.0f;
     m_phFoxy = 0; m_foxyScareT = 0.0f;
+    m_phChicaScareT = 0.0f; m_phGFScareT = 0.0f;
     m_phMangle = 0; m_phMangleStare = 0.0f;
     m_phPuppet = 0; m_phPuppetStare = 0.0f; m_phPuppetRushT = 0.0f;
     m_phChica = 0; m_phChicaStare = 0.0f;
@@ -1045,6 +1046,8 @@ void FNaF3Game::TickPhantoms(f32 dt) {
         }
     }
     if (m_foxyScareT > 0.0f) m_foxyScareT -= dt;
+    if (m_phChicaScareT > 0.0f) m_phChicaScareT -= dt;
+    if (m_phGFScareT > 0.0f) m_phGFScareT -= dt;
 
     // ---- Phantom Mangle: cam 04 feed; stare kills the audio (g571-578) ----
     if (m_phMangle == 2) {
@@ -1083,6 +1086,7 @@ void FNaF3Game::TickPhantoms(f32 dt) {
         if (m_viewing == 0 && m_pan < 600.0f) {    // g596: scroll < 600
             m_pan -= 180.0f;                       // the view jerk (g604)
             if (m_pan < 0.0f) m_pan = 0.0f;
+            m_phChicaScareT = 15.0f / 36.0f;   // v2.123: the dump's 15 cells @ 36 fps
             PhantomScare(4);
             m_phChica = 0;
         }
@@ -1100,6 +1104,7 @@ void FNaF3Game::TickPhantoms(f32 dt) {
         if (m_viewing <= 1) {
             m_phGFStare += dt * 60.0f;
             if (m_phGFStare > (f32)m_timeLimit * 3.0f) {
+                m_phGFScareT = 11.0f / 24.0f;   // v2.123: the dump's 11 cells @ 24 fps
                 PhantomScare(5);
                 m_phGF = 0;
             }

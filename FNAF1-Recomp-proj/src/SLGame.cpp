@@ -320,8 +320,8 @@ void SLGame::TickWarning(f32 dt, const SLInputs& in) {
     if (m_cardT >= 3.0f || in.aPressed || in.bPressed) {
         m_cardT = 0.0f;
         m_screen = m_intro ? SCR_TITLE : SCR_CUTN4;
-        // the dump's title theme
-        Sfx("snd_Gradual Liquidation", true, 2, 15);
+        // the dump's title theme (frame 1: "Gradual Liquidation" ch1)
+        Sfx("snd_Gradual Liquidation", true, 1, 15);
     }
 }
 
@@ -399,7 +399,12 @@ void SLGame::NightStart() {
     // v2.78: the ride (25 s + 10 s of doors) is the dump's own loading
     // window — pull the hub behind it.
     PreloadDumpFrame(*this, SCR_HUB);
+    // v2.124: the dump's frame 2 loop set: "elevator ride loop" ch1,
+    // "fanv4" ch3, "elevator idle v2" ch1, "bongos loop3" ch19.
     Sfx("snd_elevator ride loop", true, 1, 15);
+    Sfx("snd_fanv4", true, 3, 15);
+    Sfx("snd_elevator idle v2", true, 1, 15);
+    Sfx("snd_bongos loop3", true, 19, 15);
 }
 
 // ------------------------------------------------------------
@@ -416,7 +421,8 @@ void SLGame::TickElevator(f32 dt, const SLInputs& in) {
     // 10000 ms (group 31, was 2 s). Skipping with A stays (pad affordance).
     if (m_elevatorState == 0 && (m_elevatorT >= 25.0f || in.aPressed)) {
         m_elevatorState = 1;
-        Sfx("snd_clankv2", false, 4, 100);
+        // v2.124: the dump's frame 2: "buzzer" ch4, "clankv2" ch6
+        Sfx("snd_buzzer", false, 4, 100);
     }
     if (m_elevatorState == 1) {
         m_elevButtonT += dt;
@@ -427,8 +433,14 @@ void SLGame::TickElevator(f32 dt, const SLInputs& in) {
             // doors open -> the day plan: night 1 = Baby's Room (the
             // monologue), night 2 = Hub -> Ballora, night 3 = Hub ->
             // Breaker (wave 1 labeled; the spine is per Script Event)
-            SfxStop("snd_clankv2");
-            Sfx("snd_Dark amb v4", true, 2, 15);
+            SfxStop("snd_buzzer");
+            SfxStop("snd_elevator ride loop");
+            SfxStop("snd_fanv4");
+            SfxStop("snd_elevator idle v2");
+            SfxStop("snd_bongos loop3");
+            // v2.124: the hub's own loops (frame 5): "Dark amb v4" ch1, "elbuzz" ch5
+            Sfx("snd_Dark amb v4", true, 1, 15);
+            Sfx("snd_elbuzz", true, 5, 15);
             GoTo(3);
         }
     }
@@ -494,6 +506,13 @@ void SLGame::TickToVent(f32 dt) {
 // ------------------------------------------------------------
 
 void SLGame::TickVent(f32 dt, const SLInputs& in) {
+    // v2.124: the dump's frame 3 loops: "metal_duct_fast" ch2,
+    // "metal_duct_slow" ch3, "scary amb 3" ch1.
+    if (m_cardT == 0.0f) {
+        Sfx("snd_metal_duct_fast", true, 2, 60);
+        Sfx("snd_metal_duct_slow", true, 3, 60);
+        Sfx("snd_scary amb 3", true, 1, 60);
+    }
     if (in.wHeld) {
         m_crawl = 15;                                   // the latch
     } else if (m_crawl > 0) {
@@ -572,7 +591,13 @@ void SLGame::TickBallora(f32 dt, const SLInputs& in) {
     // she is created at progress 400 ("the dance" starts)
     if (!m_dancer && m_progress >= 400) {
         m_dancer = true;
-        Sfx("snd_Ballora_gallery", true, 1, 100);       // her music
+        // v2.124: the dump's frame 8 loops: "Idlev3" ch1, "crawl_patter3"
+        // ch2, "crawl_patter2" ch3, "BallastHum4" ch4 (the old
+        // "Ballora_gallery" sample is not in the dump at all).
+        Sfx("snd_Idlev3", true, 1, 100);
+        Sfx("snd_crawl_patter3", true, 2, 60);
+        Sfx("snd_crawl_patter2", true, 3, 60);
+        Sfx("snd_BallastHum4", true, 4, 60);
     }
     if (m_dancer) {
         // the music pans by side (-100..100 ramp, 1 per 20 ms)
@@ -635,6 +660,14 @@ void SLGame::TickBallora(f32 dt, const SLInputs& in) {
 // ------------------------------------------------------------
 
 void SLGame::TickFuntime(f32 dt, const SLInputs& in) {
+    // v2.124: the dump's frame 10 loops: "scary amb 3" ch1, "Scurry2" ch2,
+    // "crawl_patter2" ch3, "crawl_patter3" ch20.
+    if (m_cardT == 0.0f) {
+        Sfx("snd_scary amb 3", true, 1, 60);
+        Sfx("snd_Scurry2", true, 2, 60);
+        Sfx("snd_crawl_patter2", true, 3, 60);
+        Sfx("snd_crawl_patter3", true, 20, 60);
+    }
     // the flash recharge (2 s full, +1 per 40 ms)
     if (m_flashCharge < 50.0f) {
         m_flashCharge += dt / 0.04f;
@@ -711,7 +744,12 @@ void SLGame::TickBreaker(f32 dt, const SLInputs& in) {
     // runs (his counter +1 per noise roll) and kills at 7+. S exits at
     // Script Event 85. (Dump: frame 9 "Breaker Room"; kills -> game over.)
     if (m_cardT == 0.0f) {
+        // v2.124: the dump's frame 9 loops: "control room power down vrs3"
+        // ch1, "movement (2)" ch4, "VIDEOSTATIC" ch10, "tape play" ch26
         Sfx("snd_control room power down vrs3", true, 1, 60);
+        Sfx("snd_movement (2)", true, 4, 60);
+        Sfx("snd_VIDEOSTATIC", true, 10, 60);
+        Sfx("snd_tape play", true, 26, 60);
         Sfx("snd_Bin-Met_28G_HD2-28022", false, 12, 60);
         m_brkPanel = 0; m_brkFill = 0.0f; m_brkFreddy = 0;
         m_brkRollT = 0.0f; m_brkAnimT = 0.0f;
@@ -781,8 +819,13 @@ void SLGame::TickBreakerHold(f32 dt) {
 
 void SLGame::TickPS(f32 dt, const SLInputs& in) {
     if (m_cardT == 0.0f) {
+        // v2.124: the dump's frame 19 loops: "scary amb 4" ch1, "drips" ch2,
+        // "guts" ch12, "strange_voice" ch13.
+        Sfx("snd_scary amb 4", true, 1, 60);
         Sfx("snd_control room power down vrs3", true, 1, 60);
         Sfx("snd_drips", true, 2, 50);
+        Sfx("snd_guts", true, 12, 50);
+        Sfx("snd_strange_voice", true, 13, 50);
         m_psTimer = 0.0f;
         m_psPuppets = 0;
         m_psPuppet1 = m_psPuppet2 = false;
@@ -1053,13 +1096,25 @@ void SLGame::TickBaby(f32 dt, const SLInputs& in) {
     // the night-1 speech (the first-launch monologue cutscene rides
     // separately); wave 1: stand a beat then the fade -> win night
     (void)in;
+    if (m_cardT == 0.0f) {
+        // v2.124: the dump's frame 6 (Baby's Room): the always group 42
+        // loops "elbuzz" on channel 5, and group 3 (the "dark" counter is
+        // 1 at the start) loops the room's own "control module - normal"
+        // on channel 1.
+        Sfx("snd_elbuzz", true, 5, 15);
+        Sfx("snd_control module - normal", true, 1, 15);
+    }
     m_cardT += dt;
     if (m_cardT >= 8.0f || in.bPressed) {
         m_cardT = 0.0f;
         SfxStop("snd_Dark amb v4");
+        SfxStop("snd_elbuzz");
+        SfxStop("snd_control module - normal");
         m_screen = SCR_WINNIGHT;
         m_winT = 0.0f;
-        Sfx("snd_Jingle_4b", false, 1, 100);            // the win jingle
+        Sfx("snd_Jingle_4b", false, 7, 100);            // the win jingle (ch7)
+        Sfx("snd_pop3", false, 2, 100);                  // the dump's frame 12
+        Sfx("snd_pop4", false, 6, 100);
     }
 }
 

@@ -7,6 +7,7 @@
 
 #include "SLRender.h"
 #include "SLGame.h"
+#include "SLRooms.h"
 #include "PakLoader.h"
 #include "SpriteBatch.h"
 #include "TextRenderer.h"
@@ -44,6 +45,60 @@ static void DN(PakLoader* pak, SpriteBatch* batch, int handle,
     const f32 v1 = t->alignedHeight ? (f32)t->origHeight / (f32)t->alignedHeight : 1.0f;
     batch->Draw(t->texture, x, y, (f32)t->origWidth, (f32)t->origHeight,
                 0.0f, 0.0f, u1, v1, color);
+}
+
+// ------------------------------------------------------------
+// v2.124: the rooms come from the dump's own frame-start state.
+//
+// The generated SLRooms.h tables carry, per room, the sprites the dump
+// leaves visible at the first tick (the room art, the plates, the icons)
+// and the animated objects with their cell sequences (every cell with its
+// own size and hotspot). The room is drawn in the dump's world space and
+// scaled to the 1280x720 window - the height-squash convention the port
+// uses for the wide rooms - and the game's pan shifts it sideways.
+// ------------------------------------------------------------
+static f32 RoomScale(int roomH) { return 720.0f / (f32)(roomH > 0 ? roomH : 1); }
+
+static f32 RoomOffsetX(int roomW, int roomH, f32 panX) {
+    return (1280.0f - (f32)roomW * RoomScale(roomH)) * 0.5f - panX;
+}
+
+static void DrawRoom(PakLoader* pak, SpriteBatch* batch,
+                     int roomW, int roomH,
+                     const SLRoomSprite* sprites, int spriteCount,
+                     const SLRoomAnim* anims, int animCount,
+                     f32 time, f32 panX, int skipAnim) {
+    if (!batch) return;
+    const f32 scale = RoomScale(roomH);
+    const f32 offX = RoomOffsetX(roomW, roomH, panX);
+    for (int i = 0; i < spriteCount; ++i) {
+        const SLRoomSprite& s = sprites[i];
+        D(pak, batch, s.img, offX + (f32)s.x * scale, (f32)s.y * scale,
+          (f32)s.w * scale, (f32)s.h * scale, 0xFFFFFFFF);
+    }
+    for (int i = 0; i < animCount; ++i) {
+        if (i == skipAnim) continue;
+        const SLRoomAnim& a = anims[i];
+        if (!a.cells || a.count <= 0) continue;
+        int idx = (int)(time * a.fps);
+        idx %= a.count;
+        if (idx < 0) idx += a.count;
+        const SLRoomAnimCell& c = a.cells[idx];
+        D(pak, batch, c.img, offX + (f32)c.x * scale, (f32)c.y * scale,
+          (f32)c.w * scale, (f32)c.h * scale, 0xFFFFFFFF);
+    }
+}
+
+// one cell of an animated object, placed by the gameplay (the Ballora's
+// dancer stands on the gallery floor, not on the dump's event position)
+static void DrawRoomAnim(PakLoader* pak, SpriteBatch* batch, const SLRoomAnim& a,
+                         f32 time, f32 x, f32 y, f32 scale) {
+    if (!batch || !a.cells || a.count <= 0) return;
+    int idx = (int)(time * a.fps);
+    idx %= a.count;
+    if (idx < 0) idx += a.count;
+    const SLRoomAnimCell& c = a.cells[idx];
+    D(pak, batch, c.img, x, y, (f32)c.w * scale, (f32)c.h * scale, 0xFFFFFFFF);
 }
 
 void SLRender::RenderWarning(const SLGame& game) {
@@ -110,132 +165,118 @@ void SLRender::RenderTitle(const SLGame& game, f32 time) {
 }
 
 void SLRender::RenderElevator(const SLGame& game, f32 time) {
-    // frame 2: the cabin cells pan over the 1900x1000 room
-    if (m_batch) {
-        static const int kCab[4] = { 819, 810, 823, 813 };
-        const int cell = kCab[(int)(time * 2.0f) % 4];
-        D(m_pak, m_batch, cell, -game.GetPan(), 0.0f, 1900.0f, 1000.0f * (720.0f / 1000.0f),
-          0xFFFFFFFF);
-    }
-    if (m_text) {
-        char b[64];
-        Snprintf(b, sizeof(b), "NIGHT %d — the ride", game.GetNight());
-        m_text->DrawText(40, 40, b, 0xFF909090);
-        m_text->DrawText(40, 680, "A: skip the ride", 0xFF808080);
-    }
+    // v2.124: the dump's frame 2 (the elevator ride): the cabin's own
+    // 10-cell sequence at 54 fps (the dump's animation speed 90), the
+    // shaft plate (img 69) above and below the cabin, the "NIGHT 1"
+    // plate and the mouse prompt - the objects the dump leaves visible
+    // at the frame start. The old build drew four stretched cells and
+    // invented captions.
+    (void)game;
+    DrawRoom(m_pak, m_batch, SLElevRoomW, SLElevRoomH,
+             SLElevSprites, SLElevSpriteCount, SLElevAnims, SLElevAnimCount,
+             time, 0.0f, -1);
 }
 
 void SLRender::RenderVent(const SLGame& game) {
-    // frame 3: the vent interior (the dark cells), the notch meter
-    if (m_batch) {
-        static const int kV[4] = { 18, 50, 73, 75 };
-        const f32 x = -(f32)((600.0f * (game.GetNotch() / 10.0f)));
-        D(m_pak, m_batch, kV[game.GetNotch() % 4], x, 0.0f, 1700.0f, 720.0f, 0xFFFFFFFF);
-    }
-    if (m_text)
-        m_text->DrawText(40, 40, "Hold W to crawl", 0xFF909090);
+    // v2.124: the dump's frame 3 (the vent crawl): the tunnel's own
+    // 16-cell sequence at 30 fps (the dump's speed 50) plus the crawl and
+    // mouse prompts. The old build panned the cell by the notch counter
+    // (up to 60000 px - the art left the screen long before); the dump
+    // scrolls the room's own sequence instead.
+    DrawRoom(m_pak, m_batch, SLVentRoomW, SLVentRoomH,
+             SLVentSprites, SLVentSpriteCount, SLVentAnims, SLVentAnimCount,
+             game.GetTime(), 0.0f, -1);
 }
 
 void SLRender::RenderHub(const SLGame& game) {
-    // frame 5 "Main Hub": the room art = img 2085 (1900x1000 @0,0 — the
-    // hub's own anim cell; the wide room pans with the camera). The old
-    // draw stretched the spark sprite (56) over the screen.
-    (void)game;
-    if (m_batch)
-        D(m_pak, m_batch, 2085, -game.GetPan() * 0.3f, -80.0f, 1900.0f, 1000.0f,
-          0xFFFFFFFF);
-    if (m_text) {
-        m_text->DrawText(40, 40, "CIRCUS CONTROL", 0xFFE0E0E0);
-        m_text->DrawText(40, 660, "A: the day route   D: shock test", 0xFF909090);
-    }
+    // v2.124: the dump's frame 5 (the Main Hub): the room art (the 16-cell
+    // "Active" sequence), the two vent mouths, the sparks, the map icons
+    // and the mouse prompt - the objects the dump leaves visible.
+    DrawRoom(m_pak, m_batch, SLHubRoomW, SLHubRoomH,
+             SLHubSprites, SLHubSpriteCount, SLHubAnims, SLHubAnimCount,
+             game.GetTime(), 0.0f, -1);
 }
 
 void SLRender::RenderBaby(const SLGame& game) {
-    // v2.73: the room art from the dump's frame_6 layout — img 829
-    // (1700x1000 @ (-1,-1), Baby's gallery), the rooms' height-squash
-    // convention (1000 -> 720). The "go back" plate 182 is parked
-    // off-screen in the layout (event-gated) — not drawn.
-    (void)game;
-    if (m_batch)
-        D(m_pak, m_batch, 829, 0.0f, 0.0f, 1700.0f, 720.0f, 0xFFFFFFFF);
-    if (m_text)
-        m_text->DrawText(40, 660, "B: end the night", 0xFF909090);
+    // v2.124: the dump's frame 6 (Baby's Room): the gallery art (img 829),
+    // the backdrops, the sparks, the Bidybab and the mouse prompts.
+    DrawRoom(m_pak, m_batch, SLBabyRoomW, SLBabyRoomH,
+             SLBabySprites, SLBabySpriteCount, SLBabyAnims, SLBabyAnimCount,
+             game.GetTime(), 0.0f, -1);
 }
 
 void SLRender::RenderBallora(const SLGame& game, f32 time) {
-    if (m_batch) {
-        static const int kFloor[4] = { 1955, 1954, 1261, 1956 };
-        static const int kDoor[4] = { 194, 195, 196, 197 };
-        const f32 pan = game.GetProgress() * (720.0f / 850.0f) * (2200.0f - 1280.0f);
-        D(m_pak, m_batch, kFloor[(int)(time * 4.0f) % 4], -pan, 0.0f, 2200.0f, 720.0f,
-          0xFFFFFFFF);
-        D(m_pak, m_batch, kDoor[(int)(time * 4.0f) % 4], 1037.0f - pan, 300.0f,
-          120.0f, 200.0f, 0xFFFFFFFF);
-        // v2.74: Ballora herself is the DANCER object (frame 8, obj 186) —
-        // cells 518/486/520/489 at their native 250x700. The old code drew
-        // the FLOOR cells as her, so she was never visible.
-        if (game.GetDistance() > 0) {
-            static const int kBal[4] = { 518, 486, 520, 489 };
-            D(m_pak, m_batch, kBal[(int)(time * 6.0f) % 4],
-              640.0f + (f32)game.GetLeftPan() * 3.0f, 0.0f, 250.0f, 700.0f, 0xFFFFFFFF);
-        }
-    }
-    if (m_text) {
-        char b[64];
-        Snprintf(b, sizeof(b), "HALL %d / danger %d", game.GetProgress(), game.GetDistance());
-        m_text->DrawText(40, 40, b, 0xFF909090);
-        m_text->DrawText(40, 660, "Hold W: walk   Shift: quick   (walk = noise)", 0xFF909090);
+    // v2.124: the dump's frame 8 (the Ballora Gallery): the floor's 11-cell
+    // sequence at 15 fps, the sliding door (11 cells at 30 fps), the gallery
+    // plates and the prompts. Ballora herself is the dump's "dancer" object
+    // (32 cells at 24 fps) - the dump places her by the events, so the
+    // gameplay puts her on the gallery floor (the port's own approach).
+    const f32 scale = RoomScale(SLBalloraRoomH);
+    const f32 offX = RoomOffsetX(SLBalloraRoomW, SLBalloraRoomH, game.GetPan());
+    DrawRoom(m_pak, m_batch, SLBalloraRoomW, SLBalloraRoomH,
+             SLBalloraSprites, SLBalloraSpriteCount,
+             SLBalloraAnims, SLBalloraAnimCount, time, game.GetPan(),
+             SLBalloraAnimDancer);
+    if (game.GetDistance() > 0 && SLBalloraAnimCount > SLBalloraAnimDancer) {
+        // she stands on the floor (the room's floor top at y=768)
+        const f32 w = (f32)SLBalloraAnims[SLBalloraAnimDancer].cells[0].w * scale;
+        const f32 h = (f32)SLBalloraAnims[SLBalloraAnimDancer].cells[0].h * scale;
+        const f32 x = offX + 1100.0f * scale - w * 0.5f +
+                      (f32)game.GetLeftPan() * 3.0f;
+        const f32 y = 768.0f * scale - h;
+        DrawRoomAnim(m_pak, m_batch, SLBalloraAnims[SLBalloraAnimDancer],
+                     time, x, y, scale);
     }
 }
 
 void SLRender::RenderFuntime(const SLGame& game, f32 time) {
-    if (m_batch) {
-        static const int kFloor[4] = { 261, 252, 288, 253 };
-        const int thw[3] = { 80, 120, 160 };
-        D(m_pak, m_batch, kFloor[(int)(time * 4.0f) % 4], -game.GetProgress() * 0.4f, 0.0f,
-          1900.0f, 720.0f, 0xFFFFFFFF);
-        // v2.74: the Foxy silhouettes are their OWN objects (frame 10:
-        // "close Foxy 3" 1306/2024/2026/2036, "close Foxy 2"
-        // 1827/1455/2010/1457, "close Foxy" 1454/356/1456/363) at their dump
-        // sizes. The old code reused the FLOOR cells, so Foxy never showed.
-        // The dump's room is 1900x1100 with the floor at y=1099 — the view
-        // shows its bottom 720 px, hence the -380 offset.
-        if (game.GetFoxyDist() > 100 && game.GetProgress() < 1300) {
-            static const int kSil3[4] = { 1306, 2024, 2026, 2036 };
-            static const int kSil2[4] = { 1827, 1455, 2010, 1457 };
-            static const int kSil1[4] = { 1454, 356, 1456, 363 };
-            const f32 ox = -game.GetProgress() * 0.4f;
-            const int s = game.GetFoxyDist() > 400 ? 2 : (game.GetFoxyDist() > 200 ? 1 : 0);
-            const int fr = (int)(time * 6.0f) % 4;
-            if (s == 0) D(m_pak, m_batch, kSil3[fr], 855.0f + ox, 887.0f - 380.0f, 250.0f, 315.0f, 0xFFFFFFFF);
-            else if (s == 1) D(m_pak, m_batch, kSil2[fr], 1026.0f + ox, 939.0f - 380.0f, 370.0f, 450.0f, 0xFFFFFFFF);
-            else D(m_pak, m_batch, kSil1[fr], 1303.0f + ox, 998.0f - 380.0f, 550.0f, 650.0f, 0xFFFFFFFF);
-            (void)thw;
-        }
-    }
-    if (m_text) {
-        char b[80];
-        Snprintf(b, sizeof(b), "HALL %d   energy %.0f   danger %d",
-                 game.GetProgress(), game.GetFlashCharge(), game.GetFoxyDist());
-        m_text->DrawText(40, 40, b, 0xFF909090);
-        m_text->DrawText(40, 660, "W: walk   X: flash (attracts!)", 0xFF909090);
+    // v2.124: the dump's frame 10 (the Funtime Auditorium): the floor and
+    // the door (the dump's own sequences), the plates and the prompts.
+    // The Foxy silhouettes are event-gated in the dump (they appear with
+    // his approach), so the gameplay draws them - at the dump's own
+    // positions and sizes (frame 10: "close Foxy 3" 730,573 250x315,
+    // "close Foxy 2" 841,490 370x450, "close Foxy" 1028,349 550x650).
+    const f32 scale = RoomScale(SLFuntimeRoomH);
+    const f32 offX = RoomOffsetX(SLFuntimeRoomW, SLFuntimeRoomH, 0.0f);
+    DrawRoom(m_pak, m_batch, SLFuntimeRoomW, SLFuntimeRoomH,
+             SLFuntimeSprites, SLFuntimeSpriteCount,
+             SLFuntimeAnims, SLFuntimeAnimCount, time, 0.0f, -1);
+    if (game.GetFoxyDist() > 100 && game.GetProgress() < 1300) {
+        static const int kSil3[4] = { 1306, 2024, 2026, 2036 };
+        static const int kSil2[4] = { 1827, 1455, 2010, 1457 };
+        static const int kSil1[4] = { 1454, 356, 1456, 363 };
+        const int s = game.GetFoxyDist() > 400 ? 2 : (game.GetFoxyDist() > 200 ? 1 : 0);
+        const int fr = (int)(time * 6.0f) % 4;
+        if (s == 0)
+            D(m_pak, m_batch, kSil3[fr], offX + 730.0f * scale, 573.0f * scale,
+              250.0f * scale, 315.0f * scale, 0xFFFFFFFF);
+        else if (s == 1)
+            D(m_pak, m_batch, kSil2[fr], offX + 841.0f * scale, 490.0f * scale,
+              370.0f * scale, 450.0f * scale, 0xFFFFFFFF);
+        else
+            D(m_pak, m_batch, kSil1[fr], offX + 1028.0f * scale, 349.0f * scale,
+              550.0f * scale, 650.0f * scale, 0xFFFFFFFF);
     }
 }
 
 void SLRender::RenderBreaker(const SLGame& game) {
-    // v2.73: the room art from the dump's frame_9 layout — img 594
-    // (1900x1000 @ (0,0), the dark breaker hall with the Funtime silhouettes),
-    // drawn with the rooms' height-squash convention (1000 -> 720). The task
-    // label 579 "jack in" (606x55 @ (310,930), layer 4) is the REST-state
-    // strip the frame replay proves visible — with 1889 "flip it up"
-    // stacked on it (the replay shows the magenta plate + the chevrons);
-    // 360/580 are the task-beat prompts (event-gated, not yet drawn).
-    (void)game;
+    // v2.124: the dump's frame 9 (the Breaker Room): the hall art (img 594),
+    // the breaker panel, the screen, the map icons, the restart plate and
+    // the prompts. The task label ("jack in", img 579) and the raised
+    // lever ("flip it up", img 1889) are event-gated in the dump, so the
+    // gameplay adds them while the task runs.
+    const f32 scale = RoomScale(SLBreakerRoomH);
+    const f32 offX = RoomOffsetX(SLBreakerRoomW, SLBreakerRoomH, 0.0f);
+    DrawRoom(m_pak, m_batch, SLBreakerRoomW, SLBreakerRoomH,
+             SLBreakerSprites, SLBreakerSpriteCount,
+             SLBreakerAnims, SLBreakerAnimCount, game.GetTime(), 0.0f, -1);
     if (m_batch) {
-        D(m_pak, m_batch, 594, 0.0f, 0.0f, 1900.0f, 720.0f, 0xFFFFFFFF);
-        const f32 stripY = 930.0f * (720.0f / 1000.0f);
-        DN(m_pak, m_batch, 579, 310.0f, stripY, 0xFFFFFFFF);
-        DN(m_pak, m_batch, 1889, 340.0f, stripY, 0xFFFFFFFF);
+        const f32 y = 930.0f * scale;
+        D(m_pak, m_batch, 579, offX + 310.0f * scale, y, 606.0f * scale, 55.0f * scale,
+          0xFFFFFFFF);
+        if (game.GetBrkFill() > 0.0f)
+            D(m_pak, m_batch, 1889, offX + 340.0f * scale, y, 557.0f * scale, 38.0f * scale,
+              0xFFFFFFFF);
     }
 }
 

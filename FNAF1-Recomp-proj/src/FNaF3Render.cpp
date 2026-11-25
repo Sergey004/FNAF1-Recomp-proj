@@ -10,6 +10,7 @@
 
 #include "FNaF3Render.h"
 #include "FNaF3Scares.h"
+#include "FNaF3Office.h"
 #include "FNaF3Game.h"
 #include "PakLoader.h"
 #include "SpriteBatch.h"
@@ -328,9 +329,15 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
         DrawWorld(206, 1327.0f, 57.0f, 299.0f, 715.0f, pan, 0xFFFFFFFF);
 
     // the hall dash (img 207) — sweeps right-to-left while the timer runs
+    // v2.123: the dash is the dump's 16-cell animation (speed 50 -> 30 fps)
+    // at the anchor's point - the Foxy's positions are baked into the cells.
     if (game.GetRunPastT() > 0.0f) {
-        const f32 k = 1.0f - game.GetRunPastT() / 0.6f;
-        DrawWorld(207, 1300.0f - 600.0f * k, 0.0f, 250.0f, 768.0f, pan, 0xFFFFFFFF);
+        const f32 elapsed = 0.6f - game.GetRunPastT();
+        int fi = (int)(elapsed * RunPastA0Fps);
+        if (fi < 0) fi = 0;
+        if (fi >= RunPastA0Count) fi = RunPastA0Count - 1;
+        const FNaF3OfficeCell& c = RunPastA0[fi];
+        DrawWorld(c.img, (f32)c.left, (f32)c.top, (f32)c.w, (f32)c.h, pan, 0xFFFFFFFF);
     }
 
     // he is INSIDE (the GOT YOU markers): the head over the doorway.
@@ -342,17 +349,58 @@ void FNaF3Render::RenderOffice(const FNaF3Game& game, f32 time) {
         DrawWorld(529, 131.0f, 182.0f, 164.0f, 220.0f, pan, 0xFFFFFFFF);
 
     // Phantom Foxy in the office (img 302; DEVIATION: fixed spot)
-    if (game.GetPhFoxy() != 0)
-        DrawWorld(302, 700.0f, 40.0f, 313.0f, 709.0f, pan, 0xFFFFFFFF);
+    // v2.123: the office sprites come from the generated table now. Per the
+    // dump their MOTION lives in the animation cells, not in a position
+    // action, and their origins are the parent anchor's point minus the
+    // cell's hotspot: "foxy" is a child of the anchor (objInfo 65) at
+    // (1284,450) -> (1128,-258); "chica 2" -> (1486,564); "run past" and
+    // "fwalk" are children of "inwindow" (1476,414) -> (1351,-353) and
+    // (1476,414). The old build placed them by eye.
+    if (game.GetPhFoxy() != 0) {
+        const FNaF3OfficeCell& c = FoxyA0[0];
+        DrawWorld(c.img, (f32)c.left, (f32)c.top, (f32)c.w, (f32)c.h, pan, 0xFFFFFFFF);
+    }
+    // v2.123: the phantom scare animations (the dump's animation 12 on the
+    // same objects): the foxy 13 cells @ 24 fps, chica 15 @ 36 fps, the
+    // Golden Freddy walk 11 @ 24 fps.
+    if (game.GetPhFoxyScareT() > 0.0f) {
+        const f32 elapsed = 0.6f - game.GetPhFoxyScareT();
+        int fi = (int)(elapsed * FoxyA12Fps);
+        if (fi < 0) fi = 0;
+        if (fi >= FoxyA12Count) fi = FoxyA12Count - 1;
+        const FNaF3OfficeCell& c = FoxyA12[fi];
+        DrawWorld(c.img, (f32)c.left, (f32)c.top, (f32)c.w, (f32)c.h, pan, 0xFFFFFFFF);
+    }
+    if (game.GetPhChicaScareT() > 0.0f) {
+        const f32 elapsed = 15.0f / 36.0f - game.GetPhChicaScareT();
+        int fi = (int)(elapsed * Chica2A12Fps);
+        if (fi < 0) fi = 0;
+        if (fi >= Chica2A12Count) fi = Chica2A12Count - 1;
+        const FNaF3OfficeCell& c = Chica2A12[fi];
+        DrawWorld(c.img, (f32)c.left, (f32)c.top, (f32)c.w, (f32)c.h, pan, 0xFFFFFFFF);
+    }
+    if (game.GetPhGFScareT() > 0.0f) {
+        const f32 elapsed = 11.0f / 24.0f - game.GetPhGFScareT();
+        int fi = (int)(elapsed * FWalkA12Fps);
+        if (fi < 0) fi = 0;
+        if (fi >= FWalkA12Count) fi = FWalkA12Count - 1;
+        const FNaF3OfficeCell& c = FWalkA12[fi];
+        DrawWorld(c.img, (f32)c.left, (f32)c.top, (f32)c.w, (f32)c.h, pan, 0xFFFFFFFF);
+    }
 
-    // Phantom Chica at the left window (stage 3)
-    if (game.GetPhChica() == 3)
-        DrawWorld(399, 40.0f, 60.0f, 646.0f, 654.0f, pan, 0xFFFFFFFF);
+    // Phantom Chica (stage 3)
+    if (game.GetPhChica() == 3) {
+        const FNaF3OfficeCell& c = Chica2A0[0];
+        DrawWorld(c.img, (f32)c.left, (f32)c.top, (f32)c.w, (f32)c.h, pan, 0xFFFFFFFF);
+    }
 
-    // Golden Freddy's walk-across (img 653)
+    // Golden Freddy's walk-across: the dump's 14 cells (speed 30 -> 18 fps),
+    // looping at the anchor's point.
     if (game.GetPhGF() == 2) {
-        const f32 k = game.GetPhGFWalkT() / 3.0f;
-        DrawWorld(653, 1500.0f - 800.0f * k, 200.0f, 310.0f, 413.0f, pan, 0xFFFFFFFF);
+        int fi = (int)(game.GetPhGFWalkT() * FWalkA0Fps) % FWalkA0Count;
+        if (fi < 0) fi = 0;
+        const FNaF3OfficeCell& c = FWalkA0[fi];
+        DrawWorld(c.img, (f32)c.left, (f32)c.top, (f32)c.w, (f32)c.h, pan, 0xFFFFFFFF);
     }
 
     // v2.71: NO invented office static. The office frame's events carry no

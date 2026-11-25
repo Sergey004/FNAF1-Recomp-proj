@@ -338,6 +338,7 @@
     <ClInclude Include="include\FNaF2Game.h" />
     <ClInclude Include="include\FNaF2Render.h" />
     <ClInclude Include="include\FNaF3Game.h" />
+    <ClInclude Include="include\FNaF3Office.h" />
     <ClInclude Include="include\FNaF3Render.h" />
     <ClInclude Include="include\FNaF3Scares.h" />
     <ClInclude Include="include\FNaF4Game.h" />
@@ -369,6 +370,7 @@
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\ScreenFade.h" />
     <ClInclude Include="include\SLGame.h" />
+    <ClInclude Include="include\SLRooms.h" />
     <ClInclude Include="include\SLRender.h" />
     <ClInclude Include="include\SpriteBatch.h" />
     <ClInclude Include="include\SystemDate.h" />

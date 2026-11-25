@@ -135,6 +135,11 @@ public:
     i32    GetFoxyDist()  const { return m_foxyDist; }
     i32    GetNotch()     const { return m_notch; }        // the vent 100-tick notches
     i32    GetVentGoing() const { return m_ventGoing; }
+    // the breaker task (the dump's frame 9): the panels done and the
+    // current panel's fill - the renderer shows the raised lever while
+    // a panel is being filled
+    i32    GetBrkPanel()  const { return m_brkPanel; }
+    f32    GetBrkFill()   const { return m_brkFill; }
     bool   IsJumpscared() const { return m_scareT > 0.0f; }
 
     // the fnaf_sl save bridge

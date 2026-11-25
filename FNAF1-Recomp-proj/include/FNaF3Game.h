@@ -294,6 +294,11 @@ public:
     i32    GetPhChica()       const { return m_phChica; }
     i32    GetPhGF()          const { return m_phGF; }
     f32    GetPhGFWalkT()     const { return m_phGFWalkT; }
+    // v2.123: the phantom scare windows (the dump's animation 12 cells:
+    // the foxy 13 @ 24 fps, chica 15 @ 36 fps, the GF walk 11 @ 24 fps)
+    f32    GetPhFoxyScareT()  const { return m_foxyScareT; }
+    f32    GetPhChicaScareT() const { return m_phChicaScareT; }
+    f32    GetPhGFScareT()    const { return m_phGFScareT; }
     bool   IsShadowFreddy()   const { return m_shadowFreddy; }
     f32    GetWhiteFlash()    const { return m_whiteFlash; }    // scare flash 0..1
     f32    GetFoxyScareT()    const { return m_foxyScareT; }    // office Foxy anim
@@ -438,6 +443,8 @@ private:
     f32    m_phBBStare;
     i32    m_phFoxy;         // shown in the office
     f32    m_foxyScareT;
+    f32    m_phChicaScareT;   // v2.123: the Chica scare animation
+    f32    m_phGFScareT;      // v2.123: the Golden Freddy scare animation
     i32    m_phMangle;
     f32    m_phMangleStare;
     i32    m_phPuppet;

@@ -3,6 +3,33 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.124 — Sister Location: the rooms from the dump + the Baby's-room audio
+
+- **The room art now comes from the dump's own frame-start state** (the ctfak
+  Frame Runtime Renderer dumps the visible sprites per frame after the
+  Start-of-Frame/always groups ran). SLRooms.h is generated from those lists
+  plus the cell sizes/hotspots: the elevator's cabin plays its own 10-cell
+  sequence at 54 fps with the shaft plate above and below it, the vent's
+  tunnel plays its 16-cell sequence at 30 fps, the hub draws its art, both
+  vent mouths and the spark plates, Baby's Room draws img 829 with its
+  gallery overlays, the Ballora Gallery plays its floor (11 cells at 15 fps)
+  and door (11 cells at 30 fps) sequences plus her 32-cell dancer on the
+  floor, and the Breaker/Funtime auditoriums draw their art at the dump's
+  coordinates instead of hand-placed stretched sprites.
+- **The Baby's-room audio loops (the dump's frame 6):** "elbuzz" loops on
+  channel 5 and "control module - normal" loops on channel 1 at the start,
+  both stopped on exit (v2.124).
+
+## v2.123 — FNAF3: the office sprites at the dump's coordinates
+
+- **The FNAF3 office sprites are now drawn at the dump's coordinates** from the
+  generated `include/FNaF3Office.h` (from `tools/gen_f3_office.py`): the
+  run-past dash (16 cells at 30 fps), the Golden Freddy idle walk (14 cells)
+  and scare (11 cells), and the two phantom faces (each 1 idle + 15/13 scare
+  cells). Every cell carries its own size and hotspot, so the draw origin is
+  the parent's instance point minus the cell's hotspot — exactly as CTF draws
+  it.
+
 ## v2.122 — Sister Location: the graph audit + three uninitialised fields
 
 - **The screen graph was checked against `TRANSITIONS.txt`** - all 36 frames
