@@ -3,6 +3,25 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.131 — a boot selector that fits, and the Ring of Light starts with FNAF1
+
+- **The boot selector is a proper list now.** The rows are laid out by
+  the *visible* games (not by the registry slot), so the extra modules
+  (FNaF World, Fury's Rage, FIS2) no longer run into the button hints:
+  the title, a separator, the list with the pak names on the right, a
+  highlight bar on the chosen row and the hints on their own line at
+  the bottom.
+- **The SMC Ring of Light is initialised when FNAF1 starts.** The
+  self-test (GREEN -> ORANGE -> RED -> dark) used to run at boot, before
+  the pak scan and the selector; it now runs after FNAF1 is launched, so
+  the selector is untouched by the LED test and the other modules never
+  drive the ring.
+- **The version banner is the project version again** (v2.131 for every
+  title, not an FNAF1-only counter).
+- **Fury's Rage: the level HUD keeps its screen position.** The lives,
+  the score and the boss names of the dump's level sit on the layers
+  above the perspective, so they no longer scroll away with the camera.
+
 ## v2.130 — Fury's Rage: the level plays with the dump's own fighters
 
 - **The level shows the dump's world.** The map generator now pairs the

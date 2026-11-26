@@ -1,0 +1,15 @@
+This is an unofficial fan project. It is not affiliated with, endorsed by, or
+sponsored by Scott Cawthon, Scottgames, Steel Wool Studios or Clickteam.
+
+Five Nights at Freddy's, its characters, names, artwork, audio and related
+marks belong to their respective owners. This repository contains no game
+assets. You need your own legally purchased copy of each game. Do not
+distribute extracted assets or built asset packs (.pak).
+
+The MIT License in LICENSE covers only the original source code of this
+repository. It grants no rights to the games, their assets or their marks.
+
+Third-party material:
+- include/SMC.h: adapted from Lightshow by DerfJagged, which uses smc.h
+- Xbox 360 XDK headers and libraries are not included. They are proprietary
+  to Microsoft and require your own license.

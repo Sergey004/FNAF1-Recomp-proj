@@ -123,7 +123,7 @@
     </Link>
     <ImageXex>
       <PreferBigButtonInput>true</PreferBigButtonInput>
-      <RequireFullExperience>true</RequireFullExperience>
+      <RequireFullExperience>false</RequireFullExperience>
       <TitleID>0x464E4131</TitleID>
       <AdditionalSections>464E4131=$(ProjectDir)FNAF1-Recomp-proj.spa,RW</AdditionalSections>
     </ImageXex>
@@ -153,7 +153,7 @@
     <ImageXex>
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
-      <RequireFullExperience>true</RequireFullExperience>
+      <RequireFullExperience>false</RequireFullExperience>
       <AdditionalSections>464E4131=$(ProjectDir)FNAF1-Recomp-proj.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
@@ -187,7 +187,7 @@
     <ImageXex>
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
-      <RequireFullExperience>true</RequireFullExperience>
+      <RequireFullExperience>false</RequireFullExperience>
       <AdditionalSections>464E4131=$(ProjectDir)FNAF1-Recomp-proj.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
@@ -220,7 +220,7 @@
     <ImageXex>
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
-      <RequireFullExperience>true</RequireFullExperience>
+      <RequireFullExperience>false</RequireFullExperience>
       <AdditionalSections>464E4131=$(ProjectDir)FNAF1-Recomp-proj.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
@@ -253,7 +253,7 @@
     <ImageXex>
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
-      <RequireFullExperience>true</RequireFullExperience>
+      <RequireFullExperience>false</RequireFullExperience>
       <AdditionalSections>464E4131=$(ProjectDir)FNAF1-Recomp-proj.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
@@ -285,7 +285,7 @@
     <ImageXex>
       <TitleID>0x464E4131</TitleID>
       <PreferBigButtonInput>true</PreferBigButtonInput>
-      <RequireFullExperience>true</RequireFullExperience>
+      <RequireFullExperience>false</RequireFullExperience>
       <AdditionalSections>464E4131=$(ProjectDir)FNAF1-Recomp-proj.spa,RW</AdditionalSections>
     </ImageXex>
     <Deploy>
@@ -323,41 +323,43 @@
     <ClInclude Include="include\asset_mapping.h" />
     <ClInclude Include="include\asset_mapping.hpp" />
     <ClInclude Include="include\AudioDecoders.h" />
-    <ClInclude Include="include\RoL.h" />
     <ClInclude Include="include\AudioSystem.h" />
-    <ClInclude Include="include\third_party\dr_mp3.h" />
-    <ClInclude Include="include\third_party\dr_wav.h" />
-    <ClInclude Include="include\third_party\SMC.h" />
+    <ClInclude Include="include\DevIni.h" />
+    <ClInclude Include="include\FIS2Game.h" />
+    <ClInclude Include="include\FIS2Map.h" />
+    <ClInclude Include="include\FIS2Module.h" />
+    <ClInclude Include="include\FIS2Render.h" />
+    <ClInclude Include="include\FIS2Scenes.h" />
+    <ClInclude Include="include\FNAF1Scenes.h" />
+    <ClInclude Include="include\FNAF2Scenes.h" />
+    <ClInclude Include="include\FNaF3Office.h" />
+    <ClInclude Include="include\FNaF3Scares.h" />
+    <ClInclude Include="include\FNAF3Scenes.h" />
+    <ClInclude Include="include\FNAF4Scenes.h" />
+    <ClInclude Include="include\FuryRageGame.h" />
+    <ClInclude Include="include\FuryRageMap.h" />
+    <ClInclude Include="include\FuryRageModule.h" />
+    <ClInclude Include="include\FuryRageRender.h" />
+    <ClInclude Include="include\FuryRageScenes.h" />
+    <ClInclude Include="include\FWorldExtraScenes.h" />
+    <ClInclude Include="include\FWorldSpaceScenes.h" />
+    <ClInclude Include="include\RoL.h" />
     <ClInclude Include="include\CameraSystem.h" />
     <ClInclude Include="include\CfAnimTimer.h" />
     <ClInclude Include="include\DebugConsole.h" />
-    <ClInclude Include="include\DevIni.h" />
     <ClInclude Include="include\DoorSystem.h" />
     <ClInclude Include="include\fnaf.h" />
     <ClInclude Include="include\FNAF1-Recomp-proj.spa.h" />
     <ClInclude Include="include\FNaF2Game.h" />
     <ClInclude Include="include\FNaF2Render.h" />
     <ClInclude Include="include\FNaF3Game.h" />
-    <ClInclude Include="include\FNaF3Office.h" />
     <ClInclude Include="include\FNaF3Render.h" />
-    <ClInclude Include="include\FNaF3Scares.h" />
     <ClInclude Include="include\FNaF4Game.h" />
     <ClInclude Include="include\FNaF4Render.h" />
     <ClInclude Include="include\FNaFWorldGame.h" />
     <ClInclude Include="include\FNaFWorldMap.h" />
     <ClInclude Include="include\FNaFWorldModule.h" />
     <ClInclude Include="include\FNaFWorldRender.h" />
-    <ClInclude Include="include\FIS2Game.h" />
-    <ClInclude Include="include\FIS2Module.h" />
-    <ClInclude Include="include\FIS2Render.h" />
-    <ClInclude Include="include\FIS2Scenes.h" />
-    <ClInclude Include="include\FIS2Map.h" />
-    <ClInclude Include="include\FWorldSpaceScenes.h" />
-    <ClInclude Include="include\FuryRageGame.h" />
-    <ClInclude Include="include\FuryRageModule.h" />
-    <ClInclude Include="include\FuryRageRender.h" />
-    <ClInclude Include="include\FuryRageScenes.h" />
-    <ClInclude Include="include\FuryRageMap.h" />
     <ClInclude Include="include\font_atlas.h" />
     <ClInclude Include="include\Game.h" />
     <ClInclude Include="include\GameRender.h" />
@@ -372,14 +374,12 @@
     <ClInclude Include="include\Room.h" />
     <ClInclude Include="include\ScreenFade.h" />
     <ClInclude Include="include\SLGame.h" />
-    <ClInclude Include="include\SLRooms.h" />
     <ClInclude Include="include\SLRender.h" />
+    <ClInclude Include="include\SLRooms.h" />
+    <ClInclude Include="include\SLScenes.h" />
     <ClInclude Include="include\SpriteBatch.h" />
     <ClInclude Include="include\SystemDate.h" />
     <ClInclude Include="include\TextRenderer.h" />
-    <ClInclude Include="include\third_party\dr_mp3.h" />
-    <ClInclude Include="include\third_party\dr_wav.h" />
-    <ClInclude Include="include\third_party\SMC.h" />
     <ClInclude Include="include\Types.h" />
     <ClInclude Include="include\XdkCompat.h" />
   </ItemGroup>
@@ -389,11 +389,13 @@
     <ClCompile Include="src\AppModules.cpp" />
     <ClCompile Include="src\AppRegistry.cpp" />
     <ClCompile Include="src\AudioDecoders.cpp" />
-    <ClCompile Include="src\RoL.cpp" />
     <ClCompile Include="src\AudioSystem.cpp" />
     <ClCompile Include="src\CameraSystem.cpp" />
     <ClCompile Include="src\DebugConsole.cpp" />
     <ClCompile Include="src\DoorSystem.cpp" />
+    <ClCompile Include="src\FIS2Game.cpp" />
+    <ClCompile Include="src\FIS2Module.cpp" />
+    <ClCompile Include="src\FIS2Render.cpp" />
     <ClCompile Include="src\FNaF2Game.cpp" />
     <ClCompile Include="src\FNaF2Render.cpp" />
     <ClCompile Include="src\FNaF3Game.cpp" />
@@ -403,9 +405,6 @@
     <ClCompile Include="src\FNaFWorldGame.cpp" />
     <ClCompile Include="src\FNaFWorldModule.cpp" />
     <ClCompile Include="src\FNaFWorldRender.cpp" />
-    <ClCompile Include="src\FIS2Game.cpp" />
-    <ClCompile Include="src\FIS2Module.cpp" />
-    <ClCompile Include="src\FIS2Render.cpp" />
     <ClCompile Include="src\FuryRageGame.cpp" />
     <ClCompile Include="src\FuryRageModule.cpp" />
     <ClCompile Include="src\FuryRageRender.cpp" />
@@ -419,6 +418,7 @@
     <ClCompile Include="src\PakLoader.cpp" />
     <ClCompile Include="src\PowerSystem.cpp" />
     <ClCompile Include="src\Progress.cpp" />
+    <ClCompile Include="src\RoL.cpp" />
     <ClCompile Include="src\Room.cpp" />
     <ClCompile Include="src\SLGame.cpp" />
     <ClCompile Include="src\SLRender.cpp" />

@@ -138,8 +138,11 @@ void FuryRageRender::RenderCharacterSelect(const FuryRageGame& game) {
 // dump-space -> screen-space for a level (camera-relative)
 static void FuryDrawMapInst(FuryRageRender* r, PakLoader* pak, SpriteBatch* batch,
                             const FuryMapInst& it, f32 camX, f32 camY) {
-    const f32 drawX = (f32)it.left * kFuryScale - camX * (f32)kFuryTile * kFuryScale;
-    const f32 drawY = (f32)it.top  * kFuryScale - camY * (f32)kFuryTile * kFuryScale;
+    // the HUD of the level (the lives, the score) keeps its screen position
+    const f32 camXpx = it.fixed ? 0.0f : camX * (f32)kFuryTile;
+    const f32 camYpx = it.fixed ? 0.0f : camY * (f32)kFuryTile;
+    const f32 drawX = (f32)it.left * kFuryScale - camXpx * kFuryScale;
+    const f32 drawY = (f32)it.top  * kFuryScale - camYpx * kFuryScale;
     const f32 drawW = (f32)it.w * kFuryScale;
     const f32 drawH = (f32)it.h * kFuryScale;
     char name[32];
@@ -216,27 +219,34 @@ void FuryRageRender::RenderLevels(const FuryRageGame& game) {
     // ---- map (painter's order per layer, then kind rank) ----
     for (i32 i = 0; i < kFuryMapInstCount; ++i) {
         const FuryMapInst& it = kFuryMapInsts[i];
-        const f32 rl = (f32)it.left - camX * (f32)kFuryTile;
-        const f32 rt = (f32)it.top  - camY * (f32)kFuryTile;
+        // the HUD keeps its screen position - it is never culled by the world
+        const f32 camXpx = it.fixed ? 0.0f : camX * (f32)kFuryTile;
+        const f32 camYpx = it.fixed ? 0.0f : camY * (f32)kFuryTile;
+        const f32 rl = (f32)it.left - camXpx;
+        const f32 rt = (f32)it.top  - camYpx;
         const f32 rr = rl + (f32)it.w;
         const f32 rb = rt + (f32)it.h;
-        if (rr < -kFuryTile || rl > (f32)kFuryMapW * (f32)kFuryTile + kFuryTile) continue;
-        if (rb < -kFuryTile || rt > (f32)kFuryMapH * (f32)kFuryTile + kFuryTile) continue;
+        if (!it.fixed) {
+            if (rr < -kFuryTile || rl > (f32)kFuryMapW * (f32)kFuryTile + kFuryTile) continue;
+            if (rb < -kFuryTile || rt > (f32)kFuryMapH * (f32)kFuryTile + kFuryTile) continue;
+        } else if (rr < 0.0f || rl > 1920.0f || rb < 0.0f || rt > 1080.0f) {
+            continue;
+        }
         FuryDrawMapInst(this, m_pak, m_batch, it, camX, camY);
     }
 
     // ---- entities ----
     const FuryFighter& pl = game.GetPlayer();
     if (!pl.dead && pl.img >= 0) {
-        // the fighter and the chosen character's picture (the dump's child
-        // object "Active 6")
+        // the chosen character's picture (the dump's child object "Active 6")
+        // sits on layer 0 - behind the player object on layer 2
         const f32 fx = pl.x * (f32)kFuryTile;
         const f32 fy = pl.y * (f32)kFuryTile + 31.0f;   // the feet
+        if (pl.overlay >= 0)
+            FuryDrawOverlay(m_pak, m_batch, pl.overlay, fx, fy, camX, camY, 0xFFFFFFFF);
         FuryDrawFighter(m_pak, m_batch, pl.img,
                         pl.x * (f32)kFuryTile, pl.y * (f32)kFuryTile,
                         camX, camY, 0xFFFFFFFF);
-        if (pl.overlay >= 0)
-            FuryDrawOverlay(m_pak, m_batch, pl.overlay, fx, fy, camX, camY, 0xFFFFFFFF);
     }
     for (i32 i = 0; i < game.GetEnemyCount(); ++i) {
         const FuryFighter& e = game.GetEnemy(i);

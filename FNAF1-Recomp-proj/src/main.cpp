@@ -1179,10 +1179,26 @@ static bool g_pakFound[8] = { false };
 // The boot selector: runs on the bare core (text only, pak not loaded).
 // D-pad/stick select, A launch, B = default (FNAF1). Returns the chosen
 // module index; AppRegistry_Active() is left pointing at it.
+// v2.130: the boot selector — a centred list of the launchable games with
+// the pak names on the right, a highlight bar on the chosen row and the
+// button hints on their own line at the bottom. The rows are laid out by
+// the VISIBLE games (not by the registry slot), so the extra modules
+// (FNaF World, Fury's Rage, FIS2) never run into the hint line.
 static i32 RunBootSelector() {
     i32 cursor = 0;
     while (!g_pakFound[cursor]) ++cursor;   // start on the first presentable
     bool selDone = false;
+
+    // the launchable games, in registry order (the missing paks are skipped)
+    i32 rows[8]; i32 rowCount = 0;
+    for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi)
+        if (g_pakFound[mi]) rows[rowCount++] = mi;
+
+    const i32 kRowH = 44;        // the row pitch
+    const i32 kListTop = 200;    // the first row
+    const i32 kPanelX = 300, kPanelW = 680;
+    const i32 kNameX = 380, kPakX = 700;
+
     while (!selDone) {
         GameInput gi; UpdateInput(gi);
         if (gi.cameraUp)   { do { cursor = (cursor + AppRegistry_Count() - 1) % AppRegistry_Count(); } while (!g_pakFound[cursor]); }
@@ -1192,18 +1208,40 @@ static i32 RunBootSelector() {
 
         FrameBegin(D3DCOLOR_XRGB(0,0,0));
         {
-            g_text.DrawText(490, 120, "SELECT GAME", 0xFFFFFFFF);
-            for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi) {
-                if (!g_pakFound[mi]) continue;   // only launchable games
-                char row[80];
-                Snprintf(row, sizeof(row), "%s %s  (%s)",
-                         mi == cursor ? ">" : " ",
-                         AppRegistry_Get(mi)->Name(),
-                         AppRegistry_Get(mi)->PakName());
-                g_text.DrawText(500, 220 + mi * 60, row,
-                                mi == cursor ? 0xFF80FF80 : 0xFFB0B0B0);
+            // the panel behind the list
+            g_batch.DrawSolid((f32)kPanelX, 150.0f, (f32)kPanelW,
+                              (f32)(kRowH * rowCount + 60), 0xB014181C);
+            // the title
+            g_text.DrawTextCentered(84, "SELECT GAME", 0xFFFFFFFF);
+            g_text.DrawTextCentered(116, "FNAF1 Recomp  -  choose a game to launch",
+                                    0xFF7A8A96);
+            // the separator under the title
+            {
+                char line[96];
+                int n = 0;
+                while (n < (int)sizeof(line) - 1) line[n++] = '-';
+                line[n] = 0;
+                g_text.DrawTextCentered(146, line, 0xFF3A4A54);
             }
-            g_text.DrawText(430, 620, "D-pad select   A launch   B default (FNAF1)", 0xFF909090);
+            // the rows
+            for (i32 r = 0; r < rowCount; ++r) {
+                const i32 mi = rows[r];
+                const bool sel = (mi == cursor);
+                const i32 y = kListTop + r * kRowH;
+                if (sel)
+                    g_batch.DrawSolid((f32)(kPanelX + 16), (f32)(y - 8),
+                                      (f32)(kPanelW - 32), (f32)(kRowH - 6),
+                                      0x7060A060);
+                char name[64];
+                Snprintf(name, sizeof(name), "%s%s",
+                         sel ? "> " : "  ", AppRegistry_Get(mi)->Name());
+                g_text.DrawText(kNameX, y, name, sel ? 0xFF9CFF9C : 0xFFD0D0D0);
+                g_text.DrawText(kPakX, y, AppRegistry_Get(mi)->PakName(),
+                                sel ? 0xFF7CB87C : 0xFF6A6A6A);
+            }
+            // the hints — their own line, below the panel
+            g_text.DrawTextCentered(620,
+                "D-pad: select     A: launch     B: FNAF1 (default)", 0xFF909090);
         }
         FrameEnd();
     }
@@ -1235,7 +1273,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.111 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.131 built %s %s ===\n", __DATE__, __TIME__);
     // v2.111: dev.ini (next to the XEX) — read once, before anything else.
     // A missing file or a missing key leaves every flag at its default.
     ReadDevIni();
@@ -1254,7 +1292,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.111 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.131 (%s %s)", __DATE__, __TIME__);
     // v2.111: what dev.ini actually changed (-1 = the default was kept)
     if (g_devIniLoaded) {
         g_debugConsole.Print("dev.ini: console=%d devmenu=%d god=%d analog=%d hold=%d browser=%d tuner=%d",
@@ -1262,14 +1300,9 @@ int main(int argc, char* argv[]){
                              g_devIni.analog, g_devIni.holdlights,
                              g_devIni.browser, g_devIni.tuner);
     }
-    // v2.97: DECISIVE SMC diagnostic — right here the ring cycles
-    // GREEN -> ORANGE -> RED -> dark using the exact Lightshow Sleep()
-    // pattern. If the ring shows this, HalSendSMCMessage works in this
-    // XEX and any missing in-game effect is game-logic timing (the debug
-    // console reports every real write from now on). If it does NOT, the
-    // SMC path itself is dead in this XEX — no game hook can fix that.
-    rol::SetDebugSink(RolDebugSink);
-    rol::RoLSelfTest();
+    // v2.97: the SMC Ring of Light is initialised when FNAF1 actually
+    // starts (see the module branch in the main loop) — the boot selector
+    // and the other modules never touch the ring.
     // v2.28: the app shell addresses the game through the AppModule contract
     // v2.29: SOFT pak scan — probe every module's bundle at the canonical
     // location, report each, and park the active module on one that exists
@@ -1529,6 +1562,24 @@ int main(int argc, char* argv[]){
                 continue;
             }
             // FNAF1 was chosen in the selector: fall through to its flow
+        }
+
+        // v2.130: the SMC Ring of Light starts with FNAF1 — the DECISIVE
+        // diagnostic (the ring cycles GREEN -> ORANGE -> RED -> dark with
+        // the exact Lightshow Sleep() pattern). It runs HERE, after the
+        // boot selector and the pak load, so the selector itself stays
+        // untouched by the LED test and the other modules never drive the
+        // ring. If the ring shows this, HalSendSMCMessage works in this XEX
+        // and any missing in-game effect is game-logic timing (the debug
+        // console reports every real write from now on). If it does NOT,
+        // the SMC path itself is dead in this XEX.
+        {
+            static bool s_rolStarted = false;
+            if (!s_rolStarted) {
+                s_rolStarted = true;
+                rol::SetDebugSink(RolDebugSink);
+                rol::RoLSelfTest();
+            }
         }
 
         // ---------------- PERSPECTIVE TUNER (v2.7.11) ----------------
