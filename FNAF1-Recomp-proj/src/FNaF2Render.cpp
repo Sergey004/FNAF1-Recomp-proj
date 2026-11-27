@@ -523,10 +523,6 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
         }
     }
 
-    // feed-switch interference burst
-    if (sinceSwitch < 0.12f)
-        Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
-
     // v2.114: the NEW FOXY in the camera feeds. The dump's "Active 20"
     // (objInfo 149) is his sprite: its instance point sits at the world
     // origin with the hotspot (-637,0), so the art starts at x=637 in the
@@ -563,6 +559,18 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
                       (f32)kCellH[idx], pan, 0xFFFFFFFF);
         }
     }
+
+    // ---- layer 2: the static bursts. The dump's "static" object (objInfo
+    // 8) is on layer 2 — UNDER the map layer (3), so the map, the plate and
+    // the bezel are drawn OVER it. The feed-switch burst and the movement
+    // burst (a character moved in the watched room -> "your view".
+    // alterable[1] := 20+Random(100) -> the static's coefficient) both
+    // use the dump's fullscreen static cells (332/334/328-331 @ 59.4 fps).
+    if (sinceSwitch < 0.12f)
+        Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+    if (game.GetMoveStatic() > 0.0f)
+        Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f,
+             (u32)((int)(game.GetMoveStatic() * 255.0f) << 24) | 0x00FFFFFFu);
 
     // ---- the MAP (layer 3, screen-fixed): panel img_2 (416x312) at its
     // instance (727,499) + 12 buttons img_16/img_17 (60x40) at their
@@ -602,6 +610,29 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
             DrawNat(kLabel[i].img, kLabel[i].x, kLabel[i].y, 0xFFFFFFFF);
     }
 
+    // the dump's "Active 2" (img 20) is a SMALL noise patch at (711,545) in
+    // the camera view (frame 3, layer 3: shown while "viewing" > 0) — not a
+    // wash. It sits BEFORE the name plate and the bezel in the layer order.
+    Draw(20, 711.0f, 545.0f, 31.0f, 25.0f, 0xFFFFFFFF);
+
+    // v2.132: the dump's camera name plate — "Active 14" (objInfo 75) sits
+    // above the map and its animation follows the "viewing" counter (the
+    // dump's groups 17..28: cam 1 -> anim 0, cam 2 -> anim 12 ... cam 12 ->
+    // anim 24). The port never drew it, so the monitor had no "CAM 07"
+    // caption over the map.
+    {
+        static const int kPlate[12] = {
+            46, 47, 48, 49, 52, 53, 54, 55, 56, 57, 60, 61
+        };
+        DrawNat(kPlate[v - 1], 553.0f, 307.0f, 0xFFFFFFFF);
+    }
+
+    // v2.132: "Active 15" (objInfo 76) — the frame around the feed, shown
+    // while the monitor is up (the dump's groups 2/3 hide it with the map
+    // when the monitor is down). It is the dump's own bezel art (img 44,
+    // 1024x768, mostly transparent).
+    DrawNat(44, 0.0f, 0.0f, 0xFFFFFFFF);
+
     // CAM 11 (Prize Corner): the MUSIC BOX at its dump spots — the button
     // img_251 (357,566), the "Wind Up Music Box" plate img_472 (364,577)
     // and the "click & hold" plate img_486 (357,635) — all SHOWN only while
@@ -626,19 +657,6 @@ void FNaF2Render::RenderMonitor(const FNaF2Game& game, f32 time, f32 sinceSwitch
             DrawNat(angry ? 490 : 308, 884.0f, 449.0f, 0xFFFFFFFF);
         }
     }
-
-    // v2.75 BUG FIX: the movement static burst (dump groups 333-343: a
-    // character moved in the watched room -> "your view".alterable[1] :=
-    // 20+Random(100) -> the "static" object's coefficient changes) used to
-    // draw img 20 — a 31x25 NOISE TILE — stretched over the whole
-    // 1024x768 feed (a 33x blur). The dump's burst is the STATIC object
-    // itself (imgs 332/334/328-331 @ 59.4 fps, fullscreen).
-    if (game.GetMoveStatic() > 0.0f)
-        Draw(StaticFrame(time), 0.0f, 0.0f, 1024.0f, 768.0f,
-             (u32)((int)(game.GetMoveStatic() * 255.0f) << 24) | 0x00FFFFFFu);
-    // the dump's "Active 2" (img 20) is a SMALL noise patch at (710,545) in
-    // the camera view (frame 3: shown while "viewing" > 0) — not a wash.
-    Draw(20, 710.0f, 545.0f, 31.0f, 25.0f, 0xFFFFFFFF);
 
     // v2.66: the FNAF2 monitor shows no text in the original — no cam
     // label, no clock, no battery (the map's own buttons carry the state;

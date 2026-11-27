@@ -3,6 +3,23 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.132 — FNAF2: the camera view gets its caption and its bezel
+
+- **The monitor shows the camera's name.** The dump's frame 3 carries
+  "Active 14" (objInfo 75) above the map: its animation follows the
+  "viewing" counter (the dump's groups 17..28 — cam 1 -> anim 0, cam 2
+  -> anim 12 ... cam 12 -> anim 24), so it is the "CAM 01".."CAM 12"
+  caption (images 46/47/48/49/52/53/54/55/56/57/60/61) at the dump's
+  point (553, 307). The port never drew it, so the monitor had no
+  caption at all.
+- **The feed gets the dump's bezel.** "Active 15" (objInfo 76, image 44,
+  1024x768) is the frame around the feed, shown together with the map
+  while the monitor is up (the dump's groups 2/3 hide it with the map).
+- **The layers are in the dump's order.** The static bursts (the
+  feed-switch and the movement static) sit on layer 2 — UNDER the map
+  layer — and the small noise patch "Active 2" (image 20) comes before
+  the caption and the bezel in the layer order.
+
 ## v2.131 — a boot selector that fits, and the Ring of Light starts with FNAF1
 
 - **The boot selector is a proper list now.** The rows are laid out by
