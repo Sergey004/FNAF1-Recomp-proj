@@ -39,6 +39,7 @@ public:
     FNaF1Module();
 
     virtual const char* Name()   const { return "FNAF1"; }
+    virtual const char* Title() const { return "FIVE NIGHTS AT FREDDY'S"; }
     virtual const char* PakName() const { return "fnaf1.pak"; }
 
     virtual bool Load(AppServices& services);
@@ -69,6 +70,7 @@ public:
                     m_prevLB(false), m_prevRB(false) {}
 
     virtual const char* Name()   const { return "FNAF2"; }
+    virtual const char* Title() const { return "FIVE NIGHTS AT FREDDY'S 2"; }
     virtual const char* PakName() const { return "fnaf2.pak"; }
 
     virtual bool Load(AppServices& services);
@@ -113,6 +115,7 @@ public:
                     m_prevAudioScreen(-2), m_prevX(false) {}
 
     virtual const char* Name()   const { return "FNAF3"; }
+    virtual const char* Title() const { return "FIVE NIGHTS AT FREDDY'S 3"; }
     virtual const char* PakName() const { return "fnaf3.pak"; }
 
     virtual bool Load(AppServices& services);
@@ -149,6 +152,7 @@ public:
                     m_prevAudioScreen(-2) {}
 
     virtual const char* Name()   const { return "FNAF4"; }
+    virtual const char* Title() const { return "FIVE NIGHTS AT FREDDY'S 4"; }
     virtual const char* PakName() const { return "fnaf4.pak"; }
 
     virtual bool Load(AppServices& services);
@@ -182,6 +186,7 @@ public:
                  m_prevScreen(-2), m_prevX(false), m_xHoldT(0.0f) {}
 
     virtual const char* Name()   const { return "SL"; }
+    virtual const char* Title() const { return "SISTER LOCATION"; }
     virtual const char* PakName() const { return "sisterlocation.pak"; }
 
     virtual bool Load(AppServices& services);

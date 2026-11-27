@@ -21,6 +21,13 @@ public:
                         m_prevScreen(-2), m_prevX(false) {}
 
     virtual const char* Name()   const { return "FNAFWORLD"; }
+    virtual const char* Title() const { return "FNAF WORLD"; }
+    // v2.134: the overworld and the flow are in, the battles are still
+    // the labeled placeholder — the core draws this as 50%.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 1, 2, "the battles are placeholders" };
+        return r;
+    }
     virtual const char* PakName() const { return "fnafworld.pak"; }
 
     virtual bool Load(AppServices& services);

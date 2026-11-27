@@ -1179,25 +1179,97 @@ static bool g_pakFound[8] = { false };
 // The boot selector: runs on the bare core (text only, pak not loaded).
 // D-pad/stick select, A launch, B = default (FNAF1). Returns the chosen
 // module index; AppRegistry_Active() is left pointing at it.
-// v2.130: the boot selector — a centred list of the launchable games with
-// the pak names on the right, a highlight bar on the chosen row and the
-// button hints on their own line at the bottom. The rows are laid out by
-// the VISIBLE games (not by the registry slot), so the extra modules
-// (FNaF World, Fury's Rage, FIS2) never run into the hint line.
+// ============================================================
+// v2.134: the boot selector — the pre-launch "which part of the game"
+// menu. Everything it shows comes from the modules themselves: the full
+// title, the bundle and the module's own readiness count. The core only
+// draws it.
+// ============================================================
+
+// The accent colour per game (the row, the marker and the right panel).
+static u32 BootAccent(i32 index) {
+    switch (index) {
+        case 0:  return 0xFFE0A050;   // FNAF1  - amber
+        case 1:  return 0xFF60A0F0;   // FNAF2  - blue
+        case 2:  return 0xFF70D060;   // FNAF3  - green
+        case 3:  return 0xFFE06060;   // FNAF4  - red
+        case 4:  return 0xFFE080C0;   // SL     - pink
+        case 5:  return 0xFF50C0C0;   // WORLD  - teal
+        case 6:  return 0xFFF08040;   // FURY   - orange
+        case 7:  return 0xFF50C8E0;   // FIS2   - cyan
+        default: return 0xFFB0B0B0;
+    }
+}
+
+// The pak probe for the selector: the header only (the 'FNAF' magic and
+// the texture count) — no full load, no memory. A pak that parses is
+// READY, a pak that is only there is AVAILABLE.
+struct BootPakInfo {
+    bool  present;
+    bool  valid;
+    u32   bytes;          // the file size (the biggest pak is 1.5 GB)
+};
+static BootPakInfo ProbePak(const char* pakName) {
+    BootPakInfo info;
+    info.present = false;
+    info.valid = false;
+    info.bytes = 0;
+    char path[128];
+    Snprintf(path, sizeof(path), "game:\\%s", pakName);
+    FILE* f = fopen(path, "rb");
+    if (!f) return info;
+    info.present = true;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    unsigned char h[12];
+    if (sz > 12 && fread(h, 1, 12, f) == 12) {
+        const unsigned int magic = ((unsigned int)h[0] << 24) | ((unsigned int)h[1] << 16) |
+                                   ((unsigned int)h[2] << 8) | (unsigned int)h[3];
+        const unsigned int numTex = ((unsigned int)h[8] << 24) | ((unsigned int)h[9] << 16) |
+                                   ((unsigned int)h[10] << 8) | (unsigned int)h[11];
+        if (magic == 0x464E4146u && numTex > 0) info.valid = true;   // 'FNAF'
+    }
+    fclose(f);
+    if (sz > 0) info.bytes = (u32)sz;
+    return info;
+}
+
+// "241.9 MB" — the XDK's CRT printf has no float support, so the size is
+// formatted by hand.
+static void FormatPakSize(u32 bytes, char* out, int outLen) {
+    const u32 mb = bytes / (1024u * 1024u);
+    const u32 rest = (bytes % (1024u * 1024u)) * 10u / (1024u * 1024u);
+    if (mb >= 1024u) {
+        const u32 gb = mb / 1024u;
+        const u32 frac = (mb % 1024u) * 10u / 1024u;
+        Snprintf(out, outLen, "%u.%u GB", gb, frac);
+    } else {
+        Snprintf(out, outLen, "%u.%u MB", mb, rest);
+    }
+}
+
 static i32 RunBootSelector() {
     i32 cursor = 0;
     while (!g_pakFound[cursor]) ++cursor;   // start on the first presentable
     bool selDone = false;
 
-    // the launchable games, in registry order (the missing paks are skipped)
+    // only the games whose bundle is there — a missing one is not listed
     i32 rows[8]; i32 rowCount = 0;
     for (i32 mi = 0; mi < AppRegistry_Count() && mi < 8; ++mi)
         if (g_pakFound[mi]) rows[rowCount++] = mi;
+    // the bundle probes (the header only) — once, not per frame
+    BootPakInfo paks[8];
+    for (i32 i = 0; i < 8; ++i) {
+        paks[i].present = false; paks[i].valid = false; paks[i].bytes = 0;
+        if (i < rowCount) paks[i] = ProbePak(AppRegistry_Get(rows[i])->PakName());
+    }
 
-    const i32 kRowH = 44;        // the row pitch
-    const i32 kListTop = 200;    // the first row
-    const i32 kPanelX = 300, kPanelW = 680;
-    const i32 kNameX = 380, kPakX = 700;
+    const i32 kRowH = 46;        // the row pitch
+    const i32 kListTop = 186;    // the first row
+    const i32 kListX = 96, kListW = 610;
+    const i32 kMarkX = 122, kNameX = 156;
+    const i32 kInfoX = 760, kInfoW = 424;
 
     while (!selDone) {
         GameInput gi; UpdateInput(gi);
@@ -1208,40 +1280,75 @@ static i32 RunBootSelector() {
 
         FrameBegin(D3DCOLOR_XRGB(0,0,0));
         {
-            // the panel behind the list
-            g_batch.DrawSolid((f32)kPanelX, 150.0f, (f32)kPanelW,
-                              (f32)(kRowH * rowCount + 60), 0xB014181C);
-            // the title
-            g_text.DrawTextCentered(84, "SELECT GAME", 0xFFFFFFFF);
-            g_text.DrawTextCentered(116, "FNAF1 Recomp  -  choose a game to launch",
-                                    0xFF7A8A96);
-            // the separator under the title
-            {
-                char line[96];
-                int n = 0;
-                while (n < (int)sizeof(line) - 1) line[n++] = '-';
-                line[n] = 0;
-                g_text.DrawTextCentered(146, line, 0xFF3A4A54);
-            }
-            // the rows
+            // the header
+            g_text.DrawTextCentered(56, "FNAF1 RECOMP", 0xFFFFFFFF);
+            g_text.DrawTextCentered(86, "one shell, many parts", 0xFF7A8A96);
+
+            // the list panel
+            g_batch.DrawSolid((f32)kListX, 132.0f, (f32)kListW,
+                              (f32)(kRowH * rowCount + 44), 0x9014181C);
+            // the info panel
+            g_batch.DrawSolid((f32)kInfoX, 132.0f, (f32)kInfoW,
+                              (f32)(kRowH * rowCount + 44), 0x9014181C);
+
+            // the rows: the chosen one in its accent colour, the rest neutral
             for (i32 r = 0; r < rowCount; ++r) {
                 const i32 mi = rows[r];
                 const bool sel = (mi == cursor);
                 const i32 y = kListTop + r * kRowH;
-                if (sel)
-                    g_batch.DrawSolid((f32)(kPanelX + 16), (f32)(y - 8),
-                                      (f32)(kPanelW - 32), (f32)(kRowH - 6),
-                                      0x7060A060);
-                char name[64];
-                Snprintf(name, sizeof(name), "%s%s",
-                         sel ? "> " : "  ", AppRegistry_Get(mi)->Name());
-                g_text.DrawText(kNameX, y, name, sel ? 0xFF9CFF9C : 0xFFD0D0D0);
-                g_text.DrawText(kPakX, y, AppRegistry_Get(mi)->PakName(),
-                                sel ? 0xFF7CB87C : 0xFF6A6A6A);
+                if (sel) {
+                    g_batch.DrawSolid((f32)(kListX + 10), (f32)(y - 10),
+                                      (f32)(kListW - 20), (f32)(kRowH - 6),
+                                      0x50203040);
+                    g_batch.DrawSolid((f32)(kMarkX - 12), (f32)(y - 8),
+                                      4.0f, (f32)(kRowH - 10), BootAccent(mi));
+                }
+                g_text.DrawText(kMarkX, y, sel ? ">" : " ", sel ? BootAccent(mi) : 0xFF505050);
+                g_text.DrawText(kNameX, y, AppRegistry_Get(mi)->Title(),
+                                sel ? BootAccent(mi) : 0xFFC8C8C8);
             }
-            // the hints — their own line, below the panel
-            g_text.DrawTextCentered(620,
-                "D-pad: select     A: launch     B: FNAF1 (default)", 0xFF909090);
+
+            // the right panel — everything about the chosen game
+            {
+                AppModule* m = AppRegistry_Get(cursor);
+                const u32 accent = BootAccent(cursor);
+                g_text.DrawText(kInfoX + 28, kListTop, m->Title(), accent);
+                g_text.DrawText(kInfoX + 28, kListTop + 44, "bundle", 0xFF7A8A96);
+                g_text.DrawText(kInfoX + 140, kListTop + 44, m->PakName(), 0xFFC8C8C8);
+
+                // the probe was taken once when the menu opened
+                BootPakInfo pak;
+                pak.present = true; pak.valid = false; pak.bytes = 0;
+                for (i32 i = 0; i < rowCount; ++i)
+                    if (rows[i] == cursor) pak = paks[i];
+                char size[32];
+                FormatPakSize(pak.bytes, size, (int)sizeof(size));
+                g_text.DrawText(kInfoX + 28, kListTop + 72, "size", 0xFF7A8A96);
+                g_text.DrawText(kInfoX + 140, kListTop + 72, size, 0xFFC8C8C8);
+
+                // the status: the bundle is there and its header parses
+                g_text.DrawText(kInfoX + 28, kListTop + 112,
+                                pak.valid ? "READY" : "AVAILABLE",
+                                pak.valid ? accent : 0xFFC8A050);
+
+                // the readiness — the module's own count, the core computes
+                const AppModule::Readiness rd = m->GetReadiness();
+                const int pct = (rd.total > 0) ? (rd.done * 100 / rd.total) : 0;
+                g_text.DrawText(kInfoX + 28, kListTop + 154, "readiness", 0xFF7A8A96);
+                const f32 barX = (f32)(kInfoX + 28), barY = (f32)(kListTop + 182);
+                const f32 barW = 360.0f, barH = 12.0f;
+                g_batch.DrawSolid(barX, barY, barW, barH, 0x70202830);
+                g_batch.DrawSolid(barX, barY, barW * (f32)pct / 100.0f, barH, accent);
+                char pctText[32];
+                Snprintf(pctText, sizeof(pctText), "%d%%", pct);
+                g_text.DrawText(kInfoX + 28, kListTop + 204, pctText, accent);
+                if (rd.note)
+                    g_text.DrawText(kInfoX + 92, kListTop + 204, rd.note, 0xFF909090);
+            }
+
+            // the footer — the controller in one line
+            g_text.DrawTextCentered(628,
+                "D-PAD  move      A  launch      B  default (FNAF1)", 0xFF909090);
         }
         FrameEnd();
     }

@@ -86,6 +86,29 @@ public:
     // eager one. FNAF4 needs it (373 MB pak + all textures eager =
     // out of the 512 MB UMA pool on real HW), SL will too (1.5 GB).
     virtual bool PrefersStreaming() const { return false; }
+
+    // -----------------------------------------------------------------
+    // v2.134: the boot selector — the pre-launch "which part of the game"
+    // menu. The module owns what the menu shows about it; the core only
+    // draws it.
+    // -----------------------------------------------------------------
+
+    // The full title for the menu ("FIVE NIGHTS AT FREDDY'S 2"). The short
+    // Name() stays the registry key.
+    virtual const char* Title() const { return Name(); }
+
+    // How much of this game is really in: the module's own count of the
+    // steps it has finished and the steps it planned. The core computes
+    // the percentage from these two numbers — it never invents one.
+    struct Readiness {
+        int         done;    // the finished steps
+        int         total;   // the planned steps
+        const char* note;    // one short line: what is still open
+    };
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 1, 1, 0 };
+        return r;
+    }
 };
 
 } // namespace fnaf

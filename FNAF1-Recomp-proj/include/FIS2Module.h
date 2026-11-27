@@ -20,6 +20,12 @@ public:
     FIS2Module() : m_wantsExit(false), m_time(0.0f) {}
 
     virtual const char* Name()   const { return "FIS2"; }
+    virtual const char* Title() const { return "FREDDY IN SPACE 2"; }
+    // v2.134: the flow is in, the shooter level is "step 1" of two.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 1, 2, "the level is step 1 of 2" };
+        return r;
+    }
     virtual const char* PakName() const { return "fis2.pak"; }
 
     virtual bool Load(AppServices& services);

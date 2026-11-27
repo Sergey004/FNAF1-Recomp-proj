@@ -3,6 +3,24 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.134 — the boot selector: a parts menu with a live status panel
+
+- **The pre-launch menu is now a parts picker.** The header is
+  "FNAF1 RECOMP" with a short subtitle, the list holds the full titles
+  of the games whose bundle is present (a missing one is simply not
+  listed), the chosen row is in its own accent colour with the ">"
+  marker and the rest stay neutral, and the controller hints are one
+  line at the bottom.
+- **The right panel is dynamic.** It shows the game's full title, the
+  bundle (the pak name and its real size on disk) and the status:
+  READY when the pak's header parses (the 'FNAF' magic and a non-empty
+  texture table), AVAILABLE when the file is only there. The readiness
+  bar is computed from the module's own count of the steps it has
+  finished and the steps it planned — the core never invents a
+  percentage. FNaF World reports "the battles are placeholders", Fury's
+  Rage and FIS2 "the level is step 1 of 2"; the finished games report
+  100 %.
+
 ## v2.133 — FNAF2: the monitor flips up like it should
 
 - **The monitor raise/lower animation.** The dump's frame 3 carries
