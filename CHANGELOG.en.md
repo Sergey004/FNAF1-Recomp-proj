@@ -20,6 +20,14 @@ comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
   percentage. FNaF World reports "the battles are placeholders", Fury's
   Rage and FIS2 "the level is step 1 of 2"; the finished games report
   100 %.
+  percentage. The numbers are the real state of each game: FNAF 1 is
+  100 % (the night flow, the custom night, the saves and the official
+  achievements — all in), FNAF 2/3/4 and Sister Location are 90 % with
+  their labeled gaps named (the Mangle crawl visual and the add-on
+  task, the rect collision kit and the arcade picks, the talk box
+  without text, the keypad code / 8-bit platformer / Baby's Room
+  task), FNAF World and the two new modules are 70 % (the battles are
+  placeholders / the level is step 1 of 2).
 
 ## v2.133 — FNAF2: the monitor flips up like it should
 

@@ -40,6 +40,15 @@ public:
 
     virtual const char* Name()   const { return "FNAF1"; }
     virtual const char* Title() const { return "FIVE NIGHTS AT FREDDY'S"; }
+<<<<<<< HEAD
+=======
+    // v2.134: the parts are the game's own: the night flow, the custom
+    // night (frame 12), the saves and the official achievements - all in.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 10, 10, 0 };
+        return r;
+    }
+>>>>>>> d3d6b09 (The boot selector becomes a parts menu with a live status panel (v2.134))
     virtual const char* PakName() const { return "fnaf1.pak"; }
 
     virtual bool Load(AppServices& services);
@@ -71,6 +80,16 @@ public:
 
     virtual const char* Name()   const { return "FNAF2"; }
     virtual const char* Title() const { return "FIVE NIGHTS AT FREDDY'S 2"; }
+<<<<<<< HEAD
+=======
+    // v2.134: the flow, the endings and the 8-bit chain are in; the
+    // Mangle office crawl is a visual stub and the add-on achievements
+    // still wait for their one-time .xlast job.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 9, 10, "Mangle visual + add-on task" };
+        return r;
+    }
+>>>>>>> d3d6b09 (The boot selector becomes a parts menu with a live status panel (v2.134))
     virtual const char* PakName() const { return "fnaf2.pak"; }
 
     virtual bool Load(AppServices& services);
@@ -116,6 +135,16 @@ public:
 
     virtual const char* Name()   const { return "FNAF3"; }
     virtual const char* Title() const { return "FIVE NIGHTS AT FREDDY'S 3"; }
+<<<<<<< HEAD
+=======
+    // v2.134: everything is in except the labeled deviations - the
+    // pixel-perfect backdrop collision became the rect kit and the
+    // arcade minigame picks are approximations.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 9, 10, "rect kit + arcade picks" };
+        return r;
+    }
+>>>>>>> d3d6b09 (The boot selector becomes a parts menu with a live status panel (v2.134))
     virtual const char* PakName() const { return "fnaf3.pak"; }
 
     virtual bool Load(AppServices& services);
@@ -153,6 +182,16 @@ public:
 
     virtual const char* Name()   const { return "FNAF4"; }
     virtual const char* Title() const { return "FIVE NIGHTS AT FREDDY'S 4"; }
+<<<<<<< HEAD
+=======
+    // v2.134: the flow, the extras and the house cutscenes are in; the
+    // dialogue letters did not survive the dump (the talk box renders
+    // without text) and the cutscene scripts are a timed walk.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 9, 10, "no talk-box text" };
+        return r;
+    }
+>>>>>>> d3d6b09 (The boot selector becomes a parts menu with a live status panel (v2.134))
     virtual const char* PakName() const { return "fnaf4.pak"; }
 
     virtual bool Load(AppServices& services);
@@ -187,6 +226,16 @@ public:
 
     virtual const char* Name()   const { return "SL"; }
     virtual const char* Title() const { return "SISTER LOCATION"; }
+<<<<<<< HEAD
+=======
+    // v2.134: the flow and the finale are in; the keypad code, the 8-bit
+    // Baby platformer, the Baby's Room task and the custom-office art
+    // are still open.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 9, 10, "keypad, 8-bit, Baby task" };
+        return r;
+    }
+>>>>>>> d3d6b09 (The boot selector becomes a parts menu with a live status panel (v2.134))
     virtual const char* PakName() const { return "sisterlocation.pak"; }
 
     virtual bool Load(AppServices& services);

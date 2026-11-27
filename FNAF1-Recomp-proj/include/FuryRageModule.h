@@ -21,10 +21,17 @@ public:
 
     virtual const char* Name()   const { return "FURYS_RAGE"; }
     virtual const char* Title() const { return "FURY'S RAGE"; }
+<<<<<<< HEAD
     // v2.134: the flow (title, select, endings) is in, the beat-'em-up
     // level is "step 1" of the two the dump asks for.
     virtual Readiness GetReadiness() const {
         Readiness r = { 1, 2, "the level is step 1 of 2" };
+=======
+    // v2.134: the title, the character select and the endings are in; the
+    // beat-'em-up level is "step 1" of the two the dump asks for.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 7, 10, "the level is step 1 of 2" };
+>>>>>>> d3d6b09 (The boot selector becomes a parts menu with a live status panel (v2.134))
         return r;
     }
     virtual const char* PakName() const { return "furysrage.pak"; }

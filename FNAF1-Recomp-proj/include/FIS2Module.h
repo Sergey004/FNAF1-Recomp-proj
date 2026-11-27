@@ -21,9 +21,16 @@ public:
 
     virtual const char* Name()   const { return "FIS2"; }
     virtual const char* Title() const { return "FREDDY IN SPACE 2"; }
+<<<<<<< HEAD
     // v2.134: the flow is in, the shooter level is "step 1" of two.
     virtual Readiness GetReadiness() const {
         Readiness r = { 1, 2, "the level is step 1 of 2" };
+=======
+    // v2.134: the title, the stage select and the endings are in; the
+    // shooter level is "step 1" of two.
+    virtual Readiness GetReadiness() const {
+        Readiness r = { 7, 10, "the level is step 1 of 2" };
+>>>>>>> d3d6b09 (The boot selector becomes a parts menu with a live status panel (v2.134))
         return r;
     }
     virtual const char* PakName() const { return "fis2.pak"; }

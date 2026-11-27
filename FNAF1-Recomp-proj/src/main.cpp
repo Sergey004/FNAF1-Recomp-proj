@@ -1342,8 +1342,14 @@ static i32 RunBootSelector() {
                 char pctText[32];
                 Snprintf(pctText, sizeof(pctText), "%d%%", pct);
                 g_text.DrawText(kInfoX + 28, kListTop + 204, pctText, accent);
+<<<<<<< HEAD
                 if (rd.note)
                     g_text.DrawText(kInfoX + 92, kListTop + 204, rd.note, 0xFF909090);
+=======
+                // what is still open — its own line under the bar
+                if (rd.note)
+                    g_text.DrawText(kInfoX + 28, kListTop + 232, rd.note, 0xFF909090);
+>>>>>>> d3d6b09 (The boot selector becomes a parts menu with a live status panel (v2.134))
             }
 
             // the footer — the controller in one line
@@ -1380,7 +1386,7 @@ int main(int argc, char* argv[]){
     // v2.7.4: FIRST line of the log -- proves which sources are actually in
     // the running XEX (settles "for VS it's as if the files didn't change":
     // check this line or run APPLY_PATCH.bat from the minipatch)
-    printf("=== FNAF1-Recomp v2.131 built %s %s ===\n", __DATE__, __TIME__);
+    printf("=== FNAF1-Recomp v2.134 built %s %s ===\n", __DATE__, __TIME__);
     // v2.111: dev.ini (next to the XEX) — read once, before anything else.
     // A missing file or a missing key leaves every flag at its default.
     ReadDevIni();
@@ -1399,7 +1405,7 @@ int main(int argc, char* argv[]){
     if(!InitD3D()){ printf("FATAL: InitD3D failed\n"); return 1; }
     // v2.7.4: same version banner on the on-screen debug console (bottom of
     // the screen) -- visible without a debugger attached
-    g_debugConsole.Print("FNAF1-Recomp v2.131 (%s %s)", __DATE__, __TIME__);
+    g_debugConsole.Print("FNAF1-Recomp v2.134 (%s %s)", __DATE__, __TIME__);
     // v2.111: what dev.ini actually changed (-1 = the default was kept)
     if (g_devIniLoaded) {
         g_debugConsole.Print("dev.ini: console=%d devmenu=%d god=%d analog=%d hold=%d browser=%d tuner=%d",
