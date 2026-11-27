@@ -233,6 +233,12 @@ public:
     i32    GetMaskState()       const { return m_maskState; }
     f32    GetMaskT()           const { return m_maskT; }
     bool   IsMasked()           const { return m_maskState == 2; }
+
+    // v2.133: the monitor flip — the dump's "flip animation" (objInfo 97,
+    // raised) and "flip down" (objInfo 98, lowered) objects. State: 0 idle,
+    // 1 raising, 2 lowering; the timer drives the cell.
+    i32    GetFlipState()       const { return m_flipState; }
+    f32    GetFlipT()           const { return m_flipT; }
     f32    GetMusicBox()        const { return m_musicGauge; }   // 0..2000
     i32    GetViewing()         const { return m_viewing; }
     i32    GetOptionSelected()  const { return m_optionSelected; }
@@ -351,6 +357,8 @@ private:
     i32    m_viewing;
     i32    m_maskState;        // 0 off,1 lowering,2 on,3 raising
     f32    m_maskT;
+    i32    m_flipState;         // v2.133: 0 idle, 1 raising, 2 lowering
+    f32    m_flipT;
     f32    m_musicGauge;       // 0..2000
     f32    m_musicDrainAcc;
     bool   m_musicDanger;      // gauge<=400 && puppet left cam 11

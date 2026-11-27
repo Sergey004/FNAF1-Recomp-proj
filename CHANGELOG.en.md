@@ -3,6 +3,21 @@
 Notes on what is done and what is left. Versions match the code
 comment tags (`v2.8`, `v2.14`, …, `v2.32`) and the historical notes.
 
+## v2.133 — FNAF2: the monitor flips up like it should
+
+- **The monitor raise/lower animation.** The dump's frame 3 carries
+  "flip animation" (objInfo 97, 11 fullscreen cells 114/97/116/99/103/
+  104/105/106/110/112/113 at speed 90) and "flip down" (objInfo 98, the
+  same cells in reverse at speed 50). The dump CREATES the flip object
+  when the monitor button is pressed (g147), and only sets "viewing" to
+  9 when the animation is over (g149); lowering creates "flip down" and
+  clears "viewing" at once (g148). The port switched the feed
+  instantly — the monitor just appeared. Now the office plays the flip
+  and the feed arrives when the panel is up.
+- **The monitor sounds were swapped.** The dump plays
+  STEREO_CASSETTE__90097704 when raising and ...701 when lowering; the
+  port had them the other way round.
+
 ## v2.132 — FNAF2: the camera view gets its caption and its bezel
 
 - **The monitor shows the camera's name.** The dump's frame 3 carries

@@ -466,6 +466,32 @@ void FNaF2Render::RenderOffice(const FNaF2Game& game, f32 time, f32 pan, i32 sce
         }
     }
 
+    // v2.133: the MONITOR FLIP — the dump's "flip animation" (objInfo 97,
+    // raised) and "flip down" (objInfo 98) objects, both fullscreen
+    // 1024x768. The dump CREATES the flip object when the monitor button is
+    // pressed (g147/g148), so the animation plays over the office while
+    // the feed is not up yet. It sits on layer 0, AFTER the office art but
+    // BEFORE the HUD layer (3).
+    {
+        const i32 fs = game.GetFlipState();
+        if (fs != 0) {
+            static const int kFlipUp[11] = {
+                114, 97, 116, 99, 103, 104, 105, 106, 110, 112, 113
+            };
+            static const int kFlipDown[11] = {
+                113, 112, 110, 106, 105, 104, 103, 99, 116, 97, 114
+            };
+            // the dump's cell speeds: "flip animation" 90, "flip down" 50
+            const f32 period = (fs == 1) ? (100.0f / 90.0f / 60.0f)
+                                         : (100.0f / 50.0f / 60.0f);
+            int fi = (int)(game.GetFlipT() / period);
+            if (fi < 0) fi = 0;
+            if (fi > 10) fi = 10;
+            Draw((fs == 1) ? kFlipUp[fi] : kFlipDown[fi],
+                 0.0f, 0.0f, 1024.0f, 768.0f, 0xFFFFFFFF);
+        }
+    }
+
     // v2.67 (layout-proven): the FNAF2 office DOES carry a HUD on layer 3 —
     // the dump's own pieces (un-panned): "Night" word img_120 @(863,34),
     // the night counter @(996,58), the hour counter ("time of the night")

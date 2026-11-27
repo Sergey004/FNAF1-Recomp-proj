@@ -205,6 +205,7 @@ void FNaF2Game::InitNightState() {
     m_litQ = 0;
     m_viewing = 0;
     m_maskState = 0; m_maskT = 0.0f;
+    m_flipState = 0; m_flipT = 0.0f;      // v2.133: the monitor flip
     m_musicGauge = (f32)kMusicMax;
     m_musicDrainAcc = 0.0f;
     m_musicDanger = false;
@@ -1082,17 +1083,42 @@ void FNaF2Game::TickOffice(f32 dt, const FNaF2Inputs& in) {
     // on the monitor, the fan is the other way round.
     if (m_viewing == 0) { ChVol(3, 0);  ChVol(6, 40); }
     else               { ChVol(3, 70); ChVol(6, 25); }
-    if (in.aPressed && m_maskState == 0) {
-        const bool raising = (m_viewing == 0);
-        m_viewing = raising ? 9 : 0;   // raise -> cam 9 default (g149)
-        Sfx(raising ? "snd_STEREO_CASSETTE__90097701" : "snd_STEREO_CASSETTE__90097704",
-            false, 7, 80);
+
+    // v2.133: the MONITOR FLIP — the dump's "flip animation" (objInfo 97,
+    // raised) and "flip down" (objInfo 98) objects. The dump CREATES the
+    // flip object on the monitor button (g147: "create x53 flip animation",
+    // the monitor-up cassette sound) and only sets "viewing" to 9 when the
+    // animation is over (g149); lowering creates "flip down" and clears
+    // "viewing" at once (g148, the other cassette sound). The port
+    // switched the feed instantly and played the sounds swapped.
+    {
+        const f32 kFlipUpDur   = 11.0f * (100.0f / 90.0f / 60.0f);   // speed 90
+        const f32 kFlipDownDur = 11.0f * (100.0f / 50.0f / 60.0f);   // speed 50
+        if (in.aPressed && m_maskState == 0 && m_flipState == 0) {
+            if (m_viewing == 0) {
+                m_flipState = 1; m_flipT = 0.0f;      // raising
+                Sfx("snd_STEREO_CASSETTE__90097704", false, 7, 80);
+            } else {
+                m_flipState = 2; m_flipT = 0.0f;      // lowering
+                m_viewing = 0;
+                Sfx("snd_STEREO_CASSETTE__90097701", false, 7, 80);
+            }
+        }
+        if (m_flipState != 0) {
+            m_flipT += dt;
+            const f32 dur = (m_flipState == 1) ? kFlipUpDur : kFlipDownDur;
+            if (m_flipT >= dur) {
+                m_flipT = 0.0f;
+                if (m_flipState == 1) m_viewing = 9;   // the raise is done -> cam 9 (g149)
+                m_flipState = 0;
+            }
+        }
     }
-    if (in.leftPressed  && m_viewing != 0) {
+    if (in.leftPressed  && m_viewing != 0 && m_flipState == 0) {
         m_viewing = (m_viewing <= 1) ? 12 : m_viewing - 1;
         Sfx("snd_COMPUTER_DIGITAL_L2076605", false, 4, 80);   // cam-switch blip (ch4)
     }
-    if (in.rightPressed && m_viewing != 0) {
+    if (in.rightPressed && m_viewing != 0 && m_flipState == 0) {
         m_viewing = (m_viewing >= 12) ? 1 : m_viewing + 1;
         Sfx("snd_COMPUTER_DIGITAL_L2076605", false, 4, 80);
     }
